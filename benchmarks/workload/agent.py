@@ -98,7 +98,7 @@ def log(msg: str):
 # Orchestrator HTTP server
 # ---------------------------------------------------------------------------
 
-DOCKER_BRIDGE_GATEWAY = "172.17.0.1"
+DOCKER_BRIDGE_GATEWAY = os.environ.get("DOCKER_BRIDGE_GATEWAY", "172.17.0.1")
 
 
 def compute_orchestrator_url() -> str:

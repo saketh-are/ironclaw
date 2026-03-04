@@ -1,4 +1,4 @@
-.PHONY: images worker-image agent-image vm-image run run-idle run-sweep plot compare clean help
+.PHONY: images worker-image agent-image agent-dind-image vm-image run run-idle run-sweep plot compare clean help
 
 BENCH_DIR := $(shell pwd)
 APPROACH ?= container-docker
@@ -11,13 +11,16 @@ help: ## Show this help
 
 # --- Docker images ---
 
-images: worker-image agent-image ## Build all Docker images
+images: worker-image agent-image agent-dind-image ## Build all Docker images
 
 worker-image: workload/Dockerfile.worker workload/worker.py ## Build worker simulator image
 	docker build -t bench-worker:latest -f workload/Dockerfile.worker workload/
 
 agent-image: workload/Dockerfile.agent workload/agent.py ## Build agent simulator image
 	docker build -t bench-agent:latest -f workload/Dockerfile.agent workload/
+
+agent-dind-image: workload/Dockerfile.agent-dind workload/agent.py workload/agent-dind-entrypoint.sh ## Build DinD agent image (gVisor approach)
+	docker build -t bench-agent-dind:latest -f workload/Dockerfile.agent-dind workload/
 
 # --- VM image (Approach A only) ---
 
@@ -52,7 +55,7 @@ compare: ## Print comparison table from results/
 clean: ## Remove images, VMs, and results
 	-docker rm -f $$(docker ps -a --filter "label=bench_role" --format '{{.Names}}') 2>/dev/null
 	-docker rm -f $$(docker ps -a --filter "name=bench-" --format '{{.Names}}') 2>/dev/null
-	-docker rmi -f bench-worker:latest bench-agent:latest 2>/dev/null
+	-docker rmi -f bench-worker:latest bench-agent:latest bench-agent-dind:latest 2>/dev/null
 	-bash vm/launch.sh stop-all 2>/dev/null
 	rm -rf results/*/
 	rm -f vm/alpine-agent.qcow2 vm/.alpine-base.qcow2 vm/.worker-image.tar
