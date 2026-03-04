@@ -39,6 +39,7 @@ import signal
 import sys
 import threading
 import time
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 import docker
 
@@ -61,6 +62,8 @@ RNG_SEED_BASE = int(os.environ.get("RNG_SEED", "42"))
 BENCH_RUN_ID = os.environ.get("BENCH_RUN_ID", "unknown")
 BENCH_APPROACH = os.environ.get("BENCH_APPROACH", "unknown")
 WORKER_RUNTIME = os.environ.get("WORKER_RUNTIME", "")  # e.g. "runsc" for gVisor
+ORCHESTRATOR_PORT = os.environ.get("ORCHESTRATOR_PORT", "")  # HTTP server port (empty = disabled)
+ORCHESTRATOR_HOST_PORT = os.environ.get("ORCHESTRATOR_HOST_PORT", "")  # Host-mapped port (container approaches)
 
 # Derive per-agent seed: hash(base_seed + agent_id) for reproducibility
 _seed_input = f"{RNG_SEED_BASE}:{AGENT_ID}"
@@ -89,6 +92,94 @@ def emit_event(event: str, **kwargs):
 def log(msg: str):
     """Emit a human-readable log line (also structured)."""
     emit_event("log", message=msg)
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator HTTP server
+# ---------------------------------------------------------------------------
+
+DOCKER_BRIDGE_GATEWAY = "172.17.0.1"
+
+
+def compute_orchestrator_url() -> str:
+    """Compute the URL workers should use to reach this agent's HTTP server."""
+    if ORCHESTRATOR_HOST_PORT:
+        # Container approach: workers reach the agent via host-mapped port
+        return f"http://{DOCKER_BRIDGE_GATEWAY}:{ORCHESTRATOR_HOST_PORT}"
+    elif ORCHESTRATOR_PORT:
+        # VM approach: agent is the host, workers use bridge gateway + agent port
+        return f"http://{DOCKER_BRIDGE_GATEWAY}:{ORCHESTRATOR_PORT}"
+    return ""
+
+
+# Thread-safe set of worker IDs that have checked in
+_checkins = set()
+_checkins_lock = threading.Lock()
+
+
+def record_checkin(worker_id: str) -> int:
+    """Record a worker checkin. Returns the total number of unique checkins."""
+    with _checkins_lock:
+        _checkins.add(worker_id)
+        return len(_checkins)
+
+
+def get_checkin_count() -> int:
+    with _checkins_lock:
+        return len(_checkins)
+
+
+class OrchestratorHandler(BaseHTTPRequestHandler):
+    """Lightweight HTTP handler for agent ↔ worker communication."""
+
+    def _read_json_body(self) -> dict:
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length) if content_length else b"{}"
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError:
+            return {}
+
+    def _respond_ok(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(b'{"status":"ok"}')
+
+    def do_GET(self):
+        if self.path == "/health":
+            self._respond_ok()
+        else:
+            self.send_error(404)
+
+    def do_POST(self):
+        if self.path == "/heartbeat":
+            data = self._read_json_body()
+            worker_id = data.get("worker_id", "unknown")
+            rss_kb = data.get("rss_kb", -1)
+            emit_event("heartbeat", worker_id=worker_id, rss_kb=rss_kb)
+            self._respond_ok()
+        elif self.path == "/checkin":
+            data = self._read_json_body()
+            worker_id = data.get("worker_id", "unknown")
+            total = record_checkin(worker_id)
+            emit_event("checkin", worker_id=worker_id, total_checkins=total)
+            self._respond_ok()
+        else:
+            self.send_error(404)
+
+    def log_message(self, format, *args):
+        # Suppress default stderr logging; we emit structured events instead
+        pass
+
+
+def start_orchestrator_server(port: int) -> HTTPServer:
+    """Start the orchestrator HTTP server in a background thread."""
+    server = HTTPServer(("0.0.0.0", port), OrchestratorHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    log(f"Orchestrator HTTP server listening on 0.0.0.0:{port}")
+    return server
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +246,15 @@ def spawn_worker(client: docker.DockerClient, rng: random.Random) -> bool:
     counter, worker_name = next_worker_id()
 
     # Container config mirrors ironclaw sandbox defaults
+    env = {
+        "WORKER_MEMORY_MB": str(WORKER_MEMORY_MB),
+        "WORKER_DURATION_MIN_S": str(WORKER_DURATION_MIN_S),
+        "WORKER_DURATION_MAX_S": str(WORKER_DURATION_MAX_S),
+    }
+    orchestrator_url = compute_orchestrator_url()
+    if orchestrator_url:
+        env["ORCHESTRATOR_URL"] = orchestrator_url
+
     create_kwargs = dict(
         image=WORKER_IMAGE,
         name=worker_name,
@@ -164,11 +264,7 @@ def spawn_worker(client: docker.DockerClient, rng: random.Random) -> bool:
         security_opt=["no-new-privileges"],
         tmpfs={"/tmp": "size=512m"},
         user="1000:1000",
-        environment={
-            "WORKER_MEMORY_MB": str(WORKER_MEMORY_MB),
-            "WORKER_DURATION_MIN_S": str(WORKER_DURATION_MIN_S),
-            "WORKER_DURATION_MAX_S": str(WORKER_DURATION_MAX_S),
-        },
+        environment=env,
         labels={
             "bench_run_id": BENCH_RUN_ID,
             "bench_role": "worker",
@@ -227,7 +323,7 @@ def cleanup_workers(client: docker.DockerClient):
     try:
         containers = client.containers.list(
             all=True,
-            filters={"label": [f"bench_agent_id={AGENT_ID}"]},
+            filters={"label": [f"bench_agent_id={AGENT_ID}", "bench_role=worker"]},
         )
         for c in containers:
             try:
@@ -265,7 +361,9 @@ def main():
                max_concurrent_workers=MAX_CONCURRENT_WORKERS,
                duration_s=BENCHMARK_DURATION_S,
                rng_seed=AGENT_SEED,
-               worker_runtime=WORKER_RUNTIME or "default")
+               worker_runtime=WORKER_RUNTIME or "default",
+               orchestrator_port=ORCHESTRATOR_PORT or "disabled",
+               orchestrator_url=compute_orchestrator_url() or "disabled")
 
     # Allocate baseline memory
     log(f"Allocating {AGENT_BASELINE_MB} MB baseline memory...")
@@ -274,6 +372,11 @@ def main():
 
     # Connect to Docker
     client = docker.from_env()
+
+    # Start orchestrator HTTP server if configured
+    _server = None
+    if ORCHESTRATOR_PORT:
+        _server = start_orchestrator_server(int(ORCHESTRATOR_PORT))
 
     # Set up signal handler for clean shutdown
     stop = threading.Event()
@@ -319,7 +422,26 @@ def main():
 
     # Cleanup
     stop.set()
+
+    # Grace period: let in-flight workers finish their checkin before killing them.
+    # Workers allocate memory (~1-2s) then immediately POST /checkin.
+    if ORCHESTRATOR_PORT and get_active_workers() > 0:
+        grace_s = 10
+        log(f"Waiting {grace_s}s for {get_active_workers()} in-flight workers to check in...")
+        deadline = time.monotonic() + grace_s
+        while time.monotonic() < deadline and get_checkin_count() < _worker_counter:
+            time.sleep(0.5)
+
     cleanup_workers(client)
+
+    # Emit checkin summary for post-run validation
+    if ORCHESTRATOR_PORT:
+        checkins = get_checkin_count()
+        emit_event("checkin_summary",
+                   workers_spawned=_worker_counter,
+                   checkins_received=checkins,
+                   checkins_ok=checkins == _worker_counter)
+
     emit_event("agent_stop", total_workers_spawned=_worker_counter)
     log("Agent stopped.")
 

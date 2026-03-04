@@ -85,6 +85,7 @@ class VmQemuApproach(Approach):
                 f"RNG_SEED={config.rng_seed}",
                 f"BENCH_RUN_ID={config.run_id}",
                 f"BENCH_APPROACH={self.name}",
+                "ORCHESTRATOR_PORT=8080",
             ]
 
             cmd = [

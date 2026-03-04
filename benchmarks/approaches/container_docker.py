@@ -47,11 +47,14 @@ class ContainerDockerApproach(Approach):
         for i in range(n):
             agent_id = f"agent-{i}"
             container_name = f"bench-agent-{i}"
+            host_port = config.orchestrator_base_port + i
 
             cmd = [
                 "docker", "run", "-d",
                 "--name", container_name,
                 "--memory", f"{config.agent_memory_mb}m",
+                # Publish orchestrator HTTP port
+                "-p", f"{host_port}:8080",
                 # Labels for identification and cleanup
                 "--label", f"bench_run_id={config.run_id}",
                 "--label", "bench_role=agent",
@@ -73,6 +76,9 @@ class ContainerDockerApproach(Approach):
                 "-e", f"RNG_SEED={config.rng_seed}",
                 "-e", f"BENCH_RUN_ID={config.run_id}",
                 "-e", f"BENCH_APPROACH={self.name}",
+                # Orchestrator networking
+                "-e", "ORCHESTRATOR_PORT=8080",
+                "-e", f"ORCHESTRATOR_HOST_PORT={host_port}",
                 self._agent_image,
             ]
 
@@ -158,23 +164,28 @@ class ContainerDockerApproach(Approach):
                 if result.returncode == 0:
                     log_file.write_text(result.stdout)
                     print(f"[{self.name}] Collected logs for {agent_id}")
+                else:
+                    print(f"[{self.name}] docker logs failed for {agent_id}: "
+                          f"rc={result.returncode} stderr={result.stderr.strip()}")
             except subprocess.SubprocessError as e:
                 print(f"[{self.name}] Failed to collect logs for {agent_id}: {e}")
 
     def stop_agents(self) -> None:
-        """Stop all agent containers and their workers."""
-        # First stop agents (their cleanup will remove their workers)
+        """Gracefully stop agent containers (SIGTERM with timeout).
+
+        Agents remain as stopped containers so logs can still be collected
+        via `docker logs`. Call remove_containers() after log collection.
+        """
         for i in range(len(self._agent_ids)):
             container_name = f"bench-agent-{i}"
             subprocess.run(
-                ["docker", "rm", "-f", container_name],
+                ["docker", "stop", "-t", "30", container_name],
                 capture_output=True,
             )
+        print(f"[{self.name}] All agents stopped.")
 
-        # Wait a moment for agent cleanup to fire
-        time.sleep(2)
-
-        # Force-remove any remaining containers from this run using labels
+    def remove_containers(self) -> None:
+        """Force-remove all containers from this benchmark run."""
         result = subprocess.run(
             [
                 "docker", "ps", "-aq",
@@ -190,10 +201,10 @@ class ContainerDockerApproach(Approach):
                     ["docker", "rm", "-f"] + container_ids,
                     capture_output=True,
                 )
-
         self._agent_ids = []
-        print(f"[{self.name}] All agents and workers stopped.")
+        print(f"[{self.name}] All containers removed.")
 
     def cleanup(self) -> None:
         """Remove Docker images."""
         self.stop_agents()
+        self.remove_containers()

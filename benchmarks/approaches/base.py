@@ -35,6 +35,9 @@ class BenchmarkConfig:
     worker_duration_min_s: int = 30
     worker_duration_max_s: int = 120
 
+    # Networking
+    orchestrator_base_port: int = 50100  # Starting host port for container approaches
+
     # Run metadata
     run_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     rng_seed: int = 42
@@ -56,6 +59,7 @@ class BenchmarkConfig:
             worker_memory_mb=int(e.get("WORKER_MEMORY_MB", "500")),
             worker_duration_min_s=int(e.get("WORKER_DURATION_MIN_S", "30")),
             worker_duration_max_s=int(e.get("WORKER_DURATION_MAX_S", "120")),
+            orchestrator_base_port=int(e.get("ORCHESTRATOR_BASE_PORT", "50100")),
             rng_seed=int(e.get("RNG_SEED", "42")),
         )
 

@@ -133,6 +133,7 @@ start() {
         export AGENT_ID AGENT_BASELINE_MB SPAWN_INTERVAL_MEAN_S MAX_CONCURRENT_WORKERS
         export BENCHMARK_DURATION_S WORKER_IMAGE WORKER_MEMORY_LIMIT_MB WORKER_MEMORY_MB
         export WORKER_DURATION_MIN_S WORKER_DURATION_MAX_S RNG_SEED BENCH_RUN_ID BENCH_APPROACH
+        export ORCHESTRATOR_PORT
     fi
 
     # Output to serial console (ttyS0) so logs are captured by host via console.log

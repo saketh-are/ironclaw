@@ -161,6 +161,68 @@ def parse_agent_logs(run_dir: Path) -> dict:
     return stats
 
 
+def validate_checkins(run_dir: Path) -> dict:
+    """
+    Validate worker checkins from agent logs.
+
+    Each agent emits a 'checkin_summary' event at shutdown with
+    workers_spawned and checkins_received counts. We verify they match.
+
+    Returns a dict with validation results (included in summary.json).
+    """
+    results = {
+        "agents_checked": 0,
+        "agents_missing_summary": 0,
+        "total_spawned": 0,
+        "total_checkins": 0,
+        "per_agent": {},
+        "all_ok": True,
+    }
+
+    log_files = sorted(run_dir.glob("agent-*.jsonl"))
+    if not log_files:
+        # VM approach uses .log files with embedded JSONL
+        log_files = sorted(run_dir.glob("agent-*.log"))
+
+    for log_file in log_files:
+        agent_id = log_file.stem  # e.g. "agent-0"
+        summary_found = False
+        try:
+            with open(log_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if event.get("event") == "checkin_summary":
+                        summary_found = True
+                        spawned = event.get("workers_spawned", 0)
+                        received = event.get("checkins_received", 0)
+                        ok = event.get("checkins_ok", False)
+                        results["agents_checked"] += 1
+                        results["total_spawned"] += spawned
+                        results["total_checkins"] += received
+                        results["per_agent"][agent_id] = {
+                            "spawned": spawned,
+                            "checkins": received,
+                            "ok": ok,
+                        }
+                        if not ok:
+                            results["all_ok"] = False
+        except Exception:
+            pass
+
+        if not summary_found:
+            results["agents_missing_summary"] += 1
+            results["per_agent"][agent_id] = {"error": "no checkin_summary event"}
+            results["all_ok"] = False
+
+    return results
+
+
 def compute_percentiles(values: list, percentiles: list = None) -> dict:
     """Compute percentiles from a list of values."""
     if not values:
@@ -294,15 +356,17 @@ def run_benchmark(
             time.sleep(5)
         print()
 
-        # Phase 4: Collect agent logs before stopping
-        print("Collecting agent logs...")
-        approach.collect_agent_logs(agent_ids, run_dir)
-
-        # Phase 5: Teardown
+        # Phase 4: Stop agents gracefully (SIGTERM allows cleanup + checkin_summary)
         print("Stopping agents...")
         approach.stop_agents()
 
-        # Phase 6: Settle (10s)
+        # Phase 5: Collect agent logs (from stopped but not yet removed containers)
+        print("Collecting agent logs...")
+        approach.collect_agent_logs(agent_ids, run_dir)
+
+        # Phase 6: Remove containers and settle (10s)
+        if hasattr(approach, "remove_containers"):
+            approach.remove_containers()
         print("Waiting for memory to settle (10s)...")
         time.sleep(10)
 
@@ -329,6 +393,21 @@ def run_benchmark(
     drift = summary.get('drift_kb_per_s', 0)
     if abs(drift) > 10:
         print(f"  Drift: {drift:.1f} KiB/s (potential leak)")
+
+    # Checkin validation results
+    cv = summary.get("checkin_validation")
+    if cv:
+        total_s = cv["total_spawned"]
+        total_c = cv["total_checkins"]
+        if cv["all_ok"]:
+            print(f"  Checkins: {total_c}/{total_s} OK")
+        else:
+            print(f"\n  CHECKIN VALIDATION FAILED: {total_c}/{total_s} workers checked in")
+            for agent_id, info in sorted(cv["per_agent"].items()):
+                if "error" in info:
+                    print(f"    {agent_id}: {info['error']}")
+                elif not info.get("ok"):
+                    print(f"    {agent_id}: {info['checkins']}/{info['spawned']} checkins")
 
     return run_dir
 
@@ -410,6 +489,9 @@ def generate_summary(run_dir: Path, swap_result: dict = None) -> dict:
     # Agent log stats
     agent_log_stats = parse_agent_logs(run_dir)
 
+    # Worker checkin validation
+    checkin_validation = validate_checkins(run_dir)
+
     summary = {
         "approach": params["approach"],
         "mode": params.get("mode", "loaded"),
@@ -434,6 +516,10 @@ def generate_summary(run_dir: Path, swap_result: dict = None) -> dict:
     # Swap info
     if swap_result:
         summary["swap"] = swap_result
+
+    # Checkin validation
+    if checkin_validation["agents_checked"] > 0 or checkin_validation["agents_missing_summary"] > 0:
+        summary["checkin_validation"] = checkin_validation
 
     return summary
 
@@ -506,7 +592,16 @@ def main():
     approach = APPROACHES[args.approach]
 
     # Run
-    run_benchmark(approach, num_agents, config, output_dir, sample_interval, args.mode)
+    run_dir = run_benchmark(approach, num_agents, config, output_dir, sample_interval, args.mode)
+
+    # Exit non-zero if checkin validation failed
+    summary_path = run_dir / "summary.json"
+    if summary_path.exists():
+        with open(summary_path) as f:
+            summary = json.load(f)
+        cv = summary.get("checkin_validation", {})
+        if cv and not cv.get("all_ok", True):
+            sys.exit(1)
 
 
 if __name__ == "__main__":
