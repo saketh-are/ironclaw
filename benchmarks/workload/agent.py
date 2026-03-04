@@ -28,20 +28,29 @@ Environment variables:
   RNG_SEED                Base RNG seed for reproducibility (default: 42)
   BENCH_RUN_ID            Unique run identifier for container labels (default: unknown)
   BENCH_APPROACH          Approach name for container labels (default: unknown)
+  WORKER_BACKEND          Backend for workers: "docker" (default) or "firecracker"
+  FC_KERNEL_PATH          Firecracker kernel path (default: /opt/vmlinux)
+  FC_ROOTFS_PATH          Firecracker rootfs path (default: /opt/worker-rootfs.ext4)
 """
 
 import hashlib
+import http.client
 import json
 import mmap
 import os
 import random
 import signal
+import socket
+import subprocess
 import sys
 import threading
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-import docker
+WORKER_BACKEND = os.environ.get("WORKER_BACKEND", "docker")
+
+if WORKER_BACKEND == "docker":
+    import docker
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +71,8 @@ RNG_SEED_BASE = int(os.environ.get("RNG_SEED", "42"))
 BENCH_RUN_ID = os.environ.get("BENCH_RUN_ID", "unknown")
 BENCH_APPROACH = os.environ.get("BENCH_APPROACH", "unknown")
 WORKER_RUNTIME = os.environ.get("WORKER_RUNTIME", "")  # e.g. "runsc" for gVisor
+WORKER_NETWORK = os.environ.get("WORKER_NETWORK", "")  # e.g. "podman" for bridge networking
+WORKER_NETWORK_MODE = os.environ.get("WORKER_NETWORK_MODE", "")  # e.g. "container:bench-agent-0"
 ORCHESTRATOR_PORT = os.environ.get("ORCHESTRATOR_PORT", "")  # HTTP server port (empty = disabled)
 ORCHESTRATOR_HOST_PORT = os.environ.get("ORCHESTRATOR_HOST_PORT", "")  # Host-mapped port (container approaches)
 
@@ -71,6 +82,11 @@ AGENT_SEED = int(hashlib.sha256(_seed_input.encode()).hexdigest()[:8], 16)
 
 WORKER_PREFIX = f"bench-worker-{AGENT_ID}"
 STATUS_INTERVAL_S = 5  # How often to emit status events
+
+# Firecracker-specific configuration
+FC_KERNEL_PATH = os.environ.get("FC_KERNEL_PATH", "/opt/vmlinux")
+FC_ROOTFS_PATH = os.environ.get("FC_ROOTFS_PATH", "/opt/worker-rootfs.ext4")
+FC_VM_DIR = "/tmp/fc-vms"
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +251,7 @@ def next_worker_id() -> tuple:
     return c, f"{WORKER_PREFIX}-{c}"
 
 
-def spawn_worker(client: docker.DockerClient, rng: random.Random) -> bool:
+def spawn_worker(client, rng: random.Random) -> bool:
     """
     Spawn a single worker container using the ironclaw lifecycle:
     create → start → wait → remove.
@@ -275,6 +291,10 @@ def spawn_worker(client: docker.DockerClient, rng: random.Random) -> bool:
     )
     if WORKER_RUNTIME:
         create_kwargs["runtime"] = WORKER_RUNTIME
+    if WORKER_NETWORK:
+        create_kwargs["network"] = WORKER_NETWORK
+    if WORKER_NETWORK_MODE:
+        create_kwargs["network_mode"] = WORKER_NETWORK_MODE
 
     try:
         container = client.containers.create(**create_kwargs)
@@ -314,11 +334,158 @@ def spawn_worker(client: docker.DockerClient, rng: random.Random) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Firecracker: HTTP-over-Unix-socket helper
+# ---------------------------------------------------------------------------
+
+class _UnixSocketHTTPConnection(http.client.HTTPConnection):
+    """HTTPConnection subclass that connects via a Unix domain socket."""
+
+    def __init__(self, socket_path, timeout=5):
+        super().__init__("localhost", timeout=timeout)
+        self._socket_path = socket_path
+
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(self.timeout)
+        self.sock.connect(self._socket_path)
+
+
+def _fc_api(socket_path, method, path, body=None):
+    """Send an HTTP request to the Firecracker API over a Unix socket."""
+    conn = _UnixSocketHTTPConnection(socket_path)
+    headers = {"Content-Type": "application/json"} if body else {}
+    payload = json.dumps(body) if body else None
+    conn.request(method, path, body=payload, headers=headers)
+    resp = conn.getresponse()
+    data = resp.read().decode()
+    conn.close()
+    if resp.status >= 300:
+        raise RuntimeError(f"Firecracker API {method} {path} returned {resp.status}: {data}")
+    return data
+
+
+# ---------------------------------------------------------------------------
+# Firecracker: worker spawn and lifecycle
+# ---------------------------------------------------------------------------
+
+def spawn_worker_firecracker(rng: random.Random) -> bool:
+    """
+    Spawn a single worker as a Firecracker microVM.
+
+    1. Create a per-VM directory with a Unix socket
+    2. Launch the firecracker VMM process
+    3. Configure the VM via the Firecracker API (boot source, drives, machine config)
+    4. Start the VM instance
+    5. Background thread waits for the VMM process to exit, then cleans up
+
+    Returns True if the VM was started successfully.
+    """
+    counter, worker_name = next_worker_id()
+    vm_dir = os.path.join(FC_VM_DIR, worker_name)
+    socket_path = os.path.join(vm_dir, "fc.sock")
+
+    try:
+        os.makedirs(vm_dir, exist_ok=True)
+    except OSError as e:
+        log(f"Failed to create VM dir {vm_dir}: {e}")
+        return False
+
+    # Launch the Firecracker VMM process
+    try:
+        proc = subprocess.Popen(
+            ["firecracker", "--api-sock", socket_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, FileNotFoundError) as e:
+        log(f"Failed to launch firecracker for {worker_name}: {e}")
+        return False
+
+    # Wait for the API socket to appear
+    for _ in range(50):  # 5 seconds max
+        if os.path.exists(socket_path):
+            break
+        time.sleep(0.1)
+    else:
+        log(f"Firecracker socket never appeared for {worker_name}")
+        proc.kill()
+        return False
+
+    # Compute worker memory: requested + 64MB headroom for guest kernel + init
+    vm_mem_mib = WORKER_MEMORY_MB + 64
+
+    # Build boot_args to pass worker config via /proc/cmdline
+    boot_args = (
+        f"console=ttyS0 reboot=k panic=1 pci=off "
+        f"init=/sbin/init "
+        f"worker_memory_mb={WORKER_MEMORY_MB} "
+        f"worker_duration_min_s={WORKER_DURATION_MIN_S} "
+        f"worker_duration_max_s={WORKER_DURATION_MAX_S}"
+    )
+
+    try:
+        # Configure boot source
+        _fc_api(socket_path, "PUT", "/boot-source", {
+            "kernel_image_path": FC_KERNEL_PATH,
+            "boot_args": boot_args,
+        })
+
+        # Configure rootfs drive (read-only)
+        _fc_api(socket_path, "PUT", "/drives/rootfs", {
+            "drive_id": "rootfs",
+            "path_on_host": FC_ROOTFS_PATH,
+            "is_root_device": True,
+            "is_read_only": True,
+        })
+
+        # Configure machine resources
+        _fc_api(socket_path, "PUT", "/machine-config", {
+            "vcpu_count": 1,
+            "mem_size_mib": vm_mem_mib,
+        })
+
+        # Start the VM instance
+        _fc_api(socket_path, "PUT", "/actions", {
+            "action_type": "InstanceStart",
+        })
+    except Exception as e:
+        log(f"Failed to configure/start VM {worker_name}: {e}")
+        proc.kill()
+        try:
+            import shutil
+            shutil.rmtree(vm_dir, ignore_errors=True)
+        except Exception:
+            pass
+        return False
+
+    count = _inc_active()
+    emit_event("worker_start", worker_id=worker_name, active_workers=count)
+
+    # Background thread: wait for VMM process to exit, then clean up
+    def wait_and_cleanup():
+        try:
+            proc.wait()
+        except Exception:
+            pass
+        count = _dec_active()
+        emit_event("worker_end", worker_id=worker_name, active_workers=count)
+        try:
+            import shutil
+            shutil.rmtree(vm_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+    t = threading.Thread(target=wait_and_cleanup, daemon=True)
+    t.start()
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Cleanup
 # ---------------------------------------------------------------------------
 
-def cleanup_workers(client: docker.DockerClient):
-    """Remove all worker containers for this agent."""
+def cleanup_workers_docker(client):
+    """Remove all worker containers for this agent (Docker backend)."""
     log("Cleaning up workers...")
     try:
         containers = client.containers.list(
@@ -336,6 +503,35 @@ def cleanup_workers(client: docker.DockerClient):
         log(f"Cleanup error: {e}")
 
 
+def cleanup_workers_firecracker():
+    """Kill any remaining Firecracker VMM child processes."""
+    log("Cleaning up Firecracker VMs...")
+    killed = 0
+    try:
+        result = subprocess.run(
+            ["pgrep", "-P", str(os.getpid()), "firecracker"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            for pid_str in result.stdout.strip().split("\n"):
+                try:
+                    os.kill(int(pid_str), signal.SIGKILL)
+                    killed += 1
+                except (ProcessLookupError, ValueError):
+                    pass
+    except Exception as e:
+        log(f"Cleanup error: {e}")
+    if killed:
+        log(f"Killed {killed} Firecracker processes.")
+    # Clean up VM directories
+    try:
+        import shutil
+        if os.path.isdir(FC_VM_DIR):
+            shutil.rmtree(FC_VM_DIR, ignore_errors=True)
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Status emitter (periodic)
 # ---------------------------------------------------------------------------
@@ -344,6 +540,14 @@ def status_emitter(stop_event: threading.Event):
     """Periodically emit status events with active worker count."""
     while not stop_event.is_set():
         emit_event("status", active_workers=get_active_workers())
+        # Emit periodic checkin_summary so approaches that can't deliver
+        # SIGTERM (rootless Podman) still have recent validation data.
+        if ORCHESTRATOR_PORT and _worker_counter > 0:
+            checkins = get_checkin_count()
+            emit_event("checkin_summary",
+                       workers_spawned=_worker_counter,
+                       checkins_received=checkins,
+                       checkins_ok=checkins == _worker_counter)
         stop_event.wait(timeout=STATUS_INTERVAL_S)
 
 
@@ -352,6 +556,16 @@ def status_emitter(stop_event: threading.Event):
 # ---------------------------------------------------------------------------
 
 def main():
+    # Resolve DOCKER_BRIDGE_GATEWAY=auto to this container's own IP.
+    # Used with Podman CNI bridge where containers share a bridge network
+    # and workers reach the agent via its container IP, not the host.
+    global DOCKER_BRIDGE_GATEWAY
+    if DOCKER_BRIDGE_GATEWAY == "auto":
+        try:
+            DOCKER_BRIDGE_GATEWAY = socket.gethostbyname(socket.gethostname())
+        except socket.gaierror:
+            DOCKER_BRIDGE_GATEWAY = "172.17.0.1"
+
     # Set up reproducible RNG
     rng = random.Random(AGENT_SEED)
 
@@ -362,6 +576,7 @@ def main():
                duration_s=BENCHMARK_DURATION_S,
                rng_seed=AGENT_SEED,
                worker_runtime=WORKER_RUNTIME or "default",
+               worker_backend=WORKER_BACKEND,
                orchestrator_port=ORCHESTRATOR_PORT or "disabled",
                orchestrator_url=compute_orchestrator_url() or "disabled")
 
@@ -370,8 +585,16 @@ def main():
     _baseline_mem = allocate_baseline(AGENT_BASELINE_MB)
     log(f"Baseline memory allocated.")
 
-    # Connect to Docker
-    client = docker.from_env()
+    # Backend-specific init
+    client = None
+    if WORKER_BACKEND == "docker":
+        client = docker.from_env()
+    elif WORKER_BACKEND == "firecracker":
+        os.makedirs(FC_VM_DIR, exist_ok=True)
+        log(f"Firecracker backend: kernel={FC_KERNEL_PATH}, rootfs={FC_ROOTFS_PATH}")
+    else:
+        log(f"Unknown WORKER_BACKEND={WORKER_BACKEND}, exiting.")
+        sys.exit(1)
 
     # Start orchestrator HTTP server if configured
     _server = None
@@ -416,9 +639,12 @@ def main():
             log(f"At capacity ({active}/{MAX_CONCURRENT_WORKERS}). Skipping spawn.")
             continue
 
-        # Spawn
+        # Spawn (dispatch by backend)
         log(f"Spawning worker (active: {active}/{MAX_CONCURRENT_WORKERS})")
-        spawn_worker(client, rng)
+        if WORKER_BACKEND == "firecracker":
+            spawn_worker_firecracker(rng)
+        else:
+            spawn_worker(client, rng)
 
     # Cleanup
     stop.set()
@@ -432,7 +658,10 @@ def main():
         while time.monotonic() < deadline and get_checkin_count() < _worker_counter:
             time.sleep(0.5)
 
-    cleanup_workers(client)
+    if WORKER_BACKEND == "firecracker":
+        cleanup_workers_firecracker()
+    else:
+        cleanup_workers_docker(client)
 
     # Emit checkin summary for post-run validation
     if ORCHESTRATOR_PORT:

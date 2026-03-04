@@ -186,7 +186,10 @@ def validate_checkins(run_dir: Path) -> dict:
 
     for log_file in log_files:
         agent_id = log_file.stem  # e.g. "agent-0"
-        summary_found = False
+        # Use the LAST checkin_summary event (agent emits periodic
+        # summaries so that approaches without graceful SIGTERM still
+        # have validation data).
+        last_summary = None
         try:
             with open(log_file) as f:
                 for line in f:
@@ -198,24 +201,25 @@ def validate_checkins(run_dir: Path) -> dict:
                     except json.JSONDecodeError:
                         continue
                     if event.get("event") == "checkin_summary":
-                        summary_found = True
-                        spawned = event.get("workers_spawned", 0)
-                        received = event.get("checkins_received", 0)
-                        ok = event.get("checkins_ok", False)
-                        results["agents_checked"] += 1
-                        results["total_spawned"] += spawned
-                        results["total_checkins"] += received
-                        results["per_agent"][agent_id] = {
-                            "spawned": spawned,
-                            "checkins": received,
-                            "ok": ok,
-                        }
-                        if not ok:
-                            results["all_ok"] = False
+                        last_summary = event
         except Exception:
             pass
 
-        if not summary_found:
+        if last_summary:
+            spawned = last_summary.get("workers_spawned", 0)
+            received = last_summary.get("checkins_received", 0)
+            ok = last_summary.get("checkins_ok", False)
+            results["agents_checked"] += 1
+            results["total_spawned"] += spawned
+            results["total_checkins"] += received
+            results["per_agent"][agent_id] = {
+                "spawned": spawned,
+                "checkins": received,
+                "ok": ok,
+            }
+            if not ok:
+                results["all_ok"] = False
+        else:
             results["agents_missing_summary"] += 1
             results["per_agent"][agent_id] = {"error": "no checkin_summary event"}
             results["all_ok"] = False

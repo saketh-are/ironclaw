@@ -1,0 +1,31 @@
+#!/bin/sh
+#
+# Minimal init for Firecracker worker VMs.
+# Mounts essential filesystems, parses config from kernel boot_args
+# (passed via /proc/cmdline), runs the worker, then powers off.
+
+# Mount essential filesystems
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+
+# Parse worker config from kernel command line.
+# Firecracker passes boot_args which appear in /proc/cmdline.
+# Expected format: "... worker_memory_mb=500 worker_duration_min_s=30 worker_duration_max_s=120"
+CMDLINE=$(cat /proc/cmdline)
+
+for param in $CMDLINE; do
+    case "$param" in
+        worker_memory_mb=*)       export WORKER_MEMORY_MB="${param#*=}" ;;
+        worker_duration_min_s=*)  export WORKER_DURATION_MIN_S="${param#*=}" ;;
+        worker_duration_max_s=*)  export WORKER_DURATION_MAX_S="${param#*=}" ;;
+    esac
+done
+
+# Run the worker
+echo "[init] Starting worker: memory=${WORKER_MEMORY_MB:-500}MB"
+python3 /usr/local/bin/worker.py
+
+# Power off the VM
+echo "[init] Worker finished, powering off."
+reboot -f

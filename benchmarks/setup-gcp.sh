@@ -28,7 +28,7 @@ echo "============================================"
 echo ""
 
 # --- System packages ---
-echo "[1/7] Installing system packages..."
+echo "[1/9] Installing system packages..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq \
@@ -46,7 +46,7 @@ apt-get install -y -qq \
 echo "  Done."
 
 # --- Docker ---
-echo "[2/7] Installing Docker..."
+echo "[2/9] Installing Docker..."
 if command -v docker &>/dev/null; then
     echo "  Docker already installed: $(docker --version)"
 else
@@ -63,12 +63,12 @@ systemctl enable docker
 systemctl start docker
 
 # --- Python dependencies ---
-echo "[3/7] Installing Python dependencies..."
+echo "[3/9] Installing Python dependencies..."
 pip3 install -q matplotlib docker
 echo "  Done."
 
 # --- Verify KVM ---
-echo "[4/7] Verifying KVM support..."
+echo "[4/9] Verifying KVM support..."
 if [ -e /dev/kvm ]; then
     echo "  /dev/kvm found."
     # Ensure the user can access KVM
@@ -82,7 +82,7 @@ else
 fi
 
 # --- Host tuning ---
-echo "[5/7] Applying host tuning for accurate measurements..."
+echo "[5/9] Applying host tuning for accurate measurements..."
 
 # Disable transparent huge pages
 if [ -f /sys/kernel/mm/transparent_hugepage/enabled ]; then
@@ -125,16 +125,42 @@ systemctl daemon-reload
 systemctl enable bench-tuning.service > /dev/null 2>&1
 echo "  Tuning persisted via systemd."
 
+# --- Podman (rootless containers) ---
+echo "[6/9] Installing Podman..."
+if command -v podman &>/dev/null; then
+    echo "  Podman already installed: $(podman --version)"
+else
+    apt-get install -y -qq podman uidmap systemd-container dbus-user-session > /dev/null
+    echo "  Installed: $(podman --version)"
+fi
+
+# --- Firecracker ---
+echo "[7/9] Installing Firecracker..."
+FC_VERSION="v1.7.0"
+FC_ARCH="x86_64"
+if command -v firecracker &>/dev/null; then
+    echo "  Firecracker already installed: $(firecracker --version 2>&1 | head -1)"
+else
+    FC_URL="https://github.com/firecracker-microvm/firecracker/releases/download/${FC_VERSION}/firecracker-${FC_VERSION}-${FC_ARCH}.tgz"
+    TMPFC=$(mktemp -d)
+    curl -fsSL "$FC_URL" | tar -xz -C "$TMPFC"
+    install -m 755 "${TMPFC}/release-${FC_VERSION}-${FC_ARCH}/firecracker-${FC_VERSION}-${FC_ARCH}" /usr/local/bin/firecracker
+    rm -rf "$TMPFC"
+    echo "  Installed: $(firecracker --version 2>&1 | head -1)"
+fi
+
 # --- Drop caches (do this last, after all installs) ---
-echo "[6/7] Dropping page caches..."
+echo "[8/9] Dropping page caches..."
 echo 3 > /proc/sys/vm/drop_caches
 echo "  Done."
 
 # --- Summary ---
-echo "[7/7] Verifying installation..."
+echo "[9/9] Verifying installation..."
 echo ""
 echo "  Docker:          $(docker --version 2>/dev/null || echo 'NOT FOUND')"
+echo "  Podman:          $(podman --version 2>/dev/null || echo 'NOT FOUND')"
 echo "  QEMU:            $(qemu-system-x86_64 --version 2>/dev/null | head -1 || echo 'NOT FOUND')"
+echo "  Firecracker:     $(firecracker --version 2>&1 | head -1 || echo 'NOT FOUND')"
 echo "  virt-customize:  $(virt-customize --version 2>/dev/null || echo 'NOT FOUND')"
 echo "  Python:          $(python3 --version 2>/dev/null || echo 'NOT FOUND')"
 echo "  matplotlib:      $(python3 -c 'import matplotlib; print(matplotlib.__version__)' 2>/dev/null || echo 'NOT FOUND')"
@@ -159,4 +185,14 @@ echo " For the VM approach:"
 echo ""
 echo "   make vm-image"
 echo "   make run APPROACH=vm-qemu AGENTS=5"
+echo ""
+echo " For the Podman rootless approach:"
+echo ""
+echo "   make podman-setup"
+echo "   make run APPROACH=podman-rootless AGENTS=5"
+echo ""
+echo " For the hybrid Firecracker approach:"
+echo ""
+echo "   make fc-setup"
+echo "   make run APPROACH=hybrid-firecracker AGENTS=5"
 echo ""

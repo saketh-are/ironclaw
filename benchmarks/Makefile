@@ -1,4 +1,4 @@
-.PHONY: images worker-image agent-image agent-dind-image vm-image run run-idle run-sweep plot compare clean help
+.PHONY: images worker-image agent-image agent-dind-image vm-image fc-kernel fc-rootfs fc-image fc-setup podman-setup run run-idle run-sweep plot compare clean help
 
 BENCH_DIR := $(shell pwd)
 APPROACH ?= container-docker
@@ -28,6 +28,28 @@ vm-image: images ## Build Alpine VM image with Docker (requires libguestfs)
 	chmod +x vm/build-image.sh
 	cd vm && bash build-image.sh
 
+# --- Firecracker (Approach C: hybrid-firecracker) ---
+
+fc-kernel: ## Download Firecracker kernel
+	chmod +x firecracker/fetch-kernel.sh
+	bash firecracker/fetch-kernel.sh
+
+fc-rootfs: images ## Build Firecracker worker rootfs (requires root for loopback mount)
+	chmod +x firecracker/build-rootfs.sh
+	bash firecracker/build-rootfs.sh
+
+fc-image: workload/Dockerfile.agent-fc workload/agent.py ## Build Firecracker-enabled agent image
+	docker build -t bench-agent-fc:latest -f workload/Dockerfile.agent-fc workload/
+
+fc-setup: fc-kernel fc-rootfs fc-image ## Full Firecracker setup (kernel + rootfs + image)
+
+# --- Podman rootless ---
+
+podman-setup: images ## Install podman + deps for podman-rootless approach
+	@command -v podman >/dev/null || (echo "Install podman first: sudo apt install podman uidmap systemd-container"; exit 1)
+	@command -v machinectl >/dev/null || (echo "Install systemd-container: sudo apt install systemd-container"; exit 1)
+	@echo "Podman ready. User setup happens automatically during benchmark run."
+
 # --- Run benchmarks ---
 
 run: images ## Run benchmark: make run APPROACH=container-docker AGENTS=5 [MODE=idle]
@@ -52,11 +74,12 @@ compare: ## Print comparison table from results/
 
 # --- Cleanup ---
 
-clean: ## Remove images, VMs, and results
+clean: ## Remove images, VMs, Firecracker artifacts, and results
 	-docker rm -f $$(docker ps -a --filter "label=bench_role" --format '{{.Names}}') 2>/dev/null
 	-docker rm -f $$(docker ps -a --filter "name=bench-" --format '{{.Names}}') 2>/dev/null
-	-docker rmi -f bench-worker:latest bench-agent:latest bench-agent-dind:latest 2>/dev/null
+	-docker rmi -f bench-worker:latest bench-agent:latest bench-agent-dind:latest bench-agent-fc:latest 2>/dev/null
 	-bash vm/launch.sh stop-all 2>/dev/null
 	rm -rf results/*/
 	rm -f vm/alpine-agent.qcow2 vm/.alpine-base.qcow2 vm/.worker-image.tar
+	rm -f firecracker/vmlinux-5.10.bin firecracker/worker-rootfs.ext4
 	@echo "Clean complete."
