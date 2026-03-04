@@ -95,9 +95,10 @@ def read_memory_pressure() -> Optional[str]:
 class Collector:
     """Collects memory time-series data."""
 
-    def __init__(self, interval_ms: int = 500):
+    def __init__(self, interval_ms: int = 500, phase: str = "running"):
         self.interval_s = interval_ms / 1000.0
         self.start_time = time.monotonic()
+        self.phase = phase
         self._stop = threading.Event()
 
     def sample(
@@ -116,6 +117,7 @@ class Collector:
 
         sample = {
             "timestamp_s": round(time.monotonic() - self.start_time, 3),
+            "phase": self.phase,
             "host_consumed_kb": host_consumed_kb,
             "meminfo": meminfo,
             "active_workers": count_workers(),

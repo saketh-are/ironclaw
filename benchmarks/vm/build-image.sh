@@ -74,6 +74,83 @@ if [ ! -f "$WORKER_TAR" ]; then
     }
 fi
 
+# Create the bench-agent OpenRC init script (starts after docker, reads config from cidata)
+AGENT_INITD=$(mktemp)
+cat > "$AGENT_INITD" <<'INITEOF'
+#!/sbin/openrc-run
+
+description="Benchmark agent process"
+depend() {
+    need docker
+    after docker
+}
+
+start() {
+    ebegin "Starting benchmark agent"
+
+    # Wait for Docker socket to actually be usable (daemon may still be initializing)
+    local n=0
+    while [ $n -lt 120 ]; do
+        if [ -S /var/run/docker.sock ] && docker info >/dev/null 2>&1; then
+            break
+        fi
+        n=$((n + 1))
+        sleep 1
+    done
+
+    if ! docker info >/dev/null 2>&1; then
+        eerror "Docker daemon not ready after 120s"
+        eend 1
+        return 1
+    fi
+
+    # Load pre-baked worker image if present
+    if [ -f /opt/.worker-image.tar ]; then
+        docker load < /opt/.worker-image.tar 2>/dev/null
+        rm -f /opt/.worker-image.tar
+    fi
+
+    # Read config from cidata volume (mounted by cloud-init or manually)
+    local config_file=""
+    for f in /media/cidata/agent-env /run/cidata/agent-env /mnt/cidata/agent-env; do
+        if [ -f "$f" ]; then
+            config_file="$f"
+            break
+        fi
+    done
+
+    # Also try mounting cidata if not already mounted
+    if [ -z "$config_file" ]; then
+        mkdir -p /mnt/cidata
+        mount -L cidata /mnt/cidata 2>/dev/null || true
+        if [ -f /mnt/cidata/agent-env ]; then
+            config_file="/mnt/cidata/agent-env"
+        fi
+    fi
+
+    if [ -n "$config_file" ]; then
+        . "$config_file"
+        export AGENT_ID AGENT_BASELINE_MB SPAWN_INTERVAL_MEAN_S MAX_CONCURRENT_WORKERS
+        export BENCHMARK_DURATION_S WORKER_IMAGE WORKER_MEMORY_LIMIT_MB WORKER_MEMORY_MB
+        export WORKER_DURATION_MIN_S WORKER_DURATION_MAX_S RNG_SEED BENCH_RUN_ID BENCH_APPROACH
+    fi
+
+    # Output to serial console (ttyS0) so logs are captured by host via console.log
+    start-stop-daemon --start --background \
+        --make-pidfile --pidfile /var/run/bench-agent.pid \
+        --stdout /dev/ttyS0 --stderr /dev/ttyS0 \
+        --exec /usr/bin/python3 -- /usr/local/bin/agent.py
+
+    eend $?
+}
+
+stop() {
+    ebegin "Stopping benchmark agent"
+    start-stop-daemon --stop --pidfile /var/run/bench-agent.pid 2>/dev/null
+    eend $?
+}
+INITEOF
+
 # Customize the image
 CUSTOMIZE_ARGS=(
     --format qcow2
@@ -81,7 +158,10 @@ CUSTOMIZE_ARGS=(
     # Install packages (including Docker Python SDK for agent.py)
     --run-command "apk add --no-cache docker python3 py3-pip bash coreutils"
     --run-command "pip3 install --break-system-packages docker"
-    # Enable Docker daemon
+    # Configure cgroups (hybrid mode for Docker container support inside VM)
+    --run-command "rc-update add cgroups default"
+    --run-command "mkdir -p /etc/conf.d && echo 'rc_cgroup_mode=\"hybrid\"' > /etc/conf.d/cgroups"
+    # Enable Docker daemon (starts after cgroups)
     --run-command "rc-update add docker default"
     # Configure Docker
     --run-command "mkdir -p /etc/docker"
@@ -93,17 +173,22 @@ CUSTOMIZE_ARGS=(
     --copy-in "${BENCH_DIR}/workload/worker.py:/usr/local/bin/"
     # Enable serial console
     --run-command "sed -i 's/^#ttyS0/ttyS0/' /etc/inittab || true"
+    # Install bench-agent OpenRC service
+    --upload "${AGENT_INITD}:/etc/init.d/bench-agent"
+    --run-command "chmod +x /etc/init.d/bench-agent"
+    --run-command "rc-update add bench-agent default"
 )
 
 # Pre-load worker image if available
 if [ -n "${WORKER_TAR:-}" ] && [ -f "$WORKER_TAR" ]; then
     CUSTOMIZE_ARGS+=(
         --copy-in "${WORKER_TAR}:/opt/"
-        --firstboot-command "docker load < /opt/.worker-image.tar && rm -f /opt/.worker-image.tar"
     )
 fi
 
 virt-customize "${CUSTOMIZE_ARGS[@]}"
+
+rm -f "$AGENT_INITD"
 
 echo ""
 echo "VM image built successfully: ${OUTPUT}"

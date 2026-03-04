@@ -51,12 +51,12 @@ def print_table(summaries: list) -> None:
 
     print()
     header = (
-        "| Agents | Mode   | Approach         | Mean (MiB) | Peak (MiB) | "
-        "p95 (MiB) | Avg Workers | Per-Agent (MiB) | Drift (KiB/s) | Daemon (MiB) |"
+        "| Agents | Mode   | Approach         | Baseline | Abs Mean | Net Mean | "
+        "Peak (net) | p95 (net) | Avg Workers | Per-Agent | Drift (KiB/s) |"
     )
     separator = (
-        "|--------|--------|------------------|------------|------------|"
-        "-----------|-------------|-----------------|---------------|--------------|"
+        "|--------|--------|------------------|----------|----------|----------|"
+        "-----------|-----------|-------------|-----------|---------------|"
     )
     print(header)
     print(separator)
@@ -71,7 +71,9 @@ def print_table(summaries: list) -> None:
         approach = s.get("approach", "unknown")
         mode = s.get("mode", "loaded")
         agents = s.get("num_agents", 0)
-        mean = s.get("steady_state_mean_mib", 0)
+        baseline = s.get("baseline_mib", 0)
+        net_mean = s.get("steady_state_mean_mib", 0)
+        abs_mean = baseline + net_mean
         peak = s.get("peak_mib", 0)
         p95 = s.get("p95_mib", 0)
         workers = s.get("avg_workers", 0)
@@ -80,19 +82,14 @@ def print_table(summaries: list) -> None:
 
         workers_str = f"{workers:.1f}" if workers >= 0 else "N/A"
 
-        # Daemon overhead (sum of all daemons' PSS, fall back to RSS)
-        daemon_total = 0
-        for d_name, d_data in s.get("daemon_overhead", {}).items():
-            daemon_total += d_data.get("mean_pss_mib", d_data.get("mean_rss_mib", 0))
-        daemon_str = f"{daemon_total:.0f}" if daemon_total > 0 else "-"
-
         # Flag drift
         drift_str = f"{drift:.1f}" if abs(drift) > 1 else "-"
 
         print(
-            f"| {agents:>6} | {mode:<6} | {approach:<16} | {mean:>10.0f} | {peak:>10.0f} | "
-            f"{p95:>9.0f} | {workers_str:>11} | {per_agent:>15.0f} | "
-            f"{drift_str:>13} | {daemon_str:>12} |"
+            f"| {agents:>6} | {mode:<6} | {approach:<16} | {baseline:>8.0f} | "
+            f"{abs_mean:>8.0f} | {net_mean:>8.0f} | "
+            f"{peak:>9.0f} | {p95:>9.0f} | {workers_str:>11} | {per_agent:>9.0f} | "
+            f"{drift_str:>13} |"
         )
 
     print()

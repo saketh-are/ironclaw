@@ -253,7 +253,8 @@ def run_benchmark(
     try:
         # Phase 1: Baseline (10s, no agents)
         print("Recording baseline memory (10s)...")
-        collector_thread = collector.run_in_thread(
+        baseline_collector = Collector(interval_ms=sample_interval_ms, phase="baseline")
+        collector_thread = baseline_collector.run_in_thread(
             ts_file,
             get_agent_pids=lambda: {},
             get_daemon_pids=approach.get_daemon_pids,
@@ -262,15 +263,15 @@ def run_benchmark(
         time.sleep(10)
 
         # Phase 2: Start agents
+        baseline_collector.stop()
+        collector_thread.join(timeout=5)
+
         print(f"Starting {num_agents} agents...")
         agent_ids = approach.start_agents(num_agents, config)
         print(f"Agents started: {agent_ids}")
 
-        # Update collector to include agent PIDs
-        collector.stop()
-        collector_thread.join(timeout=5)
-
-        collector = Collector(interval_ms=sample_interval_ms)
+        # Start new collector with agent PIDs
+        collector = Collector(interval_ms=sample_interval_ms, phase="running")
         collector_thread = collector.run_in_thread(
             ts_file,
             get_agent_pids=approach.get_agent_pids,
@@ -348,20 +349,27 @@ def generate_summary(run_dir: Path, swap_result: dict = None) -> dict:
 
     num_agents = params["num_agents"]
 
-    # Compute baseline: first 10 seconds (before agents start)
-    baseline_samples = [s for s in samples if s["timestamp_s"] < 10]
+    # Compute baseline from samples explicitly tagged as "baseline" phase.
+    # Fall back to timestamp heuristic for old data without phase tags.
+    baseline_samples = [s for s in samples if s.get("phase") == "baseline"]
+    if not baseline_samples:
+        baseline_samples = [s for s in samples if s["timestamp_s"] < 10]
     baseline_kb = (
         sum(s["host_consumed_kb"] for s in baseline_samples) / len(baseline_samples)
         if baseline_samples
         else 0
     )
 
-    # Steady state: skip first 70s (10s baseline + 60s warmup)
-    warmup_end = 70
-    steady_samples = [s for s in samples if s["timestamp_s"] >= warmup_end]
+    # Steady state: running-phase samples after warmup (skip first 60s for
+    # VM boot / Docker init settling).
+    running_samples = [s for s in samples if s.get("phase", "running") == "running"]
+    if not running_samples:
+        running_samples = [s for s in samples if s not in baseline_samples]
+    warmup_s = 60
+    steady_samples = [s for s in running_samples if s["timestamp_s"] >= warmup_s]
 
     if not steady_samples:
-        steady_samples = [s for s in samples if s["timestamp_s"] >= 10]
+        steady_samples = running_samples
 
     consumed_values = [s["host_consumed_kb"] for s in steady_samples]
     worker_values = [s["active_workers"] for s in steady_samples]

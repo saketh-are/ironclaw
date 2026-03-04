@@ -104,9 +104,9 @@ class VmQemuApproach(Approach):
             self._agent_ids.append(agent_id)
             print(f"[{self.name}] Started VM {agent_id}")
 
-        # Wait for VMs to boot and Docker to start
-        print(f"[{self.name}] Waiting 30s for {n} VMs to boot + start Docker...")
-        time.sleep(30)
+        # Wait for VMs to boot, Docker to start, and worker image to load
+        print(f"[{self.name}] Waiting 60s for {n} VMs to boot + start Docker + load images...")
+        time.sleep(60)
 
         print(f"[{self.name}] {n} VMs started.")
         return list(self._agent_ids)

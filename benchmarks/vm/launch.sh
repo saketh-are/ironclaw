@@ -10,7 +10,7 @@
 # Each VM gets:
 #   - A COW overlay on the base image (minimal disk usage)
 #   - A unique SSH port (2200 + agent_id_number) for debugging
-#   - Config passed via cloud-init or kernel cmdline
+#   - Config passed via agent-env file on cidata ISO
 #
 # Prerequisites:
 #   - qemu-system-x86_64 with KVM support
@@ -39,27 +39,35 @@ start_vm() {
     ID_NUM=$(echo "$AGENT_ID" | grep -o '[0-9]*$' || echo "0")
     local SSH_PORT=$((2200 + ID_NUM))
 
-    # Build cloud-init ISO if we have the config
+    # Build cloud-init ISO with agent-env config file
     local CLOUD_INIT_ARGS=""
     local CIDATA="${VM_DIR}/cidata.iso"
     if command -v genisoimage &>/dev/null || command -v mkisofs &>/dev/null; then
         mkdir -p "${VM_DIR}/cidata"
-        # Create user-data with environment variables
-        cat > "${VM_DIR}/cidata/user-data" <<USERDATA
-#!/bin/sh
-# Benchmark agent startup
-export AGENT_ID="${AGENT_ID}"
-$(for var in "$@"; do echo "export $var"; done)
-python3 /usr/local/bin/agent.py &
-USERDATA
+
+        # Write agent config as sourceable env file
+        {
+            echo "AGENT_ID=\"${AGENT_ID}\""
+            for var in "$@"; do
+                echo "$var" | sed 's/=\(.*\)/="\1"/'
+            done
+        } > "${VM_DIR}/cidata/agent-env"
+
+        # Minimal cloud-init meta-data
         cat > "${VM_DIR}/cidata/meta-data" <<META
 instance-id: ${AGENT_ID}
 local-hostname: ${AGENT_ID}
 META
+
+        # Empty user-data (agent is started by OpenRC bench-agent service)
+        echo "#cloud-config" > "${VM_DIR}/cidata/user-data"
+
         local ISO_CMD="genisoimage"
         command -v genisoimage &>/dev/null || ISO_CMD="mkisofs"
         "$ISO_CMD" -quiet -output "$CIDATA" -volid cidata -joliet -rock \
-            "${VM_DIR}/cidata/user-data" "${VM_DIR}/cidata/meta-data" 2>/dev/null
+            "${VM_DIR}/cidata/agent-env" \
+            "${VM_DIR}/cidata/user-data" \
+            "${VM_DIR}/cidata/meta-data" 2>/dev/null
         CLOUD_INIT_ARGS="-drive file=${CIDATA},format=raw,if=virtio,readonly=on"
     fi
 
