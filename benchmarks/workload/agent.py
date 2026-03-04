@@ -60,6 +60,7 @@ WORKER_DURATION_MAX_S = int(os.environ.get("WORKER_DURATION_MAX_S", "120"))
 RNG_SEED_BASE = int(os.environ.get("RNG_SEED", "42"))
 BENCH_RUN_ID = os.environ.get("BENCH_RUN_ID", "unknown")
 BENCH_APPROACH = os.environ.get("BENCH_APPROACH", "unknown")
+WORKER_RUNTIME = os.environ.get("WORKER_RUNTIME", "")  # e.g. "runsc" for gVisor
 
 # Derive per-agent seed: hash(base_seed + agent_id) for reproducibility
 _seed_input = f"{RNG_SEED_BASE}:{AGENT_ID}"
@@ -154,29 +155,33 @@ def spawn_worker(client: docker.DockerClient, rng: random.Random) -> bool:
     counter, worker_name = next_worker_id()
 
     # Container config mirrors ironclaw sandbox defaults
+    create_kwargs = dict(
+        image=WORKER_IMAGE,
+        name=worker_name,
+        mem_limit=f"{WORKER_MEMORY_LIMIT_MB}m",
+        cap_drop=["ALL"],
+        cap_add=["CHOWN"],
+        security_opt=["no-new-privileges"],
+        tmpfs={"/tmp": "size=512m"},
+        user="1000:1000",
+        environment={
+            "WORKER_MEMORY_MB": str(WORKER_MEMORY_MB),
+            "WORKER_DURATION_MIN_S": str(WORKER_DURATION_MIN_S),
+            "WORKER_DURATION_MAX_S": str(WORKER_DURATION_MAX_S),
+        },
+        labels={
+            "bench_run_id": BENCH_RUN_ID,
+            "bench_role": "worker",
+            "bench_agent_id": AGENT_ID,
+            "bench_approach": BENCH_APPROACH,
+        },
+        detach=True,
+    )
+    if WORKER_RUNTIME:
+        create_kwargs["runtime"] = WORKER_RUNTIME
+
     try:
-        container = client.containers.create(
-            image=WORKER_IMAGE,
-            name=worker_name,
-            mem_limit=f"{WORKER_MEMORY_LIMIT_MB}m",
-            cap_drop=["ALL"],
-            cap_add=["CHOWN"],
-            security_opt=["no-new-privileges"],
-            tmpfs={"/tmp": "size=512m"},
-            user="1000:1000",
-            environment={
-                "WORKER_MEMORY_MB": str(WORKER_MEMORY_MB),
-                "WORKER_DURATION_MIN_S": str(WORKER_DURATION_MIN_S),
-                "WORKER_DURATION_MAX_S": str(WORKER_DURATION_MAX_S),
-            },
-            labels={
-                "bench_run_id": BENCH_RUN_ID,
-                "bench_role": "worker",
-                "bench_agent_id": AGENT_ID,
-                "bench_approach": BENCH_APPROACH,
-            },
-            detach=True,
-        )
+        container = client.containers.create(**create_kwargs)
     except docker.errors.APIError as e:
         log(f"Failed to create {worker_name}: {e}")
         return False
@@ -259,7 +264,8 @@ def main():
                spawn_interval_mean_s=SPAWN_INTERVAL_MEAN_S,
                max_concurrent_workers=MAX_CONCURRENT_WORKERS,
                duration_s=BENCHMARK_DURATION_S,
-               rng_seed=AGENT_SEED)
+               rng_seed=AGENT_SEED,
+               worker_runtime=WORKER_RUNTIME or "default")
 
     # Allocate baseline memory
     log(f"Allocating {AGENT_BASELINE_MB} MB baseline memory...")
