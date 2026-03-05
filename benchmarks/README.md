@@ -9,6 +9,7 @@ ironclaw agents with worker sandboxing.
 |---|---|---|---|
 | `container-docker` | cgroups/namespaces (shared daemon) | cgroups/namespaces (shared daemon) | Shared host dockerd |
 | `container-gvisor-dind` | gVisor sandbox | cgroups/namespaces (private daemon inside gVisor) | Per-agent dockerd inside gVisor |
+| `container-sysbox-dind` | Sysbox (user namespaces) | cgroups/namespaces (private daemon inside Sysbox) | Per-agent dockerd inside Sysbox |
 | `podman-rootless` | cgroups/namespaces (per-user) | cgroups/namespaces (per-user) | None (socket-activated) |
 | `vm-qemu` | KVM (QEMU, full guest OS) | cgroups/namespaces (inside guest) | Per-VM dockerd inside guest |
 | `hybrid-firecracker` | cgroups/namespaces (shared daemon) | KVM (Firecracker, minimal VMM) | Shared host dockerd |
@@ -44,6 +45,16 @@ make run APPROACH=container-gvisor-dind AGENTS=3
 
 Requires `runsc` runtime registered in `/etc/docker/daemon.json` with
 `--net-raw` and `--allow-packet-socket-write` flags (for the DinD variant).
+
+### Sysbox DinD (requires sysbox-runc)
+
+```bash
+# Each agent runs in its own Sysbox container with a private Docker daemon
+make run APPROACH=container-sysbox-dind AGENTS=3
+```
+
+Requires `sysbox-runc` runtime registered in `/etc/docker/daemon.json`.
+Uses overlay2 storage driver and native iptables (faster boot than gVisor DinD).
 
 ### Podman rootless (requires podman + systemd-container)
 
@@ -96,6 +107,7 @@ sudo bash benchmarks/setup-gcp.sh
 
 - **All approaches**: Linux, Docker daemon, Python 3.8+, `docker` Python SDK
 - **gVisor DinD**: `runsc` runtime registered in Docker daemon config
+- **Sysbox DinD**: `sysbox-runc` runtime registered in Docker daemon config
 - **Podman rootless**: `podman`, `uidmap`, `systemd-container`
 - **VM approach**: QEMU (`qemu-system-x86_64`), KVM (`/dev/kvm`), libguestfs-tools
 - **Firecracker hybrid**: `firecracker` binary, KVM (`/dev/kvm`)

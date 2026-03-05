@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+# Install Docker daemon + CLI (Debian packages) and dependencies
+# Sysbox supports overlay2 natively, so no special storage driver config needed.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        docker.io \
+        docker-cli \
+        iptables \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Docker Python SDK (for spawning worker containers via Docker API)
+RUN pip install --no-cache-dir docker
+
+COPY agent.py /usr/local/bin/agent.py
+COPY agent-sysbox-entrypoint.sh /usr/local/bin/agent-sysbox-entrypoint.sh
+RUN chmod +x /usr/local/bin/agent-sysbox-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/agent-sysbox-entrypoint.sh"]
