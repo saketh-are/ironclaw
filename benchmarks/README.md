@@ -1,7 +1,13 @@
 # Agent Isolation Benchmarks
 
-Compares memory overhead of different isolation approaches for hosting
-ironclaw agents with worker sandboxing.
+Synthetic benchmark for multi-agent deployments that doesn't require real
+agents, inference access, or crafted prompts. A trivial "agent" is deployed
+that eagerly spawns sandboxed "workers" on a random schedule — both allocate
+RAM, confirm they can write to storage, and workers check in with the agent
+via network callback (mimicking real IronClaw worker lifecycle). This lets us
+validate that each isolation strategy actually works end-to-end (networking,
+storage, process lifecycle) and measure key parameters like per-agent memory
+overhead and spawn-to-checkin latency.
 
 ## Approaches
 
@@ -13,6 +19,35 @@ ironclaw agents with worker sandboxing.
 | `podman-rootless` | cgroups/namespaces (per-user) | cgroups/namespaces (per-user) | None (socket-activated) |
 | `vm-qemu` | KVM (QEMU, full guest OS) | cgroups/namespaces (inside guest) | Per-VM dockerd inside guest |
 | `hybrid-firecracker` | cgroups/namespaces (shared daemon) | KVM (Firecracker, minimal VMM) | Shared host dockerd |
+
+## Results (loaded mode, 3 agents)
+
+Test parameters: `SPAWN_INTERVAL_MEAN_S=5`, `WORKER_DURATION=30s`,
+`MAX_CONCURRENT_WORKERS=5`, `BENCHMARK_DURATION_S=300`, `RNG_SEED=42`,
+`STORAGE_VALIDATION=1`. GCP `n2-standard-16`.
+
+| Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Per-Agent (MiB) | Workers Spawned | Avg Workers | Checkins OK |
+|----------|---------------|------------|-----------|----------------|----------------|-------------|-------------|
+| `container-docker` | 6190 | 8620 | 8228 | 2063 | 116 | 11.0 | 116/116 |
+| `container-gvisor-dind` | 5895 | 8275 | 7419 | 1965 | 92 | — | 92/92 |
+| `container-sysbox-dind` | 6216 | 8720 | 8076 | 2072 | 117 | — | 117/117 |
+| `podman-rootless` | 4716 | 8260 | 7389 | 1572 | 117 | 7.2 | 117/117 |
+| `hybrid-firecracker` | 6292 | 8815 | 8456 | 2097 | 106 | 10.9 | 106/106 |
+| `vm-qemu` | 9767 | 10308 | 10298 | 3256 | 0 | — | — |
+
+Notes:
+- `vm-qemu`: Workers failed to spawn inside QEMU guests (orchestrator instrumentation not yet wired).
+- `container-gvisor-dind` / `container-sysbox-dind`: Avg workers not reported (DinD inner daemon not sampled).
+- `podman-rootless` uses 24% less memory per agent than Docker with no shared daemon overhead.
+
+Spawn latency (ms) — docker and podman-rootless only (instrumented runs):
+
+| Approach | Create p50 | Create p95 | Start p50 | Start p95 | Total p50 | Total p95 | Cold-Start p50 | Cold-Start p95 |
+|----------|-----------|-----------|----------|----------|----------|----------|---------------|---------------|
+| `container-docker` | 34 | 43 | 130 | 154 | 165 | 191 | 527 | 554 |
+| `podman-rootless` | 32 | 82 | 106 | 156 | 140 | 223 | 658 | 689 |
+
+Regenerate with `make compare`.
 
 ## Quick Start
 
@@ -126,35 +161,6 @@ sudo bash benchmarks/setup-gcp.sh
 make run APPROACH=container-docker AGENTS=5 MODE=loaded
 make run APPROACH=container-docker AGENTS=100 MODE=idle
 ```
-
-## Results (loaded mode, 3 agents)
-
-Test parameters: `SPAWN_INTERVAL_MEAN_S=5`, `WORKER_DURATION=30s`,
-`MAX_CONCURRENT_WORKERS=5`, `BENCHMARK_DURATION_S=300`, `RNG_SEED=42`,
-`STORAGE_VALIDATION=1`. GCP `n2-standard-16`.
-
-| Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Per-Agent (MiB) | Workers Spawned | Avg Workers | Checkins OK |
-|----------|---------------|------------|-----------|----------------|----------------|-------------|-------------|
-| `container-docker` | 6190 | 8620 | 8228 | 2063 | 116 | 11.0 | 116/116 |
-| `container-gvisor-dind` | 5895 | 8275 | 7419 | 1965 | 92 | — | 92/92 |
-| `container-sysbox-dind` | 6216 | 8720 | 8076 | 2072 | 117 | — | 117/117 |
-| `podman-rootless` | 4716 | 8260 | 7389 | 1572 | 117 | 7.2 | 117/117 |
-| `hybrid-firecracker` | 6292 | 8815 | 8456 | 2097 | 106 | 10.9 | 106/106 |
-| `vm-qemu` | 9767 | 10308 | 10298 | 3256 | 0 | — | — |
-
-Notes:
-- `vm-qemu`: Workers failed to spawn inside QEMU guests (orchestrator instrumentation not yet wired).
-- `container-gvisor-dind` / `container-sysbox-dind`: Avg workers not reported (DinD inner daemon not sampled).
-- `podman-rootless` uses 24% less memory per agent than Docker with no shared daemon overhead.
-
-Spawn latency (ms) — docker and podman-rootless only (instrumented runs):
-
-| Approach | Create p50 | Create p95 | Start p50 | Start p95 | Total p50 | Total p95 | Cold-Start p50 | Cold-Start p95 |
-|----------|-----------|-----------|----------|----------|----------|----------|---------------|---------------|
-| `container-docker` | 34 | 43 | 130 | 154 | 165 | 191 | 527 | 554 |
-| `podman-rootless` | 32 | 82 | 106 | 156 | 140 | 223 | 658 | 689 |
-
-Regenerate with `make compare`.
 
 ## Configuration
 
