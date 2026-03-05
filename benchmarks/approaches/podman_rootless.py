@@ -58,11 +58,18 @@ def _fire_as_user(user: str, cmd: List[str]) -> subprocess.CompletedProcess:
     the transient unit is dispatched and we return immediately.  Use this
     for commands that spawn persistent processes (e.g. ``podman start``)
     where ``--wait`` would block until the container exits.
+
+    ``RemainAfterExit=yes`` keeps the transient service unit in
+    *active (exited)* state after the main process (e.g. ``podman start``)
+    exits.  Without it, systemd considers the unit done, sends SIGTERM to
+    remaining cgroup members (conmon), and after ``DefaultTimeoutStopSec``
+    (90 s) sends SIGKILL — killing the agent container.
     """
     full_cmd = [
         "sudo", "systemd-run",
         f"--machine={user}@",
         "--quiet", "--user", "--collect",
+        "--property=RemainAfterExit=yes",
     ] + cmd
     return subprocess.run(full_cmd, capture_output=True, text=True,
                           stdin=subprocess.DEVNULL)

@@ -108,6 +108,65 @@ def print_table(summaries: list) -> None:
                 print(f"| {name:<30} | {total:>13} | {max_c:>14} |")
         print()
 
+    # Print spawn latency stats if available
+    has_latency = any(s.get("spawn_latency") for s in summaries)
+    if has_latency:
+        print("Spawn Latency (ms):")
+        header = (
+            "| Approach         | Create p50 | Create p95 | Start p50 | Start p95 "
+            "| Total p50 | Total p95 | Cold-Start p50 | Cold-Start p95 |"
+        )
+        sep = (
+            "|------------------|------------|------------|-----------|-----------|"
+            "-----------|-----------|----------------|----------------|"
+        )
+        print(header)
+        print(sep)
+        for s in sorted(summaries, key=sort_key):
+            sl = s.get("spawn_latency")
+            if not sl:
+                continue
+            approach = s.get("approach", "unknown")
+            cr = sl.get("create", {})
+            st = sl.get("start", {})
+            to = sl.get("total", {})
+            cs = sl.get("cold_start", {})
+
+            def _fmt(v):
+                return f"{v:.0f}" if v else "-"
+
+            print(
+                f"| {approach:<16} "
+                f"| {_fmt(cr.get('p50')):>10} | {_fmt(cr.get('p95')):>10} "
+                f"| {_fmt(st.get('p50')):>9} | {_fmt(st.get('p95')):>9} "
+                f"| {_fmt(to.get('p50')):>9} | {_fmt(to.get('p95')):>9} "
+                f"| {_fmt(cs.get('p50')):>14} | {_fmt(cs.get('p95')):>14} |"
+            )
+        print()
+
+        # Also print full stats table (min/mean/max)
+        print("Spawn Latency Detail (ms):")
+        print("| Approach         | Metric     | Count | Min    | Mean   | p50    | p95    | p99    | Max    |")
+        print("|------------------|------------|-------|--------|--------|--------|--------|--------|--------|")
+        for s in sorted(summaries, key=sort_key):
+            sl = s.get("spawn_latency")
+            if not sl:
+                continue
+            approach = s.get("approach", "unknown")
+            for metric_name, metric_key in [("create", "create"), ("start", "start"),
+                                             ("total", "total"), ("cold_start", "cold_start")]:
+                data = sl.get(metric_key, {})
+                if not data:
+                    continue
+                print(
+                    f"| {approach:<16} | {metric_name:<10} "
+                    f"| {data.get('count', 0):>5} "
+                    f"| {data.get('min', 0):>6.0f} | {data.get('mean', 0):>6.0f} "
+                    f"| {data.get('p50', 0):>6.0f} | {data.get('p95', 0):>6.0f} "
+                    f"| {data.get('p99', 0):>6.0f} | {data.get('max', 0):>6.0f} |"
+                )
+        print()
+
 
 def main():
     results_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else BENCH_DIR / "results"

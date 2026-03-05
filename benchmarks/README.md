@@ -127,6 +127,26 @@ make run APPROACH=container-docker AGENTS=5 MODE=loaded
 make run APPROACH=container-docker AGENTS=100 MODE=idle
 ```
 
+## Results (loaded mode, 3 agents)
+
+Test parameters: `SPAWN_INTERVAL_MEAN_S=5`, `WORKER_DURATION=30s`,
+`MAX_CONCURRENT_WORKERS=5`, `BENCHMARK_DURATION_S=300`, `RNG_SEED=42`,
+`STORAGE_VALIDATION=1`. GCP `n2-standard-16`.
+
+| Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Per-Agent (MiB) | Workers Spawned | Avg Workers | Checkins OK |
+|----------|---------------|------------|-----------|----------------|----------------|-------------|-------------|
+| `container-docker` | 6190 | 8620 | 8228 | 2063 | 116 | 11.0 | 116/116 |
+| `podman-rootless` | 4716 | 8260 | 7389 | 1572 | 117 | 7.2 | 117/117 |
+
+Spawn latency (ms):
+
+| Approach | Create p50 | Create p95 | Start p50 | Start p95 | Total p50 | Total p95 | Cold-Start p50 | Cold-Start p95 |
+|----------|-----------|-----------|----------|----------|----------|----------|---------------|---------------|
+| `container-docker` | 34 | 43 | 130 | 154 | 165 | 191 | 527 | 554 |
+| `podman-rootless` | 32 | 82 | 106 | 156 | 140 | 223 | 658 | 689 |
+
+Regenerate with `make compare`.
+
 ## Configuration
 
 Edit `config.env` to tune parameters:

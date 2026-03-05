@@ -299,6 +299,73 @@ def validate_storage(run_dir: Path) -> dict:
     return results
 
 
+def parse_spawn_latencies(run_dir: Path) -> dict:
+    """Parse worker_spawn_timing and checkin events to compute spawn latency stats.
+
+    Returns a dict with raw arrays and percentile stats for create_ms,
+    start_ms, total_ms, and cold_start_ms.  Returns None if no timing data.
+    """
+    create_vals = []
+    start_vals = []
+    total_vals = []
+    cold_start_vals = []
+
+    log_files = sorted(run_dir.glob("agent-*.jsonl"))
+    if not log_files:
+        log_files = sorted(run_dir.glob("agent-*.log"))
+
+    for log_file in log_files:
+        try:
+            with open(log_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if event.get("event") == "worker_spawn_timing":
+                        if "create_ms" in event:
+                            create_vals.append(event["create_ms"])
+                        if "start_ms" in event:
+                            start_vals.append(event["start_ms"])
+                        if "total_ms" in event:
+                            total_vals.append(event["total_ms"])
+                    elif event.get("event") == "checkin":
+                        if "cold_start_ms" in event:
+                            cold_start_vals.append(event["cold_start_ms"])
+        except Exception:
+            pass
+
+    if not total_vals:
+        return None
+
+    def _stats(vals):
+        if not vals:
+            return {}
+        sorted_v = sorted(vals)
+        n = len(sorted_v)
+        return {
+            "count": n,
+            "min": round(sorted_v[0], 1),
+            "mean": round(sum(sorted_v) / n, 1),
+            "p50": round(sorted_v[int(0.50 * (n - 1))], 1),
+            "p95": round(sorted_v[int(0.95 * (n - 1))], 1),
+            "p99": round(sorted_v[int(0.99 * (n - 1))], 1),
+            "max": round(sorted_v[-1], 1),
+        }
+
+    result = {"total": _stats(total_vals)}
+    if create_vals:
+        result["create"] = _stats(create_vals)
+    if start_vals:
+        result["start"] = _stats(start_vals)
+    if cold_start_vals:
+        result["cold_start"] = _stats(cold_start_vals)
+    return result
+
+
 def compute_percentiles(values: list, percentiles: list = None) -> dict:
     """Compute percentiles from a list of values."""
     if not values:
@@ -503,6 +570,17 @@ def run_benchmark(
                     print(f"    {agent_id}: {info['read_ok']}/{info['tested']} read, "
                           f"{info['write_ok']}/{info['tested']} write")
 
+    # Spawn latency results
+    sl = summary.get("spawn_latency")
+    if sl:
+        t = sl.get("total", {})
+        print(f"  Spawn latency (total): p50={t.get('p50', 0):.0f}ms "
+              f"p95={t.get('p95', 0):.0f}ms max={t.get('max', 0):.0f}ms")
+        cs = sl.get("cold_start")
+        if cs:
+            print(f"  Cold-start (spawn→checkin): p50={cs.get('p50', 0):.0f}ms "
+                  f"p95={cs.get('p95', 0):.0f}ms max={cs.get('max', 0):.0f}ms")
+
     return run_dir
 
 
@@ -619,6 +697,11 @@ def generate_summary(run_dir: Path, swap_result: dict = None) -> dict:
     storage_validation = validate_storage(run_dir)
     if storage_validation is not None:
         summary["storage_validation"] = storage_validation
+
+    # Spawn latency stats
+    spawn_latency = parse_spawn_latencies(run_dir)
+    if spawn_latency is not None:
+        summary["spawn_latency"] = spawn_latency
 
     return summary
 

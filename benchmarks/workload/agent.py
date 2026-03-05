@@ -177,6 +177,10 @@ def get_checkin_count() -> int:
 _storage_results = {}  # worker_name → {"read_ok": bool, "write_ok": bool}
 _storage_lock = threading.Lock()
 
+# Spawn → checkin cold-start tracking
+_spawn_timestamps = {}   # worker_name → time.time() at worker_start emit
+_spawn_ts_lock = threading.Lock()
+
 
 def record_storage_read(worker_id: str, read_ok: bool):
     """Record storage read result from worker checkin."""
@@ -366,7 +370,15 @@ class OrchestratorHandler(BaseHTTPRequestHandler):
             data = self._read_json_body()
             worker_id = data.get("worker_id", "unknown")
             total = record_checkin(worker_id)
-            emit_event("checkin", worker_id=worker_id, total_checkins=total)
+            checkin_extra = {}
+            # Compute cold-start latency (spawn → checkin)
+            with _spawn_ts_lock:
+                spawn_ts = _spawn_timestamps.get(worker_id)
+            if spawn_ts is not None:
+                cold_start_ms = (time.time() - spawn_ts) * 1000
+                checkin_extra["cold_start_ms"] = round(cold_start_ms, 1)
+            emit_event("checkin", worker_id=worker_id, total_checkins=total,
+                       **checkin_extra)
             # Record storage read result if present
             if "storage_read_ok" in data:
                 record_storage_read(worker_id, bool(data["storage_read_ok"]))
@@ -496,13 +508,16 @@ def spawn_worker(client, rng: random.Random) -> bool:
         create_kwargs["network_mode"] = WORKER_NETWORK_MODE
 
     try:
+        t0 = time.monotonic()
         container = client.containers.create(**create_kwargs)
+        t1 = time.monotonic()
     except docker.errors.APIError as e:
         log(f"Failed to create {worker_name}: {e}")
         return False
 
     try:
         container.start()
+        t2 = time.monotonic()
     except docker.errors.APIError as e:
         log(f"Failed to start {worker_name}: {e}")
         try:
@@ -511,8 +526,20 @@ def spawn_worker(client, rng: random.Random) -> bool:
             pass
         return False
 
+    create_ms = (t1 - t0) * 1000
+    start_ms = (t2 - t1) * 1000
+    total_ms = (t2 - t0) * 1000
+    emit_event("worker_spawn_timing", worker_id=worker_name,
+               create_ms=round(create_ms, 1),
+               start_ms=round(start_ms, 1),
+               total_ms=round(total_ms, 1))
+
     count = _inc_active()
     emit_event("worker_start", worker_id=worker_name, active_workers=count)
+
+    # Record spawn timestamp for cold-start tracking
+    with _spawn_ts_lock:
+        _spawn_timestamps[worker_name] = time.time()
 
     # Wait and remove in background thread (matches ironclaw's async wait)
     def wait_and_remove():
@@ -638,6 +665,7 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
             return False
 
     # Launch the Firecracker VMM process
+    t0 = time.monotonic()
     try:
         proc = subprocess.Popen(
             ["firecracker", "--api-sock", socket_path],
@@ -742,8 +770,17 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
             pass
         return False
 
+    t1 = time.monotonic()
+    total_ms = (t1 - t0) * 1000
+    emit_event("worker_spawn_timing", worker_id=worker_name,
+               total_ms=round(total_ms, 1))
+
     count = _inc_active()
     emit_event("worker_start", worker_id=worker_name, active_workers=count)
+
+    # Record spawn timestamp for cold-start tracking
+    with _spawn_ts_lock:
+        _spawn_timestamps[worker_name] = time.time()
 
     # Background thread: wait for VMM process to exit, verify storage, clean up
     def wait_and_cleanup():
