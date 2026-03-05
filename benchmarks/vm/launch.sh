@@ -29,6 +29,7 @@ start_vm() {
 
     local VM_DIR="${VM_BASE_DIR}/${AGENT_ID}"
     mkdir -p "$VM_DIR"
+    mkdir -p "${VM_DIR}/shared"
 
     # Create COW overlay
     local OVERLAY="${VM_DIR}/overlay.qcow2"
@@ -80,6 +81,7 @@ META
         ${CLOUD_INIT_ARGS} \
         -netdev "user,id=net0,hostfwd=tcp::${SSH_PORT}-:22" \
         -device virtio-net-pci,netdev=net0 \
+        -virtfs "local,path=${VM_DIR}/shared,mount_tag=benchshare,security_model=mapped-xattr,id=bench9p" \
         -nographic \
         -serial "file:${VM_DIR}/console.log" \
         > "${VM_DIR}/qemu.log" 2>&1 &

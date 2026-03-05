@@ -112,11 +112,33 @@ class VmQemuApproach(Approach):
             self._agent_ids.append(agent_id)
             print(f"[{self.name}] Started VM {agent_id}")
 
-        # Wait for VMs to boot, Docker to start, and worker image to load
-        print(f"[{self.name}] Waiting 60s for {n} VMs to boot + start Docker + load images...")
-        time.sleep(60)
+        # Wait for each VM to emit agent_start (max 120s)
+        vm_base = Path(os.environ.get("VM_BASE_DIR", "/tmp/bench-vms"))
+        print(f"[{self.name}] Waiting for {n} VMs to boot and emit agent_start...")
+        deadline = time.monotonic() + 120
+        ready = set()
+        while time.monotonic() < deadline and len(ready) < n:
+            for agent_id in self._agent_ids:
+                if agent_id in ready:
+                    continue
+                jsonl = vm_base / agent_id / "shared" / "agent.jsonl"
+                if jsonl.exists():
+                    try:
+                        with open(jsonl) as f:
+                            for line in f:
+                                if '"agent_start"' in line:
+                                    ready.add(agent_id)
+                                    break
+                    except OSError:
+                        pass
+            if len(ready) < n:
+                time.sleep(2)
 
-        print(f"[{self.name}] {n} VMs started.")
+        if len(ready) < n:
+            missing = set(self._agent_ids) - ready
+            print(f"[{self.name}] WARNING: {len(missing)} VMs not ready: {missing}")
+
+        print(f"[{self.name}] {len(ready)}/{n} VMs started.")
         return list(self._agent_ids)
 
     def get_agent_pids(self) -> Dict[str, int]:
@@ -145,15 +167,24 @@ class VmQemuApproach(Approach):
         return -1
 
     def collect_agent_logs(self, agent_ids: List[str], output_dir) -> None:
-        """Collect agent logs from QEMU serial console output files."""
+        """Collect agent JSONL from 9p shared dir and console.log as debug artifact."""
         output_dir = Path(output_dir)
         vm_base = Path(os.environ.get("VM_BASE_DIR", "/tmp/bench-vms"))
         for agent_id in agent_ids:
-            console_log = vm_base / agent_id / "console.log"
-            dest = output_dir / f"{agent_id}.log"
-            if console_log.exists():
+            vm_dir = vm_base / agent_id
+            # Primary: clean JSONL from 9p share
+            jsonl_src = vm_dir / "shared" / "agent.jsonl"
+            if jsonl_src.exists():
                 try:
-                    shutil.copy2(console_log, dest)
+                    shutil.copy2(jsonl_src, output_dir / f"{agent_id}.jsonl")
+                    print(f"[{self.name}] Collected JSONL for {agent_id}")
+                except Exception as e:
+                    print(f"[{self.name}] Failed to collect JSONL for {agent_id}: {e}")
+            # Also keep console.log as debug artifact
+            console_src = vm_dir / "console.log"
+            if console_src.exists():
+                try:
+                    shutil.copy2(console_src, output_dir / f"{agent_id}.log")
                     print(f"[{self.name}] Collected console log for {agent_id}")
                 except Exception as e:
                     print(f"[{self.name}] Failed to collect log for {agent_id}: {e}")

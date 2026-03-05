@@ -18,7 +18,7 @@ from typing import Dict, List
 from approaches.base import Approach, BenchmarkConfig
 
 USER_PREFIX = "bench-pm-"
-BASE_UID = 3000
+BASE_UID = 4000
 SOCKET_TEMPLATE = "/run/user/{uid}/podman/podman.sock"
 PROXY_SOCKET_TEMPLATE = "/home/{user}/.podman-proxy.sock"
 PROXY_SCRIPT = Path(__file__).resolve().parent.parent / "workload" / "podman_proxy.py"
@@ -247,10 +247,18 @@ class PodmanRootlessApproach(Approach):
                 capture_output=True, text=True,
             )
 
-            # 3. Start podman.socket for this user
-            r = _run_as_user(user, [
-                "systemctl", "--user", "enable", "--now", "podman.socket",
-            ])
+            # 3. Start podman.socket for this user.
+            #    Wait briefly for the user's systemd instance to become
+            #    reachable via D-Bus after enable-linger — without this,
+            #    rapid user creation can hit "Transport endpoint is not
+            #    connected" when there are many agents.
+            for attempt in range(5):
+                r = _run_as_user(user, [
+                    "systemctl", "--user", "enable", "--now", "podman.socket",
+                ])
+                if r.returncode == 0:
+                    break
+                time.sleep(2)
             if r.returncode != 0:
                 raise RuntimeError(
                     f"Failed to start podman.socket for {user}: "

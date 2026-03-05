@@ -19,30 +19,34 @@ Notes:
 
 **Daemon model:** `container-docker` = shared host `dockerd`; `container-gvisor-dind` / `container-sysbox-dind` / `vm-qemu` = per-agent inner `dockerd`; `podman-rootless` = per-user socket-activated Podman service; `hybrid-firecracker` = no worker container daemon (agents spawn Firecracker VMs directly).
 
-## Results (loaded mode, 3 agents)
+## Results (loaded mode, 5 agents)
 
 Test parameters: `SPAWN_INTERVAL_MEAN_S=5`, `WORKER_DURATION=30s`,
-`MAX_CONCURRENT_WORKERS=5`, `BENCHMARK_DURATION_S=300`, `RNG_SEED=42`,
-`STORAGE_VALIDATION=1`. GCP `n2-standard-16`.
+`MAX_CONCURRENT_WORKERS=5`, `BENCHMARK_DURATION_S=180`, `RNG_SEED=42`.
+GCP `n2-standard-16`.
 
 | Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Per-Agent (MiB) | Workers Spawned | Avg Workers | Checkins OK |
 |----------|---------------|------------|-----------|----------------|----------------|-------------|-------------|
-| `container-docker` | 6190 | 8620 | 8228 | 2063 | 116 | 11.0 | 116/116 |
-| `container-gvisor-dind` | 5895 | 8275 | 7419 | 1965 | 92 | — | 92/92 |
-| `container-sysbox-dind` | 6216 | 8720 | 8076 | 2072 | 117 | — | 117/117 |
-| `podman-rootless` | 4716 | 8260 | 7389 | 1572 | 117 | 7.2 | 117/117 |
-| `hybrid-firecracker` | 6292 | 8815 | 8456 | 2097 | 106 | 10.9 | 106/106 |
-| `vm-qemu` | 9767 | 10308 | 10298 | 3256 | 0 | — | — |
+| `container-docker` | 9893 | 13298 | 12944 | 1979 | 119 | 17.4 | 119/119 |
+| `container-gvisor-dind` | 7333 | 10599 | 10082 | 1467 | 73 | — | 73/73 |
+| `container-sysbox-dind` | 6315 | 13508 | 13371 | 1263 | 61 | — | 61/61 |
+| `podman-rootless` | 2251 | 8105 | 5612 | 450 | 89 | 3.3 | 89/89 |
+| `hybrid-firecracker` | 8979 | 14404 | 13291 | 1796 | 108 | 15.9 | 108/108 |
+| `vm-qemu` | 15703 | 17554 | 17546 | 3141 | 114 | — | 111/113 |
 
 Notes:
-- `container-gvisor-dind` / `container-sysbox-dind`: Avg workers not reported (DinD inner daemon not sampled).
+- `container-gvisor-dind` / `container-sysbox-dind` / `vm-qemu`: Avg workers not reported (inner daemon not sampled from host; accurate counts come from agent JSONL logs).
+- `vm-qemu` checkins: 2 workers spawned near shutdown missed their checkin callback (111/113).
 
-Spawn latency (ms) — docker and podman-rootless only (instrumented runs):
+Spawn latency (ms):
 
 | Approach | Create p50 | Create p95 | Start p50 | Start p95 | Total p50 | Total p95 | Cold-Start p50 | Cold-Start p95 |
 |----------|-----------|-----------|----------|----------|----------|----------|---------------|---------------|
-| `container-docker` | 34 | 43 | 130 | 154 | 165 | 191 | 527 | 554 |
-| `podman-rootless` | 32 | 82 | 106 | 156 | 140 | 223 | 658 | 689 |
+| `container-docker` | 33 | 40 | 136 | 168 | 170 | 207 | 542 | 572 |
+| `container-gvisor-dind` | 6086 | 18554 | 309 | 3275 | 6459 | 18829 | 902 | 1204 |
+| `container-sysbox-dind` | 56 | 1424 | 346 | 873 | 402 | 3062 | 544 | 579 |
+| `podman-rootless` | 36 | 4738 | 113 | 2860 | 155 | 9185 | 719 | 959 |
+| `vm-qemu` | 65 | 110 | 369 | 667 | 431 | 889 | 419 | 2889 |
 
 Regenerate with `make compare`.
 

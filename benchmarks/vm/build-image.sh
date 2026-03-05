@@ -110,6 +110,16 @@ start() {
         rm -f /opt/.worker-image.tar
     fi
 
+    # Detect Docker bridge gateway for worker callback URL.
+    # In VM mode, the default route is the QEMU NAT gateway (10.0.2.2),
+    # not the Docker bridge. Workers need to reach the agent via docker0.
+    DOCKER_BRIDGE_GATEWAY=$(docker network inspect bridge --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || echo "172.17.0.1")
+    export DOCKER_BRIDGE_GATEWAY
+
+    # Mount 9p shared directory for host-accessible JSONL output
+    mkdir -p /mnt/benchshare
+    mount -t 9p -o trans=virtio benchshare /mnt/benchshare 2>/dev/null || true
+
     # Read config from cidata volume (mounted by cloud-init or manually)
     local config_file=""
     for f in /media/cidata/agent-env /run/cidata/agent-env /mnt/cidata/agent-env; do
@@ -133,13 +143,14 @@ start() {
         export AGENT_ID AGENT_BASELINE_MB SPAWN_INTERVAL_MEAN_S MAX_CONCURRENT_WORKERS
         export BENCHMARK_DURATION_S WORKER_IMAGE WORKER_MEMORY_LIMIT_MB WORKER_MEMORY_MB
         export WORKER_DURATION_MIN_S WORKER_DURATION_MAX_S RNG_SEED BENCH_RUN_ID BENCH_APPROACH
-        export ORCHESTRATOR_PORT
+        export ORCHESTRATOR_PORT DOCKER_BRIDGE_GATEWAY
     fi
 
-    # Output to serial console (ttyS0) so logs are captured by host via console.log
+    # stdout (JSONL events) -> 9p share (clean, parseable by host)
+    # stderr (tracebacks, debug) -> serial console (debug artifact)
     start-stop-daemon --start --background \
         --make-pidfile --pidfile /var/run/bench-agent.pid \
-        --stdout /dev/ttyS0 --stderr /dev/ttyS0 \
+        --stdout /mnt/benchshare/agent.jsonl --stderr /dev/ttyS0 \
         --exec /usr/bin/python3 -- /usr/local/bin/agent.py
 
     eend $?
