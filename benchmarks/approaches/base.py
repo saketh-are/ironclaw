@@ -63,7 +63,7 @@ class BenchmarkConfig:
             worker_duration_min_s=int(e.get("WORKER_DURATION_MIN_S", "30")),
             worker_duration_max_s=int(e.get("WORKER_DURATION_MAX_S", "120")),
             orchestrator_base_port=int(e.get("ORCHESTRATOR_BASE_PORT", "50100")),
-            storage_validation=bool(e.get("STORAGE_VALIDATION", "")),
+            storage_validation=e.get("STORAGE_VALIDATION", "").lower() in ("1", "true", "yes"),
             rng_seed=int(e.get("RNG_SEED", "42")),
         )
 

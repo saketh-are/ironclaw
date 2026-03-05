@@ -335,7 +335,12 @@ class PodmanRootlessApproach(Approach):
             # 6. Start the container.  Fire-and-forget because
             #    systemd-run --pipe --wait would block until the
             #    container exits (it tracks child processes in the scope).
-            _fire_as_user(user, ["podman", "start", container_name])
+            r = _fire_as_user(user, ["podman", "start", container_name])
+            if r.returncode != 0:
+                detail = (r.stderr or r.stdout or "").strip()
+                raise RuntimeError(
+                    f"Failed to start agent {agent_id} as {user}: {detail}"
+                )
 
             self._agent_ids.append(agent_id)
             self._users.append(user)
@@ -452,8 +457,9 @@ class PodmanRootlessApproach(Approach):
         print(f"[{self.name}] All containers removed.")
 
     def cleanup(self) -> None:
-        self.stop_agents()
-        self.remove_containers()
+        if self._agent_ids:
+            self.stop_agents()
+            self.remove_containers()
 
         # Disable linger, terminate user sessions, and remove users.
         for user in self._users:

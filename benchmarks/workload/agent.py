@@ -77,7 +77,7 @@ ORCHESTRATOR_PORT = os.environ.get("ORCHESTRATOR_PORT", "")  # HTTP server port 
 ORCHESTRATOR_HOST_PORT = os.environ.get("ORCHESTRATOR_HOST_PORT", "")  # Host-mapped port (container approaches)
 
 # Storage validation: opt-in via STORAGE_VALIDATION=1
-STORAGE_VALIDATION = os.environ.get("STORAGE_VALIDATION", "")
+STORAGE_VALIDATION = os.environ.get("STORAGE_VALIDATION", "").lower() in ("1", "true", "yes")
 WORKSPACE_BASE = os.environ.get("WORKSPACE_BASE", "/tmp/bench-workspaces")
 WORKSPACE_HOST_BASE = os.environ.get("WORKSPACE_HOST_BASE", "")  # host-visible prefix for shared-daemon approaches
 

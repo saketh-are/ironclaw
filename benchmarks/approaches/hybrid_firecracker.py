@@ -124,8 +124,8 @@ class HybridFirecrackerApproach(Approach):
             # Orchestrator port: base + agent index
             orch_port = config.orchestrator_base_port + i
 
-            # Check if storage validation is requested from the environment
-            storage_val = os.environ.get("STORAGE_VALIDATION", "")
+            # Use config.storage_validation (already parsed as bool)
+            storage_val = "1" if config.storage_validation else ""
 
             cmd = [
                 "docker", "run", "-d",

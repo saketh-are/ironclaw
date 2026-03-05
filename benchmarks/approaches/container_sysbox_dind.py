@@ -144,8 +144,16 @@ class ContainerSysboxDindApproach(Approach):
                 "-e", "ORCHESTRATOR_PORT=8080",
                 # No ORCHESTRATOR_HOST_PORT — workers use inner bridge gateway
                 # No Docker socket mount — each agent has its own daemon
-                self._agent_image,
             ]
+
+            # Storage validation: inner dockerd resolves paths locally, no host-path indirection
+            if config.storage_validation:
+                cmd += [
+                    "-e", "STORAGE_VALIDATION=1",
+                    "-e", "WORKSPACE_BASE=/tmp/bench-workspaces",
+                ]
+
+            cmd.append(self._agent_image)
 
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:

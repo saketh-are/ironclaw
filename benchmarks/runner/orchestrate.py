@@ -133,7 +133,12 @@ def parse_agent_logs(run_dir: Path) -> dict:
         "max_concurrent_workers": 0,
     }
 
-    for log_file in sorted(run_dir.glob("agent-*.jsonl")):
+    log_files = sorted(run_dir.glob("agent-*.jsonl"))
+    if not log_files:
+        # VM approach uses .log files with embedded JSONL
+        log_files = sorted(run_dir.glob("agent-*.log"))
+
+    for log_file in log_files:
         active = 0
         try:
             with open(log_file) as f:
@@ -438,6 +443,8 @@ def run_benchmark(
         # Phase 6: Remove containers and settle (10s)
         if hasattr(approach, "remove_containers"):
             approach.remove_containers()
+        # Phase 7: Approach-specific cleanup (e.g. Podman user deletion, VM dir removal)
+        approach.cleanup()
         print("Waiting for memory to settle (10s)...")
         time.sleep(10)
 

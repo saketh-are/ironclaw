@@ -168,6 +168,16 @@ class VmQemuApproach(Approach):
         self._agent_ids = []
         print(f"[{self.name}] All VMs stopped.")
 
+    def remove_containers(self) -> None:
+        """Remove VM directories (logs, overlays, pidfiles)."""
+        result = subprocess.run(
+            [str(LAUNCH_SCRIPT), "clean-all"],
+            capture_output=True,
+            text=True,
+        )
+        print(f"[{self.name}] All VM directories cleaned.")
+
     def cleanup(self) -> None:
-        """Stop VMs (image cleanup is manual via make clean)."""
+        """Stop VMs and clean up directories."""
         self.stop_agents()
+        self.remove_containers()

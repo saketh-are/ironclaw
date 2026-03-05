@@ -106,10 +106,24 @@ stop_vm() {
         done
         # Force kill if still running
         kill -9 "$PID" 2>/dev/null || true
-        rm -rf "$VM_DIR"
+        rm -f "${VM_DIR}/qemu.pid"
         echo "[vm] Stopped ${AGENT_ID}"
     else
         echo "[vm] ${AGENT_ID} not found"
+    fi
+}
+
+clean_vm() {
+    local AGENT_ID="${1:?agent-id required}"
+    local VM_DIR="${VM_BASE_DIR}/${AGENT_ID}"
+    rm -rf "$VM_DIR"
+    echo "[vm] Cleaned ${AGENT_ID}"
+}
+
+clean_all() {
+    if [ -d "$VM_BASE_DIR" ]; then
+        rm -rf "$VM_BASE_DIR"
+        echo "[vm] All VM directories cleaned."
     fi
 }
 
@@ -126,7 +140,7 @@ stop_all() {
     fi
 }
 
-case "${1:?Usage: $0 start|stop|stop-all ...}" in
+case "${1:?Usage: $0 start|stop|stop-all|clean|clean-all ...}" in
     start)
         shift
         start_vm "$@"
@@ -138,8 +152,15 @@ case "${1:?Usage: $0 start|stop|stop-all ...}" in
     stop-all)
         stop_all
         ;;
+    clean)
+        shift
+        clean_vm "$@"
+        ;;
+    clean-all)
+        clean_all
+        ;;
     *)
-        echo "Usage: $0 start|stop|stop-all ..."
+        echo "Usage: $0 start|stop|stop-all|clean|clean-all ..."
         exit 1
         ;;
 esac
