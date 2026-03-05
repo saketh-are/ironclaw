@@ -11,14 +11,20 @@ overhead and spawn-to-checkin latency.
 
 ## Approaches
 
-| Approach | Agent isolation | Worker isolation | Daemon |
+| Approach | Agent-to-Host isolation | Worker-to-Host isolation | Worker-to-Parent-Agent isolation |
 |---|---|---|---|
-| `container-docker` | cgroups/namespaces (shared daemon) | cgroups/namespaces (shared daemon) | Shared host dockerd |
-| `container-gvisor-dind` | gVisor sandbox | cgroups/namespaces (private daemon inside gVisor) | Per-agent dockerd inside gVisor |
-| `container-sysbox-dind` | Sysbox (user namespaces) | cgroups/namespaces (private daemon inside Sysbox) | Per-agent dockerd inside Sysbox |
-| `podman-rootless` | cgroups/namespaces (per-user) | cgroups/namespaces (per-user) | None (socket-activated) |
-| `vm-qemu` | KVM (QEMU, full guest OS) | cgroups/namespaces (inside guest) | Per-VM dockerd inside guest |
-| `hybrid-firecracker` | cgroups/namespaces (shared daemon) | KVM (Firecracker, minimal VMM) | Shared host dockerd |
+| `container-docker` | Docker container on shared host `dockerd`; weakened by mounted host `docker.sock` | Docker container on shared host `dockerd` | Sibling Docker container boundary on the same host daemon |
+| `container-gvisor-dind` | One outer `runsc`/gVisor sandbox per agent | Inner Docker container inside the agent's shared gVisor sandbox | Inner Docker namespaces/cgroups inside the same outer gVisor sandbox |
+| `container-sysbox-dind` | One outer Sysbox container per agent | Inner Docker container inside the agent's shared Sysbox boundary | Inner Docker namespaces/cgroups inside the same outer Sysbox boundary |
+| `podman-rootless` | Rootless Podman container under a dedicated unprivileged host user | Rootless Podman container under that same dedicated host user | Sibling rootless container; shares the parent agent's network namespace |
+| `vm-qemu` | One QEMU/KVM VM per agent | Inner Docker container inside that VM | Inner Docker namespaces/cgroups inside the same VM |
+| `hybrid-firecracker` | Docker container on host; not VM-grade, and granted `KVM`/`NET_ADMIN` access | Firecracker microVM (`KVM`) | Firecracker microVM boundary; parent agent manages its lifecycle from outside |
+
+Notes:
+- In `container-gvisor-dind` and `container-sysbox-dind`, workers do not get their own separate gVisor/Sysbox sandbox. They share the parent agent's outer boundary.
+- In `podman-rootless`, the worker/agent boundary is weaker than a fully separate container boundary because workers are intentionally launched with `network_mode=container:<agent>`.
+
+**Daemon model:** `container-docker` = shared host `dockerd`; `container-gvisor-dind` / `container-sysbox-dind` / `vm-qemu` = per-agent inner `dockerd`; `podman-rootless` = per-user socket-activated Podman service; `hybrid-firecracker` = no worker container daemon (agents spawn Firecracker VMs directly).
 
 ## Results (loaded mode, 3 agents)
 
@@ -218,6 +224,8 @@ Each sample includes:
 - Full `/proc/meminfo` breakdown (Cached, Slab, AnonPages, Shmem, Swap, etc.)
 - Per-agent RSS and PSS from `/proc/<pid>/smaps_rollup`
 - Daemon (dockerd, containerd) RSS and PSS
+- Host CPU counters from `/proc/stat` (cumulative jiffies)
+- Per-agent and per-daemon CPU counters from `/proc/<pid>/stat` (utime/stime)
 - Active worker count
 - Swap activity counters (pswpin/pswpout)
 - Memory pressure (PSI) if available
@@ -227,7 +235,8 @@ Each sample includes:
 - Baseline-subtracted mean, peak, and p50/p95/p99
 - Per-agent mean overhead
 - Memory drift slope (KiB/s) to detect leaks
-- Daemon overhead breakdown
+- Daemon overhead breakdown (with baseline delta to isolate agent-caused growth)
+- Host CPU utilization (%), per-agent CPU seconds, per-daemon CPU seconds
 - Total workers spawned and max concurrent
 
 ## Worker Lifecycle
