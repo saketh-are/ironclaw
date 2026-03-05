@@ -356,6 +356,12 @@ class OrchestratorHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             self._respond_ok()
+        elif self.path == "/status":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            body = json.dumps({"active_workers": get_active_workers()})
+            self.wfile.write(body.encode())
         else:
             self.send_error(404)
 

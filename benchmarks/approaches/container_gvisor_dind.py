@@ -18,8 +18,10 @@ Requires runsc configured with --net-raw and --allow-packet-socket-write in
 /etc/docker/daemon.json for Docker-in-gVisor support.
 """
 
+import json
 import subprocess
 import time
+import urllib.request
 from pathlib import Path
 from typing import Dict, List
 
@@ -33,6 +35,7 @@ class ContainerGvisorDindApproach(Approach):
 
     def __init__(self):
         self._agent_ids: List[str] = []
+        self._host_ports: Dict[str, int] = {}  # agent_id → host port
         self._agent_image = "bench-agent-dind:latest"
         self._run_id: str = "unknown"
 
@@ -163,15 +166,35 @@ class ContainerGvisorDindApproach(Approach):
                 )
 
             self._agent_ids.append(agent_id)
+            self._host_ports[agent_id] = host_port
             print(f"[{self.name}] Started {container_name}")
 
-        # Wait for dockerd startup + worker image load inside each gVisor container
-        boot_wait = 30
-        print(f"[{self.name}] Waiting {boot_wait}s for {n} agents "
+        # Poll /health on each agent's host port until all are ready (max 60s)
+        print(f"[{self.name}] Waiting for {n} agents to become healthy "
               f"(dockerd startup + image load)...")
-        time.sleep(boot_wait)
+        deadline = time.monotonic() + 60
+        ready = set()
+        while time.monotonic() < deadline and len(ready) < n:
+            for agent_id, port in self._host_ports.items():
+                if agent_id in ready:
+                    continue
+                try:
+                    resp = urllib.request.urlopen(
+                        f"http://127.0.0.1:{port}/health", timeout=2
+                    )
+                    if resp.status == 200:
+                        ready.add(agent_id)
+                        print(f"[{self.name}] {agent_id} healthy")
+                except Exception:
+                    pass
+            if len(ready) < n:
+                time.sleep(2)
 
-        print(f"[{self.name}] {n} agents started (gVisor DinD, private daemon per agent).")
+        if len(ready) < n:
+            not_ready = set(self._host_ports) - ready
+            print(f"[{self.name}] WARNING: agents not ready after 60s: {not_ready}")
+
+        print(f"[{self.name}] {len(ready)}/{n} agents started (gVisor DinD, private daemon per agent).")
         return list(self._agent_ids)
 
     def get_agent_pids(self) -> Dict[str, int]:
@@ -211,12 +234,18 @@ class ContainerGvisorDindApproach(Approach):
         return pids
 
     def count_active_workers(self) -> int:
-        """Workers run inside gVisor containers, not visible from host.
-
-        Return -1 to indicate "unknown" — accurate counts come from
-        agent JSONL logs collected after the run.
-        """
-        return -1
+        """Query each agent's /status endpoint and sum active workers."""
+        total = 0
+        for agent_id, port in self._host_ports.items():
+            try:
+                resp = urllib.request.urlopen(
+                    f"http://127.0.0.1:{port}/status", timeout=2
+                )
+                data = json.loads(resp.read())
+                total += data.get("active_workers", 0)
+            except Exception:
+                pass
+        return total
 
     def collect_agent_logs(self, agent_ids: List[str], output_dir) -> None:
         """Collect agent stdout logs via docker logs."""
