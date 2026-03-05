@@ -1,13 +1,6 @@
 # Agent Isolation Benchmarks
 
-Synthetic benchmark for multi-agent deployments that doesn't require real
-agents, inference access, or crafted prompts. A trivial "agent" is deployed
-that eagerly spawns sandboxed "workers" on a random schedule — both allocate
-RAM, confirm they can write to storage, and workers check in with the agent
-via network callback (mimicking real IronClaw worker lifecycle). This lets us
-validate that each isolation strategy actually works end-to-end (networking,
-storage, process lifecycle) and measure key parameters like per-agent memory
-overhead and spawn-to-checkin latency.
+Synthetic benchmark for multi-agent deployments. A trivial "agent" is deployed which spawns sandboxed "workers" on a random basis. Both the agents and workers use some RAM and confirm they can write to storage. Worker checks-in with parent agent after spawn via network callback to validate that the setup will work for IronClaw. 
 
 ## Approaches
 
