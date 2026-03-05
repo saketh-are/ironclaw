@@ -88,6 +88,13 @@ class VmQemuApproach(Approach):
                 "ORCHESTRATOR_PORT=8080",
             ]
 
+            # Storage validation: in-VM Docker resolves paths within VM
+            if config.storage_validation:
+                env_vars += [
+                    "STORAGE_VALIDATION=1",
+                    "WORKSPACE_BASE=/tmp/bench-workspaces",
+                ]
+
             cmd = [
                 str(LAUNCH_SCRIPT), "start",
                 agent_id,

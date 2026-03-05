@@ -227,6 +227,73 @@ def validate_checkins(run_dir: Path) -> dict:
     return results
 
 
+def validate_storage(run_dir: Path) -> dict:
+    """
+    Validate storage read/write results from agent logs.
+
+    Each agent emits 'storage_summary' events with workers_tested, read_ok,
+    and write_ok counts. We use the LAST summary per agent (same approach
+    as validate_checkins).
+
+    Returns a dict with validation results, or None if no storage events found.
+    """
+    results = {
+        "agents_checked": 0,
+        "total_tested": 0,
+        "total_read_ok": 0,
+        "total_write_ok": 0,
+        "per_agent": {},
+        "all_ok": True,
+    }
+
+    log_files = sorted(run_dir.glob("agent-*.jsonl"))
+    if not log_files:
+        log_files = sorted(run_dir.glob("agent-*.log"))
+
+    found_any = False
+    for log_file in log_files:
+        agent_id = log_file.stem
+        last_summary = None
+        try:
+            with open(log_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if event.get("event") == "storage_summary":
+                        last_summary = event
+        except Exception:
+            pass
+
+        if last_summary:
+            found_any = True
+            tested = last_summary.get("workers_tested", 0)
+            read_ok = last_summary.get("read_ok", 0)
+            write_ok = last_summary.get("write_ok", 0)
+            results["agents_checked"] += 1
+            results["total_tested"] += tested
+            results["total_read_ok"] += read_ok
+            results["total_write_ok"] += write_ok
+            agent_ok = (read_ok == tested and write_ok == tested)
+            results["per_agent"][agent_id] = {
+                "tested": tested,
+                "read_ok": read_ok,
+                "write_ok": write_ok,
+                "ok": agent_ok,
+            }
+            if not agent_ok:
+                results["all_ok"] = False
+
+    if not found_any:
+        return None
+
+    return results
+
+
 def compute_percentiles(values: list, percentiles: list = None) -> dict:
     """Compute percentiles from a list of values."""
     if not values:
@@ -413,6 +480,22 @@ def run_benchmark(
                 elif not info.get("ok"):
                     print(f"    {agent_id}: {info['checkins']}/{info['spawned']} checkins")
 
+    # Storage validation results
+    sv = summary.get("storage_validation")
+    if sv:
+        total_t = sv["total_tested"]
+        total_r = sv["total_read_ok"]
+        total_w = sv["total_write_ok"]
+        if sv["all_ok"]:
+            print(f"  Storage: {total_r}/{total_t} read OK, {total_w}/{total_t} write OK")
+        else:
+            print(f"\n  STORAGE VALIDATION FAILED: "
+                  f"{total_r}/{total_t} read OK, {total_w}/{total_t} write OK")
+            for agent_id, info in sorted(sv["per_agent"].items()):
+                if not info.get("ok"):
+                    print(f"    {agent_id}: {info['read_ok']}/{info['tested']} read, "
+                          f"{info['write_ok']}/{info['tested']} write")
+
     return run_dir
 
 
@@ -525,6 +608,11 @@ def generate_summary(run_dir: Path, swap_result: dict = None) -> dict:
     if checkin_validation["agents_checked"] > 0 or checkin_validation["agents_missing_summary"] > 0:
         summary["checkin_validation"] = checkin_validation
 
+    # Storage validation
+    storage_validation = validate_storage(run_dir)
+    if storage_validation is not None:
+        summary["storage_validation"] = storage_validation
+
     return summary
 
 
@@ -598,13 +686,16 @@ def main():
     # Run
     run_dir = run_benchmark(approach, num_agents, config, output_dir, sample_interval, args.mode)
 
-    # Exit non-zero if checkin validation failed
+    # Exit non-zero if checkin or storage validation failed
     summary_path = run_dir / "summary.json"
     if summary_path.exists():
         with open(summary_path) as f:
             summary = json.load(f)
         cv = summary.get("checkin_validation", {})
         if cv and not cv.get("all_ok", True):
+            sys.exit(1)
+        sv = summary.get("storage_validation", {})
+        if sv and not sv.get("all_ok", True):
             sys.exit(1)
 
 

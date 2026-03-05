@@ -19,11 +19,21 @@ for param in $CMDLINE; do
         worker_memory_mb=*)       export WORKER_MEMORY_MB="${param#*=}" ;;
         worker_duration_min_s=*)  export WORKER_DURATION_MIN_S="${param#*=}" ;;
         worker_duration_max_s=*)  export WORKER_DURATION_MAX_S="${param#*=}" ;;
+        storage_challenge=*)      export STORAGE_CHALLENGE="${param#*=}" ;;
+        worker_name=*)            export WORKER_NAME="${param#*=}" ;;
+        orchestrator_url=*)       export ORCHESTRATOR_URL="${param#*=}" ;;
     esac
 done
 
+# Mount workspace drive if present (/dev/vdb = second virtio block device)
+if [ -e /dev/vdb ]; then
+    mkdir -p /workspace
+    mount /dev/vdb /workspace
+    echo "[init] Mounted /dev/vdb at /workspace"
+fi
+
 # Run the worker
-echo "[init] Starting worker: memory=${WORKER_MEMORY_MB:-500}MB"
+echo "[init] Starting worker: memory=${WORKER_MEMORY_MB:-500}MB name=${WORKER_NAME:-unknown}"
 python3 /usr/local/bin/worker.py
 
 # Power off the VM

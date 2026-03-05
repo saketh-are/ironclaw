@@ -79,8 +79,20 @@ class ContainerDockerApproach(Approach):
                 # Orchestrator networking
                 "-e", "ORCHESTRATOR_PORT=8080",
                 "-e", f"ORCHESTRATOR_HOST_PORT={host_port}",
-                self._agent_image,
             ]
+
+            # Storage validation: shared daemon needs host-path indirection
+            if config.storage_validation:
+                host_dir = f"/tmp/bench-workspaces-{config.run_id}/{agent_id}"
+                subprocess.run(["mkdir", "-p", host_dir], check=True)
+                cmd += [
+                    "-v", f"{host_dir}:/tmp/bench-workspaces",
+                    "-e", "STORAGE_VALIDATION=1",
+                    "-e", "WORKSPACE_BASE=/tmp/bench-workspaces",
+                    "-e", f"WORKSPACE_HOST_BASE={host_dir}",
+                ]
+
+            cmd.append(self._agent_image)
 
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:

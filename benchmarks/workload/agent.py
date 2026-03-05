@@ -76,6 +76,11 @@ WORKER_NETWORK_MODE = os.environ.get("WORKER_NETWORK_MODE", "")  # e.g. "contain
 ORCHESTRATOR_PORT = os.environ.get("ORCHESTRATOR_PORT", "")  # HTTP server port (empty = disabled)
 ORCHESTRATOR_HOST_PORT = os.environ.get("ORCHESTRATOR_HOST_PORT", "")  # Host-mapped port (container approaches)
 
+# Storage validation: opt-in via STORAGE_VALIDATION=1
+STORAGE_VALIDATION = os.environ.get("STORAGE_VALIDATION", "")
+WORKSPACE_BASE = os.environ.get("WORKSPACE_BASE", "/tmp/bench-workspaces")
+WORKSPACE_HOST_BASE = os.environ.get("WORKSPACE_HOST_BASE", "")  # host-visible prefix for shared-daemon approaches
+
 # Derive per-agent seed: hash(base_seed + agent_id) for reproducibility
 _seed_input = f"{RNG_SEED_BASE}:{AGENT_ID}"
 AGENT_SEED = int(hashlib.sha256(_seed_input.encode()).hexdigest()[:8], 16)
@@ -145,6 +150,168 @@ def get_checkin_count() -> int:
         return len(_checkins)
 
 
+# ---------------------------------------------------------------------------
+# Storage validation tracking
+# ---------------------------------------------------------------------------
+
+_storage_results = {}  # worker_name → {"read_ok": bool, "write_ok": bool}
+_storage_lock = threading.Lock()
+
+
+def record_storage_read(worker_id: str, read_ok: bool):
+    """Record storage read result from worker checkin."""
+    with _storage_lock:
+        if worker_id not in _storage_results:
+            _storage_results[worker_id] = {"read_ok": False, "write_ok": False}
+        _storage_results[worker_id]["read_ok"] = read_ok
+
+
+def record_storage_write(worker_name: str, write_ok: bool):
+    """Record storage write result (agent-side verification after container.wait)."""
+    with _storage_lock:
+        if worker_name not in _storage_results:
+            _storage_results[worker_name] = {"read_ok": False, "write_ok": False}
+        _storage_results[worker_name]["write_ok"] = write_ok
+
+
+def get_storage_summary() -> dict:
+    """Return aggregate storage validation results."""
+    with _storage_lock:
+        tested = len(_storage_results)
+        read_ok = sum(1 for r in _storage_results.values() if r["read_ok"])
+        write_ok = sum(1 for r in _storage_results.values() if r["write_ok"])
+    return {"workers_tested": tested, "read_ok": read_ok, "write_ok": write_ok}
+
+
+def prepare_worker_workspace(worker_name: str):
+    """Create a per-worker workspace dir with a challenge file.
+
+    Returns (local_path, host_path, token) or (None, None, None) if
+    storage validation is disabled.
+    """
+    if not STORAGE_VALIDATION:
+        return None, None, None
+
+    import secrets as _secrets
+    token = _secrets.token_hex(16)
+    local_path = os.path.join(WORKSPACE_BASE, worker_name)
+    os.makedirs(local_path, exist_ok=True)
+    # Make writable by worker (runs as UID 1000)
+    os.chmod(local_path, 0o777)
+    with open(os.path.join(local_path, "challenge.txt"), "w") as f:
+        f.write(token)
+
+    # Compute host-visible path for shared-daemon approaches
+    if WORKSPACE_HOST_BASE:
+        host_path = os.path.join(WORKSPACE_HOST_BASE, worker_name)
+    else:
+        host_path = local_path
+
+    return local_path, host_path, token
+
+
+def check_worker_reply(local_path: str, token: str) -> bool:
+    """Check if the worker wrote the correct reply. Returns True on match."""
+    if not local_path:
+        return False
+    reply_file = os.path.join(local_path, "reply.txt")
+    try:
+        with open(reply_file) as f:
+            return f.read().strip() == token
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Firecracker: TAP device and ext4 workspace helpers
+# ---------------------------------------------------------------------------
+
+def _setup_tap_device(counter: int):
+    """Create a TAP device for a Firecracker VM and assign IPs.
+
+    Uses a /30 subnet per VM: 10.0.{counter}.1 (host), 10.0.{counter}.2 (guest).
+    Returns (tap_name, host_ip, guest_ip) or raises on failure.
+    """
+    tap_name = f"tap{counter}"
+    host_ip = f"10.0.{counter}.1"
+    guest_ip = f"10.0.{counter}.2"
+
+    subprocess.run(
+        ["ip", "tuntap", "add", tap_name, "mode", "tap"],
+        check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["ip", "addr", "add", f"{host_ip}/30", "dev", tap_name],
+        check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["ip", "link", "set", tap_name, "up"],
+        check=True, capture_output=True,
+    )
+    return tap_name, host_ip, guest_ip
+
+
+def _cleanup_tap_device(tap_name: str):
+    """Delete a TAP device, ignoring errors."""
+    try:
+        subprocess.run(
+            ["ip", "link", "del", tap_name],
+            capture_output=True,
+        )
+    except Exception:
+        pass
+
+
+def _create_workspace_ext4(ws_dir: str, token: str) -> str:
+    """Create a small ext4 image with challenge.txt written via debugfs.
+
+    Returns the path to the ext4 image file.
+    """
+    img_path = os.path.join(ws_dir, "workspace.ext4")
+    challenge_tmp = os.path.join(ws_dir, "challenge.txt")
+
+    # Create 4 MB image
+    subprocess.run(
+        ["dd", "if=/dev/zero", f"of={img_path}", "bs=1M", "count=4"],
+        check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["mkfs.ext4", "-F", "-q", img_path],
+        check=True, capture_output=True,
+    )
+
+    # Write challenge.txt into the image via debugfs (no mount needed)
+    with open(challenge_tmp, "w") as f:
+        f.write(token)
+    subprocess.run(
+        ["debugfs", "-w", "-R", f"write {challenge_tmp} challenge.txt", img_path],
+        check=True, capture_output=True,
+    )
+    os.unlink(challenge_tmp)
+
+    return img_path
+
+
+def _read_reply_from_ext4(img_path: str):
+    """Read reply.txt from an ext4 image via debugfs. Returns content or None."""
+    try:
+        # Replay the ext4 journal first — killed VMs may leave uncommitted
+        # journal entries that debugfs cannot see without recovery.
+        subprocess.run(
+            ["e2fsck", "-fy", img_path],
+            capture_output=True,
+        )
+        result = subprocess.run(
+            ["debugfs", "-R", "cat reply.txt", img_path],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0 and result.stdout:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
 class OrchestratorHandler(BaseHTTPRequestHandler):
     """Lightweight HTTP handler for agent ↔ worker communication."""
 
@@ -180,6 +347,9 @@ class OrchestratorHandler(BaseHTTPRequestHandler):
             worker_id = data.get("worker_id", "unknown")
             total = record_checkin(worker_id)
             emit_event("checkin", worker_id=worker_id, total_checkins=total)
+            # Record storage read result if present
+            if "storage_read_ok" in data:
+                record_storage_read(worker_id, bool(data["storage_read_ok"]))
             self._respond_ok()
         else:
             self.send_error(404)
@@ -261,8 +431,12 @@ def spawn_worker(client, rng: random.Random) -> bool:
     """
     counter, worker_name = next_worker_id()
 
+    # Prepare workspace directory for storage validation
+    ws_local, ws_host, ws_token = prepare_worker_workspace(worker_name)
+
     # Container config mirrors ironclaw sandbox defaults
     env = {
+        "WORKER_NAME": worker_name,
         "WORKER_MEMORY_MB": str(WORKER_MEMORY_MB),
         "WORKER_DURATION_MIN_S": str(WORKER_DURATION_MIN_S),
         "WORKER_DURATION_MAX_S": str(WORKER_DURATION_MAX_S),
@@ -270,6 +444,8 @@ def spawn_worker(client, rng: random.Random) -> bool:
     orchestrator_url = compute_orchestrator_url()
     if orchestrator_url:
         env["ORCHESTRATOR_URL"] = orchestrator_url
+    if ws_token:
+        env["STORAGE_CHALLENGE"] = ws_token
 
     create_kwargs = dict(
         image=WORKER_IMAGE,
@@ -289,6 +465,9 @@ def spawn_worker(client, rng: random.Random) -> bool:
         },
         detach=True,
     )
+    # Bind-mount workspace if storage validation is active
+    if ws_host:
+        create_kwargs["volumes"] = {ws_host: {"bind": "/workspace", "mode": "rw"}}
     if WORKER_RUNTIME:
         create_kwargs["runtime"] = WORKER_RUNTIME
     if WORKER_NETWORK:
@@ -321,10 +500,21 @@ def spawn_worker(client, rng: random.Random) -> bool:
             container.wait()
         except Exception:
             pass
+        # Check storage reply after container exits (proves write persisted)
+        if ws_local and ws_token:
+            write_ok = check_worker_reply(ws_local, ws_token)
+            record_storage_write(worker_name, write_ok)
         try:
             container.remove(force=True)
         except Exception:
             pass
+        # Clean up workspace directory
+        if ws_local:
+            try:
+                import shutil
+                shutil.rmtree(ws_local, ignore_errors=True)
+            except Exception:
+                pass
         count = _dec_active()
         emit_event("worker_end", worker_id=worker_name, active_workers=count)
 
@@ -373,10 +563,12 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
     Spawn a single worker as a Firecracker microVM.
 
     1. Create a per-VM directory with a Unix socket
-    2. Launch the firecracker VMM process
-    3. Configure the VM via the Firecracker API (boot source, drives, machine config)
-    4. Start the VM instance
-    5. Background thread waits for the VMM process to exit, then cleans up
+    2. Set up TAP device for networking (if orchestrator is configured)
+    3. Create ext4 workspace image (if storage validation is enabled)
+    4. Launch the firecracker VMM process
+    5. Configure the VM via the Firecracker API (boot source, drives, network, machine config)
+    6. Start the VM instance
+    7. Background thread waits for the VMM process to exit, verifies storage, cleans up
 
     Returns True if the VM was started successfully.
     """
@@ -390,6 +582,41 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
         log(f"Failed to create VM dir {vm_dir}: {e}")
         return False
 
+    # Set up TAP device for networking
+    tap_name = None
+    host_ip = None
+    guest_ip = None
+    if ORCHESTRATOR_PORT:
+        try:
+            tap_name, host_ip, guest_ip = _setup_tap_device(counter)
+        except Exception as e:
+            log(f"Failed to set up TAP device for {worker_name}: {e}")
+            try:
+                import shutil
+                shutil.rmtree(vm_dir, ignore_errors=True)
+            except Exception:
+                pass
+            return False
+
+    # Prepare workspace ext4 image for storage validation
+    ws_token = None
+    ws_img_path = None
+    if STORAGE_VALIDATION:
+        import secrets as _secrets
+        ws_token = _secrets.token_hex(16)
+        try:
+            ws_img_path = _create_workspace_ext4(vm_dir, ws_token)
+        except Exception as e:
+            log(f"Failed to create workspace ext4 for {worker_name}: {e}")
+            if tap_name:
+                _cleanup_tap_device(tap_name)
+            try:
+                import shutil
+                shutil.rmtree(vm_dir, ignore_errors=True)
+            except Exception:
+                pass
+            return False
+
     # Launch the Firecracker VMM process
     try:
         proc = subprocess.Popen(
@@ -399,6 +626,8 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
         )
     except (OSError, FileNotFoundError) as e:
         log(f"Failed to launch firecracker for {worker_name}: {e}")
+        if tap_name:
+            _cleanup_tap_device(tap_name)
         return False
 
     # Wait for the API socket to appear
@@ -409,10 +638,12 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
     else:
         log(f"Firecracker socket never appeared for {worker_name}")
         proc.kill()
+        if tap_name:
+            _cleanup_tap_device(tap_name)
         return False
 
-    # Compute worker memory: requested + 64MB headroom for guest kernel + init
-    vm_mem_mib = WORKER_MEMORY_MB + 64
+    # Compute worker memory: requested + 128MB headroom for guest kernel + Python runtime
+    vm_mem_mib = WORKER_MEMORY_MB + 128
 
     # Build boot_args to pass worker config via /proc/cmdline
     boot_args = (
@@ -422,6 +653,20 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
         f"worker_duration_min_s={WORKER_DURATION_MIN_S} "
         f"worker_duration_max_s={WORKER_DURATION_MAX_S}"
     )
+
+    # Add networking config via kernel ip= parameter
+    if guest_ip and host_ip:
+        # ip=<client-ip>:<server-ip>:<gw-ip>:<netmask>:<hostname>:<device>:<autoconf>
+        boot_args += f" ip={guest_ip}::{host_ip}:255.255.255.252::eth0:off"
+        boot_args += f" orchestrator_url=http://{host_ip}:{ORCHESTRATOR_PORT}"
+        boot_args += f" worker_name={worker_name}"
+
+    # Add storage challenge token
+    if ws_token:
+        boot_args += f" storage_challenge={ws_token}"
+        # Ensure worker_name is in boot_args even without networking
+        if not guest_ip:
+            boot_args += f" worker_name={worker_name}"
 
     try:
         # Configure boot source
@@ -438,6 +683,23 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
             "is_read_only": True,
         })
 
+        # Configure workspace drive (read-write) if storage validation is active
+        if ws_img_path:
+            _fc_api(socket_path, "PUT", "/drives/workspace", {
+                "drive_id": "workspace",
+                "path_on_host": ws_img_path,
+                "is_root_device": False,
+                "is_read_only": False,
+            })
+
+        # Configure network interface if TAP is set up
+        if tap_name:
+            _fc_api(socket_path, "PUT", "/network-interfaces/eth0", {
+                "iface_id": "eth0",
+                "host_dev_name": tap_name,
+                "guest_mac": f"AA:FC:00:00:00:{counter:02x}",
+            })
+
         # Configure machine resources
         _fc_api(socket_path, "PUT", "/machine-config", {
             "vcpu_count": 1,
@@ -451,6 +713,8 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
     except Exception as e:
         log(f"Failed to configure/start VM {worker_name}: {e}")
         proc.kill()
+        if tap_name:
+            _cleanup_tap_device(tap_name)
         try:
             import shutil
             shutil.rmtree(vm_dir, ignore_errors=True)
@@ -461,14 +725,27 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
     count = _inc_active()
     emit_event("worker_start", worker_id=worker_name, active_workers=count)
 
-    # Background thread: wait for VMM process to exit, then clean up
+    # Background thread: wait for VMM process to exit, verify storage, clean up
     def wait_and_cleanup():
         try:
             proc.wait()
         except Exception:
             pass
+
+        # Verify storage write after VM exits
+        if ws_img_path and ws_token:
+            reply = _read_reply_from_ext4(ws_img_path)
+            write_ok = reply == ws_token
+            record_storage_write(worker_name, write_ok)
+
         count = _dec_active()
         emit_event("worker_end", worker_id=worker_name, active_workers=count)
+
+        # Clean up TAP device
+        if tap_name:
+            _cleanup_tap_device(tap_name)
+
+        # Clean up VM directory
         try:
             import shutil
             shutil.rmtree(vm_dir, ignore_errors=True)
@@ -523,6 +800,9 @@ def cleanup_workers_firecracker():
         log(f"Cleanup error: {e}")
     if killed:
         log(f"Killed {killed} Firecracker processes.")
+        # Wait for wait_and_cleanup threads to read storage results from
+        # workspace images before removing VM directories.
+        time.sleep(2)
     # Clean up VM directories
     try:
         import shutil
@@ -548,6 +828,9 @@ def status_emitter(stop_event: threading.Event):
                        workers_spawned=_worker_counter,
                        checkins_received=checkins,
                        checkins_ok=checkins == _worker_counter)
+        # Emit periodic storage_summary when storage validation is active
+        if STORAGE_VALIDATION and _worker_counter > 0:
+            emit_event("storage_summary", **get_storage_summary())
         stop_event.wait(timeout=STATUS_INTERVAL_S)
 
 
@@ -595,6 +878,12 @@ def main():
     else:
         log(f"Unknown WORKER_BACKEND={WORKER_BACKEND}, exiting.")
         sys.exit(1)
+
+    # Create workspace base directory for storage validation
+    if STORAGE_VALIDATION:
+        os.makedirs(WORKSPACE_BASE, exist_ok=True)
+        log(f"Storage validation enabled: base={WORKSPACE_BASE}, "
+            f"host_base={WORKSPACE_HOST_BASE or '(same)'}")
 
     # Start orchestrator HTTP server if configured
     _server = None
@@ -670,6 +959,10 @@ def main():
                    workers_spawned=_worker_counter,
                    checkins_received=checkins,
                    checkins_ok=checkins == _worker_counter)
+
+    # Emit storage summary for post-run validation
+    if STORAGE_VALIDATION and _worker_counter > 0:
+        emit_event("storage_summary", **get_storage_summary())
 
     emit_event("agent_stop", total_workers_spawned=_worker_counter)
     log("Agent stopped.")

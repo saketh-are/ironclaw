@@ -62,12 +62,14 @@ tar -xf "${TMPDIR}/rootfs.tar" -C "$MOUNT_DIR"
 cp "${BENCH_DIR}/workload/worker.py" "${MOUNT_DIR}/usr/local/bin/worker.py"
 chmod 755 "${MOUNT_DIR}/usr/local/bin/worker.py"
 
-# Install custom init
+# Install custom init (remove symlink first to avoid overwriting busybox)
+rm -f "${MOUNT_DIR}/sbin/init"
 cp "${SCRIPT_DIR}/init" "${MOUNT_DIR}/sbin/init"
 chmod 755 "${MOUNT_DIR}/sbin/init"
 
 # Ensure required directories exist
 mkdir -p "${MOUNT_DIR}/proc" "${MOUNT_DIR}/sys" "${MOUNT_DIR}/dev" "${MOUNT_DIR}/tmp"
+mkdir -p "${MOUNT_DIR}/workspace"
 
 # Cleanup and unmount
 umount "$MOUNT_DIR"

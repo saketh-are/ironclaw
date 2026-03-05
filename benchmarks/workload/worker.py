@@ -38,11 +38,12 @@ def get_rss_kb() -> int:
 
 HEARTBEAT_INTERVAL_S = 5
 ORCHESTRATOR_URL = os.environ.get("ORCHESTRATOR_URL", "")
+WORKER_NAME = os.environ.get("WORKER_NAME", "")
 
 
 def heartbeat_loop(stop_event: threading.Event):
     """Send periodic heartbeats to the orchestrator. Best-effort: failures are logged, not fatal."""
-    worker_id = socket.gethostname()
+    worker_id = WORKER_NAME or socket.gethostname()
     url = f"{ORCHESTRATOR_URL}/heartbeat"
     while not stop_event.is_set():
         try:
@@ -64,12 +65,55 @@ def heartbeat_loop(stop_event: threading.Event):
 CHECKIN_MAX_RETRIES = 3
 CHECKIN_RETRY_DELAY_S = 2
 
+# Storage validation: if STORAGE_CHALLENGE is set, verify workspace bind-mount
+STORAGE_CHALLENGE = os.environ.get("STORAGE_CHALLENGE", "")
 
-def do_checkin():
+
+def do_storage_validation() -> bool:
+    """Validate workspace bind-mount by reading challenge and writing reply.
+
+    Returns True if the challenge file was read and matched STORAGE_CHALLENGE.
+    When storage validation is not active (no STORAGE_CHALLENGE), returns False.
+    """
+    if not STORAGE_CHALLENGE:
+        return False
+
+    read_ok = False
+    try:
+        with open("/workspace/challenge.txt") as f:
+            token = f.read().strip()
+        if token == STORAGE_CHALLENGE:
+            read_ok = True
+            print("[worker] Storage read OK: challenge matched", flush=True)
+        else:
+            print(f"[worker] Storage read MISMATCH: expected {STORAGE_CHALLENGE!r}, "
+                  f"got {token!r}", flush=True)
+    except Exception as e:
+        print(f"[worker] Storage read FAILED: {e}", flush=True)
+
+    # Write reply regardless — proves write capability even if read mismatched.
+    # fsync ensures data reaches the block device (important for Firecracker VMs
+    # where the host reads the ext4 image via debugfs after the VM is killed).
+    try:
+        with open("/workspace/reply.txt", "w") as f:
+            f.write(STORAGE_CHALLENGE)
+            f.flush()
+            os.fsync(f.fileno())
+        print("[worker] Storage write OK: reply.txt written", flush=True)
+    except Exception as e:
+        print(f"[worker] Storage write FAILED: {e}", flush=True)
+
+    return read_ok
+
+
+def do_checkin(storage_read_ok: bool = False):
     """Send a single mandatory checkin to the orchestrator. Retries on failure."""
-    worker_id = socket.gethostname()
+    worker_id = WORKER_NAME or socket.gethostname()
     url = f"{ORCHESTRATOR_URL}/checkin"
-    payload = json.dumps({"worker_id": worker_id}).encode()
+    payload_dict = {"worker_id": worker_id}
+    if STORAGE_CHALLENGE:
+        payload_dict["storage_read_ok"] = storage_read_ok
+    payload = json.dumps(payload_dict).encode()
     for attempt in range(1, CHECKIN_MAX_RETRIES + 1):
         try:
             req = urllib.request.Request(
@@ -123,9 +167,12 @@ def main():
         flush=True,
     )
 
+    # Storage validation: proves workspace bind-mount works (read + write)
+    storage_read_ok = do_storage_validation()
+
     # Mandatory checkin: proves the network path to the orchestrator works
     if ORCHESTRATOR_URL:
-        do_checkin()
+        do_checkin(storage_read_ok=storage_read_ok)
 
     time.sleep(duration)
 

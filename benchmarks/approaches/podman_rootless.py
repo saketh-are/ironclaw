@@ -260,7 +260,7 @@ class PodmanRootlessApproach(Approach):
             # 5. Create agent container (does not start a process, safe
             #    to use with --pipe --wait).
             host_port = config.orchestrator_base_port + i
-            r = _run_as_user(user, [
+            create_cmd = [
                 "podman", "create",
                 "--name", container_name,
                 "--memory", f"{config.agent_memory_mb}m",
@@ -293,13 +293,34 @@ class PodmanRootlessApproach(Approach):
                 "-e", "DOCKER_BRIDGE_GATEWAY=127.0.0.1",
                 "-e", "ORCHESTRATOR_PORT=8080",
                 "-e", f"WORKER_NETWORK_MODE=container:{container_name}",
+            ]
+
+            # Storage validation: shared Podman daemon needs host-path indirection
+            if config.storage_validation:
+                host_dir = f"/home/{user}/bench-workspaces"
+                subprocess.run(
+                    ["sudo", "mkdir", "-p", host_dir], check=True,
+                )
+                subprocess.run(
+                    ["sudo", "chown", f"{user}:{user}", host_dir],
+                    check=True,
+                )
+                create_cmd += [
+                    "-v", f"{host_dir}:/tmp/bench-workspaces",
+                    "-e", "STORAGE_VALIDATION=1",
+                    "-e", "WORKSPACE_BASE=/tmp/bench-workspaces",
+                    "-e", f"WORKSPACE_HOST_BASE={host_dir}",
+                ]
+
+            create_cmd += [
                 # Labels for identification
                 "--label", f"bench_run_id={config.run_id}",
                 "--label", "bench_role=agent",
                 "--label", f"bench_agent_id={agent_id}",
                 "--label", f"bench_approach={self.name}",
                 f"localhost/{self._agent_image}",
-            ])
+            ]
+            r = _run_as_user(user, create_cmd)
             if r.returncode != 0:
                 detail = (r.stderr or r.stdout or "").strip()
                 raise RuntimeError(

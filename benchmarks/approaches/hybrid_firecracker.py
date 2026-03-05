@@ -121,6 +121,12 @@ class HybridFirecrackerApproach(Approach):
             agent_id = f"agent-{i}"
             container_name = f"bench-agent-{i}"
 
+            # Orchestrator port: base + agent index
+            orch_port = config.orchestrator_base_port + i
+
+            # Check if storage validation is requested from the environment
+            storage_val = os.environ.get("STORAGE_VALIDATION", "")
+
             cmd = [
                 "docker", "run", "-d",
                 "--name", container_name,
@@ -132,12 +138,18 @@ class HybridFirecrackerApproach(Approach):
                 "--label", f"bench_approach={self.name}",
                 # KVM passthrough for Firecracker
                 "--device", "/dev/kvm",
+                # TUN device for TAP networking
+                "--device", "/dev/net/tun",
+                # NET_ADMIN for creating TAP devices
+                "--cap-add", "NET_ADMIN",
                 # Mount firecracker binary (read-only)
                 "-v", f"{fc_bin}:/usr/local/bin/firecracker:ro",
                 # Mount kernel (read-only)
                 "-v", f"{KERNEL_FILE}:/opt/vmlinux:ro",
                 # Mount rootfs (read-only; agent copies per-VM if needed)
                 "-v", f"{ROOTFS_FILE}:/opt/worker-rootfs.ext4:ro",
+                # Port mapping for orchestrator HTTP
+                "-p", f"{orch_port}:{orch_port}",
                 # Pass configuration via environment
                 "-e", f"AGENT_ID={agent_id}",
                 "-e", f"AGENT_BASELINE_MB={config.agent_baseline_mb}",
@@ -154,6 +166,11 @@ class HybridFirecrackerApproach(Approach):
                 "-e", "WORKER_BACKEND=firecracker",
                 "-e", "FC_KERNEL_PATH=/opt/vmlinux",
                 "-e", "FC_ROOTFS_PATH=/opt/worker-rootfs.ext4",
+                # Orchestrator HTTP server inside the agent container
+                "-e", f"ORCHESTRATOR_PORT={orch_port}",
+                # Storage validation
+                "-e", f"STORAGE_VALIDATION={storage_val}",
+                "-e", "WORKSPACE_BASE=/tmp/bench-workspaces",
                 self._agent_image,
             ]
 
@@ -246,17 +263,46 @@ class HybridFirecrackerApproach(Approach):
                 print(f"[{self.name}] Failed to collect logs for {agent_id}: {e}")
 
     def stop_agents(self) -> None:
-        """Stop all agent containers (kills all Firecracker VMs inside them)."""
+        """Gracefully stop agent containers (SIGTERM with timeout).
+
+        Agents remain as stopped containers so logs can still be collected
+        via `docker logs`. Call remove_containers() after log collection.
+        """
         for i in range(len(self._agent_ids)):
             container_name = f"bench-agent-{i}"
             subprocess.run(
-                ["docker", "rm", "-f", container_name],
+                ["docker", "stop", "-t", "30", container_name],
                 capture_output=True,
             )
 
-        self._agent_ids = []
         print(f"[{self.name}] All agents and Firecracker VMs stopped.")
 
+    def remove_containers(self) -> None:
+        """Force-remove all containers from this benchmark run."""
+        result = subprocess.run(
+            [
+                "docker", "ps", "-aq",
+                "--filter", f"label=bench_run_id={self._run_id}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            container_ids = result.stdout.strip().split("\n")
+            subprocess.run(
+                ["docker", "rm", "-f"] + container_ids,
+                capture_output=True,
+            )
+            print(f"[{self.name}] Removed {len(container_ids)} containers.")
+
+        self._agent_ids = []
+
     def cleanup(self) -> None:
-        """Stop agents (artifact cleanup is manual via make clean)."""
+        """Stop and remove agents (artifact cleanup is manual via make clean)."""
         self.stop_agents()
+        self.remove_containers()
+
+    # Storage validation is supported via per-VM ext4 workspace images.
+    # The agent creates a small ext4 image with challenge.txt, attaches it as
+    # /dev/vdb, and reads reply.txt back via debugfs after VM exit.
+    # Networking is provided via per-VM TAP devices.

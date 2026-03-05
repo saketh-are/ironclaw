@@ -1,8 +1,9 @@
 FROM python:3.11-slim
 
-# Install procps for pgrep (used by approach to count active workers)
+# Install procps for pgrep (used by approach to count active workers),
+# iproute2 for TAP device setup, e2fsprogs for ext4 workspace images.
 RUN apt-get update -qq && \
-    apt-get install -y --no-install-recommends procps && \
+    apt-get install -y --no-install-recommends procps iproute2 e2fsprogs && \
     rm -rf /var/lib/apt/lists/*
 
 COPY agent.py /usr/local/bin/agent.py
