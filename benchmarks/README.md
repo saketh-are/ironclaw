@@ -136,9 +136,18 @@ Test parameters: `SPAWN_INTERVAL_MEAN_S=5`, `WORKER_DURATION=30s`,
 | Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Per-Agent (MiB) | Workers Spawned | Avg Workers | Checkins OK |
 |----------|---------------|------------|-----------|----------------|----------------|-------------|-------------|
 | `container-docker` | 6190 | 8620 | 8228 | 2063 | 116 | 11.0 | 116/116 |
+| `container-gvisor-dind` | 5895 | 8275 | 7419 | 1965 | 92 | — | 92/92 |
+| `container-sysbox-dind` | 6216 | 8720 | 8076 | 2072 | 117 | — | 117/117 |
 | `podman-rootless` | 4716 | 8260 | 7389 | 1572 | 117 | 7.2 | 117/117 |
+| `hybrid-firecracker` | 6292 | 8815 | 8456 | 2097 | 106 | 10.9 | 106/106 |
+| `vm-qemu` | 9767 | 10308 | 10298 | 3256 | 0 | — | — |
 
-Spawn latency (ms):
+Notes:
+- `vm-qemu`: Workers failed to spawn inside QEMU guests (orchestrator instrumentation not yet wired).
+- `container-gvisor-dind` / `container-sysbox-dind`: Avg workers not reported (DinD inner daemon not sampled).
+- `podman-rootless` uses 24% less memory per agent than Docker with no shared daemon overhead.
+
+Spawn latency (ms) — docker and podman-rootless only (instrumented runs):
 
 | Approach | Create p50 | Create p95 | Start p50 | Start p95 | Total p50 | Total p95 | Cold-Start p50 | Cold-Start p95 |
 |----------|-----------|-----------|----------|----------|----------|----------|---------------|---------------|
