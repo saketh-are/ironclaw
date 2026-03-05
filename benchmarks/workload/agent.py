@@ -119,7 +119,27 @@ def log(msg: str):
 # Orchestrator HTTP server
 # ---------------------------------------------------------------------------
 
-DOCKER_BRIDGE_GATEWAY = os.environ.get("DOCKER_BRIDGE_GATEWAY", "172.17.0.1")
+def _detect_docker_bridge_gateway() -> str:
+    """Detect the Docker bridge gateway IP dynamically."""
+    # Explicit override takes precedence
+    if os.environ.get("DOCKER_BRIDGE_GATEWAY"):
+        return os.environ["DOCKER_BRIDGE_GATEWAY"]
+    # Try reading from /proc/net/route (default gateway = docker bridge on host network)
+    try:
+        import struct
+        with open("/proc/net/route") as f:
+            for line in f:
+                fields = line.strip().split()
+                if len(fields) >= 3 and fields[1] == "00000000":
+                    gw_hex = fields[2]
+                    gw_bytes = struct.pack("<I", int(gw_hex, 16))
+                    return ".".join(str(b) for b in gw_bytes)
+    except Exception:
+        pass
+    return "172.17.0.1"
+
+
+DOCKER_BRIDGE_GATEWAY = _detect_docker_bridge_gateway()
 
 
 def compute_orchestrator_url() -> str:

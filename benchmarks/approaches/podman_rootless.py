@@ -228,6 +228,11 @@ class PodmanRootlessApproach(Approach):
                  "--uid", str(uid), user],
                 capture_output=True, text=True,
             )
+            # Make home dir traversable so orchestrator can stat proxy socket
+            subprocess.run(
+                ["sudo", "chmod", "711", f"/home/{user}"],
+                capture_output=True,
+            )
 
             # 2. Enable linger so systemd user instance stays alive
             subprocess.run(
