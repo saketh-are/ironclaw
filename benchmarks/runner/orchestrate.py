@@ -619,9 +619,20 @@ def generate_summary(run_dir: Path, swap_result: dict = None) -> dict:
         else 0
     )
 
-    # Steady state: running-phase samples after warmup (skip first 60s for
-    # VM boot / Docker init settling).
-    running_samples = [s for s in samples if s.get("phase", "running") == "running"]
+    # Steady state: running-phase samples during the configured benchmark
+    # window only. Exclude teardown/settle samples that are still tagged as
+    # "running" because the collector stays active through log collection and
+    # cleanup. Those tail samples can significantly understate loaded memory
+    # for slower backends such as rootless Podman.
+    benchmark_duration_s = params.get("config", {}).get("benchmark_duration_s")
+    running_samples = [
+        s for s in samples
+        if s.get("phase", "running") == "running"
+        and (
+            benchmark_duration_s is None
+            or s["timestamp_s"] <= benchmark_duration_s
+        )
+    ]
     if not running_samples:
         running_samples = [s for s in samples if s not in baseline_samples]
     warmup_s = 60

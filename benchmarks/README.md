@@ -30,12 +30,13 @@ GCP `n2-standard-16`.
 | `container-docker` | 9893 | 13298 | 12944 | 1979 | 119 | 17.4 | 119/119 |
 | `container-gvisor-dind` | 7413 | 10066 | 9589 | 1483 | 73 | 10.5 | 73/73 |
 | `container-sysbox-dind` | 10025 | 13773 | 13262 | 2005 | 120 | 17.3 | 120/120 |
-| `podman-rootless` | 2251 | 8105 | 5612 | 450 | 89 | 3.3 | 89/89 |
+| `podman-rootless` | 10280 | 12149 | 12010 | 2056 | 123 | 16.7 | 123/123 |
 | `hybrid-firecracker` | 8979 | 14404 | 13291 | 1796 | 108 | 15.9 | 108/108 |
 | `vm-qemu` | 15585 | 17470 | 17441 | 3117 | 116 | 16.9 | 115/115 |
 
 Notes:
 - `container-gvisor-dind`: Fewer workers spawned because gVisor's `container.create()` takes ~8s (vfs storage driver), eating into the 5s spawn interval.
+- `podman-rootless`: Historical README numbers were understated because `summary.json` included teardown samples after the benchmark window. The row above was rerun after fixing that bug in `runner/orchestrate.py`.
 
 Spawn latency (ms):
 
@@ -44,7 +45,7 @@ Spawn latency (ms):
 | `container-docker` | 33 | 40 | 136 | 168 | 170 | 207 | 542 | 572 |
 | `container-gvisor-dind` | 7365 | 12024 | 302 | 683 | 7750 | 12428 | 948 | 1098 |
 | `container-sysbox-dind` | 59 | 73 | 369 | 421 | 428 | 480 | 565 | 603 |
-| `podman-rootless` | 36 | 4738 | 113 | 2860 | 155 | 9185 | 719 | 959 |
+| `podman-rootless` | 24 | 47 | 88 | 111 | 113 | 168 | 426 | 448 |
 | `vm-qemu` | 68 | 136 | 367 | 651 | 434 | 849 | 425 | 2968 |
 
 Regenerate with `make compare`.
