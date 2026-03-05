@@ -5,14 +5,13 @@ ironclaw agents with worker sandboxing.
 
 ## Approaches
 
-| Approach | Isolation boundary | Daemon | Worker isolation |
+| Approach | Agent isolation | Worker isolation | Daemon |
 |---|---|---|---|
-| `container-docker` | cgroups/namespaces | dockerd + containerd | Shared kernel, shared daemon |
-| `container-gvisor` | cgroups/namespaces + gVisor sentry | dockerd + containerd | gVisor syscall interception, shared daemon |
-| `container-gvisor-dind` | gVisor sandbox per agent | Per-agent dockerd inside gVisor | gVisor kernel isolation + private daemon |
-| `podman-rootless` | cgroups/namespaces per user | None (socket-activated) | Separate user namespaces, no persistent daemon |
-| `vm-qemu` | Full VM per agent | QEMU process + inner dockerd | Full VM (heavy) |
-| `hybrid-firecracker` | Firecracker microVM per worker | dockerd (for agents) | Hardware-level KVM, lightweight |
+| `container-docker` | cgroups/namespaces (shared daemon) | cgroups/namespaces (shared daemon) | Shared host dockerd |
+| `container-gvisor-dind` | gVisor sandbox | cgroups/namespaces (private daemon inside gVisor) | Per-agent dockerd inside gVisor |
+| `podman-rootless` | cgroups/namespaces (per-user) | cgroups/namespaces (per-user) | None (socket-activated) |
+| `vm-qemu` | KVM (QEMU, full guest OS) | cgroups/namespaces (inside guest) | Per-VM dockerd inside guest |
+| `hybrid-firecracker` | cgroups/namespaces (shared daemon) | KVM (Firecracker, minimal VMM) | Shared host dockerd |
 
 ## Quick Start
 
@@ -36,14 +35,10 @@ make compare
 make plot
 ```
 
-### gVisor approaches (requires runsc)
+### gVisor DinD (requires runsc)
 
 ```bash
-# container-gvisor uses gVisor for workers only
-make run APPROACH=container-gvisor AGENTS=5
-
-# container-gvisor-dind runs each agent in its own gVisor sandbox
-# with a private Docker daemon (Docker-in-gVisor)
+# Each agent runs in its own gVisor sandbox with a private Docker daemon
 make run APPROACH=container-gvisor-dind AGENTS=3
 ```
 
@@ -100,7 +95,7 @@ sudo bash benchmarks/setup-gcp.sh
 ## Prerequisites
 
 - **All approaches**: Linux, Docker daemon, Python 3.8+, `docker` Python SDK
-- **gVisor approaches**: `runsc` runtime registered in Docker daemon config
+- **gVisor DinD**: `runsc` runtime registered in Docker daemon config
 - **Podman rootless**: `podman`, `uidmap`, `systemd-container`
 - **VM approach**: QEMU (`qemu-system-x86_64`), KVM (`/dev/kvm`), libguestfs-tools
 - **Firecracker hybrid**: `firecracker` binary, KVM (`/dev/kvm`)

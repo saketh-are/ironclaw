@@ -11,6 +11,7 @@ No persistent daemon runs. Podman's API is socket-activated (transient
 """
 
 import subprocess
+import time
 from pathlib import Path
 from typing import Dict, List
 
@@ -19,6 +20,9 @@ from approaches.base import Approach, BenchmarkConfig
 USER_PREFIX = "bench-pm-"
 BASE_UID = 3000
 SOCKET_TEMPLATE = "/run/user/{uid}/podman/podman.sock"
+PROXY_SOCKET_TEMPLATE = "/home/{user}/.podman-proxy.sock"
+PROXY_SCRIPT = Path(__file__).resolve().parent.parent / "workload" / "podman_proxy.py"
+PROXY_STARTUP_TIMEOUT_S = 5
 def _run_as_user(user: str, cmd: List[str],
                  capture: bool = True,
                  stdin=None) -> subprocess.CompletedProcess:
@@ -104,6 +108,47 @@ def _load_docker_image_to_user(user: str, image: str) -> None:
     target = f"localhost/{image}"
     if loaded_name and loaded_name != target:
         _run_as_user(user, ["podman", "tag", loaded_name, target])
+
+
+def _start_proxy(user: str, socket_path: str, allowed_image: str) -> str:
+    """Start the filtering API proxy for a user and return the proxy socket path.
+
+    Copies the proxy script to the user's home directory, launches it via
+    ``_fire_as_user``, and polls until the proxy socket appears.
+    """
+    proxy_socket = PROXY_SOCKET_TEMPLATE.format(user=user)
+    home_dir = f"/home/{user}"
+    dest = f"{home_dir}/podman_proxy.py"
+
+    # Copy the proxy script into the user's home dir
+    subprocess.run(
+        ["sudo", "cp", str(PROXY_SCRIPT), dest],
+        capture_output=True, check=True,
+    )
+    subprocess.run(
+        ["sudo", "chown", f"{user}:{user}", dest],
+        capture_output=True, check=True,
+    )
+
+    # Launch the proxy as the user (fire-and-forget)
+    _fire_as_user(user, [
+        "python3", dest,
+        "--listen", proxy_socket,
+        "--upstream", socket_path,
+        "--allowed-image", allowed_image,
+    ])
+
+    # Poll until the proxy socket appears
+    deadline = time.monotonic() + PROXY_STARTUP_TIMEOUT_S
+    while time.monotonic() < deadline:
+        if Path(proxy_socket).exists():
+            return proxy_socket
+        time.sleep(0.1)
+
+    raise RuntimeError(
+        f"Proxy socket {proxy_socket} did not appear within "
+        f"{PROXY_STARTUP_TIMEOUT_S}s for user {user}"
+    )
 
 
 class PodmanRootlessApproach(Approach):
@@ -206,6 +251,12 @@ class PodmanRootlessApproach(Approach):
                 print(f"[{self.name}] Loading {image} into {user}...")
                 _load_docker_image_to_user(user, image)
 
+            # 4.5. Start filtering API proxy for this user
+            allowed_image = f"localhost/{config.worker_image}"
+            proxy_socket = _start_proxy(user, socket_path, allowed_image)
+            print(f"[{self.name}] API proxy started for {user}: "
+                  f"{proxy_socket}")
+
             # 5. Create agent container (does not start a process, safe
             #    to use with --pipe --wait).
             host_port = config.orchestrator_base_port + i
@@ -216,8 +267,8 @@ class PodmanRootlessApproach(Approach):
                 "--security-opt", "label=disable",
                 # Publish orchestrator HTTP port
                 "-p", f"{host_port}:8080",
-                # Mount this user's podman socket into the container
-                "-v", f"{socket_path}:/run/podman/podman.sock",
+                # Mount the filtering proxy socket (NOT the real Podman socket)
+                "-v", f"{proxy_socket}:/run/podman/podman.sock",
                 # Docker SDK will talk to Podman's compat API
                 "-e", "DOCKER_HOST=unix:///run/podman/podman.sock",
                 "-e", "WORKER_BACKEND=docker",
