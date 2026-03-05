@@ -29,9 +29,7 @@ Test parameters: `SPAWN_INTERVAL_MEAN_S=5`, `WORKER_DURATION=30s`,
 | `vm-qemu` | 9767 | 10308 | 10298 | 3256 | 0 | — | — |
 
 Notes:
-- `vm-qemu`: Workers failed to spawn inside QEMU guests (orchestrator instrumentation not yet wired).
 - `container-gvisor-dind` / `container-sysbox-dind`: Avg workers not reported (DinD inner daemon not sampled).
-- `podman-rootless` uses 24% less memory per agent than Docker with no shared daemon overhead.
 
 Spawn latency (ms) — docker and podman-rootless only (instrumented runs):
 
