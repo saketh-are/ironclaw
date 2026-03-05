@@ -32,12 +32,10 @@ GCP `n2-standard-16`.
 | `container-sysbox-dind` | 10025 | 13773 | 13262 | 2005 | 120 | 17.3 | 120/120 |
 | `podman-rootless` | 2251 | 8105 | 5612 | 450 | 89 | 3.3 | 89/89 |
 | `hybrid-firecracker` | 8979 | 14404 | 13291 | 1796 | 108 | 15.9 | 108/108 |
-| `vm-qemu` | 15703 | 17554 | 17546 | 3141 | 114 | — | 111/113 |
+| `vm-qemu` | 15585 | 17470 | 17441 | 3117 | 116 | 16.9 | 115/115 |
 
 Notes:
 - `container-gvisor-dind`: Fewer workers spawned because gVisor's `container.create()` takes ~8s (vfs storage driver), eating into the 5s spawn interval.
-- `vm-qemu`: Avg workers not reported (agent HTTP server inside VM is not port-mapped to host).
-- `vm-qemu` checkins: 2 workers spawned near shutdown missed their checkin callback (111/113).
 
 Spawn latency (ms):
 
@@ -47,7 +45,7 @@ Spawn latency (ms):
 | `container-gvisor-dind` | 7365 | 12024 | 302 | 683 | 7750 | 12428 | 948 | 1098 |
 | `container-sysbox-dind` | 59 | 73 | 369 | 421 | 428 | 480 | 565 | 603 |
 | `podman-rootless` | 36 | 4738 | 113 | 2860 | 155 | 9185 | 719 | 959 |
-| `vm-qemu` | 65 | 110 | 369 | 667 | 431 | 889 | 419 | 2889 |
+| `vm-qemu` | 68 | 136 | 367 | 651 | 434 | 849 | 425 | 2968 |
 
 Regenerate with `make compare`.
 

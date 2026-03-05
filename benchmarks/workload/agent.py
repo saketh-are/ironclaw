@@ -1010,12 +1010,8 @@ def main():
         while time.monotonic() < deadline and get_checkin_count() < _worker_counter:
             time.sleep(0.5)
 
-    if WORKER_BACKEND == "firecracker":
-        cleanup_workers_firecracker()
-    else:
-        cleanup_workers_docker(client)
-
-    # Emit checkin summary for post-run validation
+    # Emit final checkin/storage summaries BEFORE cleanup so they're flushed
+    # even if the process is killed during slow container removal.
     if ORCHESTRATOR_PORT:
         checkins = get_checkin_count()
         emit_event("checkin_summary",
@@ -1023,9 +1019,13 @@ def main():
                    checkins_received=checkins,
                    checkins_ok=checkins == _worker_counter)
 
-    # Emit storage summary for post-run validation
     if STORAGE_VALIDATION and _worker_counter > 0:
         emit_event("storage_summary", **get_storage_summary())
+
+    if WORKER_BACKEND == "firecracker":
+        cleanup_workers_firecracker()
+    else:
+        cleanup_workers_docker(client)
 
     emit_event("agent_stop", total_workers_spawned=_worker_counter)
     log("Agent stopped.")

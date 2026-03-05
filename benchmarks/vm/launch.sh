@@ -40,6 +40,13 @@ start_vm() {
     ID_NUM=$(echo "$AGENT_ID" | grep -o '[0-9]*$' || echo "0")
     local SSH_PORT=$((2200 + ID_NUM))
 
+    # Build host port forwarding: SSH always, orchestrator if requested
+    local ORCH_HOST_PORT="${ORCH_HOST_PORT:-}"
+    local HOSTFWD="hostfwd=tcp::${SSH_PORT}-:22"
+    if [ -n "$ORCH_HOST_PORT" ]; then
+        HOSTFWD="${HOSTFWD},hostfwd=tcp::${ORCH_HOST_PORT}-:8080"
+    fi
+
     # Build cloud-init ISO with agent-env config file
     local CLOUD_INIT_ARGS=""
     local CIDATA="${VM_DIR}/cidata.iso"
@@ -79,7 +86,7 @@ META
         -smp "$CPUS" \
         -drive "file=${OVERLAY},format=qcow2,if=virtio" \
         ${CLOUD_INIT_ARGS} \
-        -netdev "user,id=net0,hostfwd=tcp::${SSH_PORT}-:22" \
+        -netdev "user,id=net0,${HOSTFWD}" \
         -device virtio-net-pci,netdev=net0 \
         -virtfs "local,path=${VM_DIR}/shared,mount_tag=benchshare,security_model=mapped-xattr,id=bench9p" \
         -nographic \
@@ -102,7 +109,7 @@ stop_vm() {
         PID=$(cat "${VM_DIR}/qemu.pid")
         kill "$PID" 2>/dev/null || true
         # Wait for process to exit
-        for _ in $(seq 1 10); do
+        for _ in $(seq 1 30); do
             kill -0 "$PID" 2>/dev/null || break
             sleep 0.5
         done

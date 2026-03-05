@@ -13,10 +13,12 @@ This means VM memory acts as a high-water mark, which is a real property
 of the isolation approach and affects density economics.
 """
 
+import json
 import os
 import shutil
 import subprocess
 import time
+import urllib.request
 from pathlib import Path
 from typing import Dict, List
 
@@ -33,6 +35,7 @@ class VmQemuApproach(Approach):
 
     def __init__(self):
         self._agent_ids: List[str] = []
+        self._host_ports: Dict[str, int] = {}  # agent_id → host port
         self._config: BenchmarkConfig = None
 
     @property
@@ -103,14 +106,19 @@ class VmQemuApproach(Approach):
                 str(VM_IMAGE),
             ] + env_vars
 
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            host_port = config.orchestrator_base_port + i
+            env = os.environ.copy()
+            env["ORCH_HOST_PORT"] = str(host_port)
+
+            result = subprocess.run(cmd, capture_output=True, text=True, env=env)
             if result.returncode != 0:
                 raise RuntimeError(
                     f"Failed to start VM {agent_id}: {result.stderr.strip()}"
                 )
 
             self._agent_ids.append(agent_id)
-            print(f"[{self.name}] Started VM {agent_id}")
+            self._host_ports[agent_id] = host_port
+            print(f"[{self.name}] Started VM {agent_id} (orch port {host_port})")
 
         # Wait for each VM to emit agent_start (max 120s)
         vm_base = Path(os.environ.get("VM_BASE_DIR", "/tmp/bench-vms"))
@@ -138,6 +146,26 @@ class VmQemuApproach(Approach):
             missing = set(self._agent_ids) - ready
             print(f"[{self.name}] WARNING: {len(missing)} VMs not ready: {missing}")
 
+        # Verify /health reachable via port forward for ready VMs
+        print(f"[{self.name}] Verifying HTTP port forwards...")
+        for agent_id in ready:
+            port = self._host_ports.get(agent_id)
+            if port is None:
+                continue
+            reachable = False
+            for _ in range(15):  # 30s max
+                try:
+                    resp = urllib.request.urlopen(
+                        f"http://127.0.0.1:{port}/health", timeout=2
+                    )
+                    if resp.status == 200:
+                        reachable = True
+                        break
+                except Exception:
+                    time.sleep(2)
+            if not reachable:
+                print(f"[{self.name}] WARNING: {agent_id} /health not reachable on port {port}")
+
         print(f"[{self.name}] {len(ready)}/{n} VMs started.")
         return list(self._agent_ids)
 
@@ -158,13 +186,18 @@ class VmQemuApproach(Approach):
         return pids
 
     def count_active_workers(self) -> int:
-        """
-        Count workers across all VMs.
-        Since workers run inside VMs, we can't count them from the host.
-        Return -1 to indicate "unknown" — accurate counts come from
-        agent JSONL logs collected after the run.
-        """
-        return -1
+        """Count workers across all VMs by querying each agent's /status endpoint."""
+        total = 0
+        for agent_id, port in self._host_ports.items():
+            try:
+                resp = urllib.request.urlopen(
+                    f"http://127.0.0.1:{port}/status", timeout=2
+                )
+                data = json.loads(resp.read())
+                total += data.get("active_workers", 0)
+            except Exception:
+                pass
+        return total
 
     def collect_agent_logs(self, agent_ids: List[str], output_dir) -> None:
         """Collect agent JSONL from 9p shared dir and console.log as debug artifact."""
