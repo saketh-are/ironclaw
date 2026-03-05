@@ -26,11 +26,12 @@ fi
 
 echo "[build-rootfs] Building minimal Alpine rootfs..."
 
-# Step 1: Create a Docker container with Alpine + Python3
-CONTAINER_ID=$(docker create --name "$BUILD_TAG" alpine:3.19 /bin/true 2>/dev/null || true)
+# Step 1: Create a long-lived Docker container with Alpine + Python3.
+# The build later uses `docker exec`, so the container must stay running.
+CONTAINER_ID=$(docker create --name "$BUILD_TAG" alpine:3.19 sh -c "sleep infinity" 2>/dev/null || true)
 if [ -z "$CONTAINER_ID" ]; then
     docker rm -f "$BUILD_TAG" 2>/dev/null || true
-    CONTAINER_ID=$(docker create --name "$BUILD_TAG" alpine:3.19 /bin/true)
+    CONTAINER_ID=$(docker create --name "$BUILD_TAG" alpine:3.19 sh -c "sleep infinity")
 fi
 
 # Install Python3 inside the container

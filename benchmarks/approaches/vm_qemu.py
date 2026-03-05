@@ -38,6 +38,16 @@ class VmQemuApproach(Approach):
         self._host_ports: Dict[str, int] = {}  # agent_id → host port
         self._config: BenchmarkConfig = None
 
+    def _abort_startup(self, message: str) -> None:
+        """Stop partially started VMs before surfacing a fatal startup error."""
+        try:
+            self.cleanup()
+        except Exception as cleanup_error:
+            raise RuntimeError(
+                f"{message} Cleanup also failed: {cleanup_error}"
+            ) from cleanup_error
+        raise RuntimeError(message)
+
     @property
     def name(self) -> str:
         return "vm-qemu"
@@ -144,10 +154,13 @@ class VmQemuApproach(Approach):
 
         if len(ready) < n:
             missing = set(self._agent_ids) - ready
-            print(f"[{self.name}] WARNING: {len(missing)} VMs not ready: {missing}")
+            self._abort_startup(
+                f"{len(missing)} VMs never emitted agent_start: {sorted(missing)}"
+            )
 
         # Verify /health reachable via port forward for ready VMs
         print(f"[{self.name}] Verifying HTTP port forwards...")
+        unhealthy = []
         for agent_id in ready:
             port = self._host_ports.get(agent_id)
             if port is None:
@@ -164,7 +177,13 @@ class VmQemuApproach(Approach):
                 except Exception:
                     time.sleep(2)
             if not reachable:
-                print(f"[{self.name}] WARNING: {agent_id} /health not reachable on port {port}")
+                unhealthy.append(f"{agent_id}:{port}")
+
+        if unhealthy:
+            self._abort_startup(
+                "VM agent /health endpoint never became reachable via port "
+                f"forward: {', '.join(unhealthy)}"
+            )
 
         print(f"[{self.name}] {len(ready)}/{n} VMs started.")
         return list(self._agent_ids)

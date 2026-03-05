@@ -47,37 +47,45 @@ start_vm() {
         HOSTFWD="${HOSTFWD},hostfwd=tcp::${ORCH_HOST_PORT}-:8080"
     fi
 
-    # Build cloud-init ISO with agent-env config file
+    # Build cloud-init ISO with agent-env config file. The benchmark depends
+    # on this ISO for runtime config, so silently skipping it produces invalid
+    # runs instead of a usable fallback.
+    local ISO_CMD=""
+    if command -v genisoimage &>/dev/null; then
+        ISO_CMD="genisoimage"
+    elif command -v mkisofs &>/dev/null; then
+        ISO_CMD="mkisofs"
+    else
+        echo "ERROR: genisoimage or mkisofs is required to launch benchmark VMs." >&2
+        return 1
+    fi
+
     local CLOUD_INIT_ARGS=""
     local CIDATA="${VM_DIR}/cidata.iso"
-    if command -v genisoimage &>/dev/null || command -v mkisofs &>/dev/null; then
-        mkdir -p "${VM_DIR}/cidata"
+    mkdir -p "${VM_DIR}/cidata"
 
-        # Write agent config as sourceable env file
-        {
-            echo "AGENT_ID=\"${AGENT_ID}\""
-            for var in "$@"; do
-                echo "$var" | sed 's/=\(.*\)/="\1"/'
-            done
-        } > "${VM_DIR}/cidata/agent-env"
+    # Write agent config as sourceable env file
+    {
+        echo "AGENT_ID=\"${AGENT_ID}\""
+        for var in "$@"; do
+            echo "$var" | sed 's/=\(.*\)/="\1"/'
+        done
+    } > "${VM_DIR}/cidata/agent-env"
 
-        # Minimal cloud-init meta-data
-        cat > "${VM_DIR}/cidata/meta-data" <<META
+    # Minimal cloud-init meta-data
+    cat > "${VM_DIR}/cidata/meta-data" <<META
 instance-id: ${AGENT_ID}
 local-hostname: ${AGENT_ID}
 META
 
-        # Empty user-data (agent is started by OpenRC bench-agent service)
-        echo "#cloud-config" > "${VM_DIR}/cidata/user-data"
+    # Empty user-data (agent is started by OpenRC bench-agent service)
+    echo "#cloud-config" > "${VM_DIR}/cidata/user-data"
 
-        local ISO_CMD="genisoimage"
-        command -v genisoimage &>/dev/null || ISO_CMD="mkisofs"
-        "$ISO_CMD" -quiet -output "$CIDATA" -volid cidata -joliet -rock \
-            "${VM_DIR}/cidata/agent-env" \
-            "${VM_DIR}/cidata/user-data" \
-            "${VM_DIR}/cidata/meta-data" 2>/dev/null
-        CLOUD_INIT_ARGS="-drive file=${CIDATA},format=raw,if=virtio,readonly=on"
-    fi
+    "$ISO_CMD" -quiet -output "$CIDATA" -volid cidata -joliet -rock \
+        "${VM_DIR}/cidata/agent-env" \
+        "${VM_DIR}/cidata/user-data" \
+        "${VM_DIR}/cidata/meta-data" 2>/dev/null
+    CLOUD_INIT_ARGS="-drive file=${CIDATA},format=raw,if=virtio,readonly=on"
 
     # Launch QEMU
     qemu-system-x86_64 \

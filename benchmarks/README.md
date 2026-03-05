@@ -27,26 +27,28 @@ GCP `n2-standard-16`.
 
 | Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Per-Agent (MiB) | Workers Spawned | Avg Workers | Checkins OK |
 |----------|---------------|------------|-----------|----------------|----------------|-------------|-------------|
-| `container-docker` | 9893 | 13298 | 12944 | 1979 | 119 | 17.4 | 119/119 |
-| `container-gvisor-dind` | 7413 | 10066 | 9589 | 1483 | 73 | 10.5 | 73/73 |
-| `container-sysbox-dind` | 10025 | 13773 | 13262 | 2005 | 120 | 17.3 | 120/120 |
+| `container-docker` | 11225 | 13819 | 13384 | 2245 | 121 | 19.3 | 121/121 |
+| `container-gvisor-dind` | 10793 | 13516 | 12539 | 2159 | 104 | 17.7 | 104/104 |
+| `container-sysbox-dind` | 11310 | 14018 | 13519 | 2262 | 119 | 19.2 | 119/119 |
 | `podman-rootless` | 10280 | 12149 | 12010 | 2056 | 123 | 16.7 | 123/123 |
-| `hybrid-firecracker` | 8979 | 14404 | 13291 | 1796 | 108 | 15.9 | 108/108 |
-| `vm-qemu` | 15585 | 17470 | 17441 | 3117 | 116 | 16.9 | 115/115 |
+| `hybrid-firecracker` | 9515 | 13102 | 12406 | 1903 | 107 | 19.4 | 107/107 |
+| `vm-qemu` | 17544 | 17578 | 17566 | 3509 | 115 | 19.3 | 114/114 |
 
 Notes:
-- `container-gvisor-dind`: Fewer workers spawned because gVisor's `container.create()` takes ~8s (vfs storage driver), eating into the 5s spawn interval.
-- `podman-rootless`: Historical README numbers were understated because `summary.json` included teardown samples after the benchmark window. The row above was rerun after fixing that bug in `runner/orchestrate.py`.
+- All rows above were regenerated on March 5, 2026 after fixing `summary.json` to exclude teardown samples past the benchmark window. Historical README numbers are stale.
+- `container-gvisor-dind`: Fewer workers spawned because inner `container.create()` still takes about `3.3s-3.7s`, which materially eats into the `5s` mean spawn interval.
+- `vm-qemu`: `Workers Spawned` counts all `worker_start` events; `Checkins OK` only counts workers that survived long enough for a checkin to be expected.
 
 Spawn latency (ms):
 
 | Approach | Create p50 | Create p95 | Start p50 | Start p95 | Total p50 | Total p95 | Cold-Start p50 | Cold-Start p95 |
 |----------|-----------|-----------|----------|----------|----------|----------|---------------|---------------|
-| `container-docker` | 33 | 40 | 136 | 168 | 170 | 207 | 542 | 572 |
-| `container-gvisor-dind` | 7365 | 12024 | 302 | 683 | 7750 | 12428 | 948 | 1098 |
-| `container-sysbox-dind` | 59 | 73 | 369 | 421 | 428 | 480 | 565 | 603 |
+| `container-docker` | 23 | 29 | 114 | 140 | 138 | 177 | 389 | 401 |
+| `container-gvisor-dind` | 3308 | 3657 | 203 | 248 | 3503 | 3883 | 606 | 747 |
+| `container-sysbox-dind` | 39 | 53 | 276 | 339 | 318 | 377 | 392 | 403 |
 | `podman-rootless` | 24 | 47 | 88 | 111 | 113 | 168 | 426 | 448 |
-| `vm-qemu` | 68 | 136 | 367 | 651 | 434 | 849 | 425 | 2968 |
+| `hybrid-firecracker` | n/a | n/a | n/a | n/a | 112 | 116 | 4706 | 4808 |
+| `vm-qemu` | 46 | 103 | 352 | 727 | 397 | 824 | 405 | 3195 |
 
 Regenerate with `make compare`.
 
@@ -145,7 +147,7 @@ sudo bash benchmarks/setup-gcp.sh
 - **gVisor DinD**: `runsc` runtime registered in Docker daemon config
 - **Sysbox DinD**: `sysbox-runc` runtime registered in Docker daemon config
 - **Podman rootless**: `podman`, `uidmap`, `systemd-container`
-- **VM approach**: QEMU (`qemu-system-x86_64`), KVM (`/dev/kvm`), libguestfs-tools
+- **VM approach**: QEMU (`qemu-system-x86_64`), KVM (`/dev/kvm` accessible to the benchmark user or run as `root`), libguestfs-tools, `genisoimage` or `mkisofs`
 - **Firecracker hybrid**: `firecracker` binary, KVM (`/dev/kvm`)
 - **Charts**: `pip install matplotlib`
 - **GCP**: Use `setup-gcp.sh` to install everything
