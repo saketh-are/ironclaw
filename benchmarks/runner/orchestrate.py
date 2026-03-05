@@ -170,8 +170,9 @@ def validate_checkins(run_dir: Path) -> dict:
     """
     Validate worker checkins from agent logs.
 
-    Each agent emits a 'checkin_summary' event at shutdown with
-    workers_spawned and checkins_received counts. We verify they match.
+    Prefer raw worker_start/checkin events so the result reflects the actual
+    workers observed in the log, not the last periodic checkin_summary
+    snapshot. Fall back to the summary counters only if raw events are absent.
 
     Returns a dict with validation results (included in summary.json).
     """
@@ -191,9 +192,8 @@ def validate_checkins(run_dir: Path) -> dict:
 
     for log_file in log_files:
         agent_id = log_file.stem  # e.g. "agent-0"
-        # Use the LAST checkin_summary event (agent emits periodic
-        # summaries so that approaches without graceful SIGTERM still
-        # have validation data).
+        started_workers = set()
+        checked_in_workers = set()
         last_summary = None
         try:
             with open(log_file) as f:
@@ -205,12 +205,42 @@ def validate_checkins(run_dir: Path) -> dict:
                         event = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    if event.get("event") == "checkin_summary":
+                    if event.get("event") == "worker_start" and event.get("worker_id"):
+                        started_workers.add(event["worker_id"])
+                    elif event.get("event") == "checkin" and event.get("worker_id"):
+                        checked_in_workers.add(event["worker_id"])
+                    elif event.get("event") == "checkin_summary":
                         last_summary = event
         except Exception:
             pass
 
-        if last_summary:
+        if started_workers or checked_in_workers:
+            spawned = len(started_workers)
+            received = len(checked_in_workers)
+            missing_checkins = sorted(started_workers - checked_in_workers)
+            unexpected_checkins = sorted(checked_in_workers - started_workers)
+            ok = not missing_checkins and not unexpected_checkins
+
+            results["agents_checked"] += 1
+            results["total_spawned"] += spawned
+            results["total_checkins"] += received
+            agent_result = {
+                "spawned": spawned,
+                "checkins": received,
+                "ok": ok,
+            }
+            if missing_checkins:
+                agent_result["missing_checkins"] = len(missing_checkins)
+            if unexpected_checkins:
+                agent_result["unexpected_checkins"] = len(unexpected_checkins)
+            if last_summary:
+                agent_result["summary_spawned"] = last_summary.get("workers_spawned", 0)
+                agent_result["summary_checkins"] = last_summary.get("checkins_received", 0)
+                agent_result["summary_ok"] = last_summary.get("checkins_ok", False)
+            results["per_agent"][agent_id] = agent_result
+            if not ok:
+                results["all_ok"] = False
+        elif last_summary:
             spawned = last_summary.get("workers_spawned", 0)
             received = last_summary.get("checkins_received", 0)
             ok = last_summary.get("checkins_ok", False)

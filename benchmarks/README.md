@@ -32,12 +32,13 @@ GCP `n2-standard-16`.
 | `container-sysbox-dind` | 11310 | 14018 | 13519 | 2262 | 119 | 19.2 | 119/119 |
 | `podman-rootless` | 10280 | 12149 | 12010 | 2056 | 123 | 16.7 | 123/123 |
 | `hybrid-firecracker` | 9515 | 13102 | 12406 | 1903 | 107 | 19.4 | 107/107 |
-| `vm-qemu` | 17544 | 17578 | 17566 | 3509 | 115 | 19.3 | 114/114 |
+| `vm-qemu` | 17544 | 17578 | 17566 | 3509 | 115 | 19.3 | 114/115 |
 
 Notes:
 - All rows above were regenerated on March 5, 2026 after fixing `summary.json` to exclude teardown samples past the benchmark window. Historical README numbers are stale.
 - `container-gvisor-dind`: Fewer workers spawned because inner `container.create()` still takes about `3.3s-3.7s`, which materially eats into the `5s` mean spawn interval.
-- `vm-qemu`: `Workers Spawned` counts all `worker_start` events; `Checkins OK` only counts workers that survived long enough for a checkin to be expected.
+- `Checkins OK` is computed from raw `worker_start` and `checkin` events in the agent logs, not from the last periodic `checkin_summary`.
+- `vm-qemu`: One worker started right as shutdown began and never emitted a `checkin`, so the corrected ratio is `114/115`.
 
 Spawn latency (ms):
 
