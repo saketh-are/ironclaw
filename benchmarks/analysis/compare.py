@@ -52,11 +52,11 @@ def print_table(summaries: list) -> None:
     print()
     header = (
         "| Agents | Mode   | Approach         | Baseline | Abs Mean | Net Mean | "
-        "Peak (net) | p95 (net) | Avg Workers | Per-Agent | Drift (KiB/s) |"
+        "Peak (net) | p95 (net) | Avg Workers | Per-Agent | Daemon Delta | Host CPU % | Per-Agent CPU (s) | Drift (KiB/s) |"
     )
     separator = (
         "|--------|--------|------------------|----------|----------|----------|"
-        "-----------|-----------|-------------|-----------|---------------|"
+        "-----------|-----------|-------------|-----------|--------------|------------|-------------------|---------------|"
     )
     print(header)
     print(separator)
@@ -80,7 +80,21 @@ def print_table(summaries: list) -> None:
         per_agent = s.get("per_agent_mean_mib", 0)
         drift = s.get("drift_kb_per_s", 0)
 
+        host_cpu = s.get("host_cpu_pct")
+        agent_cpu = s.get("per_agent_cpu_s")
+
+        # Sum daemon PSS delta across all daemons (growth attributable to agents)
+        daemon_delta_mib = 0.0
+        has_daemon_delta = False
+        for dinfo in s.get("daemon_overhead", {}).values():
+            if "delta_pss_mib" in dinfo:
+                daemon_delta_mib += dinfo["delta_pss_mib"]
+                has_daemon_delta = True
+
         workers_str = f"{workers:.1f}" if workers >= 0 else "N/A"
+        daemon_delta_str = f"{daemon_delta_mib:.0f}" if has_daemon_delta else "-"
+        host_cpu_str = f"{host_cpu:.1f}" if host_cpu is not None else "-"
+        agent_cpu_str = f"{agent_cpu:.1f}" if agent_cpu is not None else "-"
 
         # Flag drift
         drift_str = f"{drift:.1f}" if abs(drift) > 1 else "-"
@@ -89,6 +103,8 @@ def print_table(summaries: list) -> None:
             f"| {agents:>6} | {mode:<6} | {approach:<16} | {baseline:>8.0f} | "
             f"{abs_mean:>8.0f} | {net_mean:>8.0f} | "
             f"{peak:>9.0f} | {p95:>9.0f} | {workers_str:>11} | {per_agent:>9.0f} | "
+            f"{daemon_delta_str:>12} | "
+            f"{host_cpu_str:>10} | {agent_cpu_str:>17} | "
             f"{drift_str:>13} |"
         )
 

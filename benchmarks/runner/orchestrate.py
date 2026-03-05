@@ -32,7 +32,7 @@ BENCH_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BENCH_DIR))
 
 from approaches.base import Approach, BenchmarkConfig
-from runner.collect import Collector, read_meminfo, read_vmstat_swap
+from runner.collect import Collector, read_meminfo, read_vmstat_swap, HOST_CPU_FIELDS
 
 # Registry of available approaches
 APPROACHES = {}
@@ -538,6 +538,14 @@ def run_benchmark(
     drift = summary.get('drift_kb_per_s', 0)
     if abs(drift) > 10:
         print(f"  Drift: {drift:.1f} KiB/s (potential leak)")
+    if 'host_cpu_pct' in summary:
+        print(f"  Host CPU: {summary['host_cpu_pct']}%")
+    if 'per_agent_cpu_s' in summary:
+        print(f"  Per-agent CPU: {summary['per_agent_cpu_s']}s (avg)")
+    for dname, dinfo in summary.get("daemon_overhead", {}).items():
+        if "delta_pss_mib" in dinfo:
+            print(f"  Daemon {dname}: {dinfo['mean_pss_mib']:.0f} MiB PSS "
+                  f"(+{dinfo['delta_pss_mib']:.0f} MiB from baseline)")
 
     # Checkin validation results
     cv = summary.get("checkin_validation")
@@ -640,7 +648,16 @@ def generate_summary(run_dir: Path, swap_result: dict = None) -> dict:
     timestamps = [s["timestamp_s"] for s in steady_samples]
     drift = compute_drift_slope(timestamps, consumed_values)
 
-    # Daemon overhead (average during steady state)
+    # Daemon overhead: baseline (before agents) and steady-state (with agents)
+    daemon_baseline = {}
+    for s in baseline_samples:
+        for daemon_name, daemon_data in s.get("daemons", {}).items():
+            if daemon_name not in daemon_baseline:
+                daemon_baseline[daemon_name] = {"rss_sum": 0, "pss_sum": 0, "count": 0}
+            daemon_baseline[daemon_name]["rss_sum"] += daemon_data.get("rss_kb", 0)
+            daemon_baseline[daemon_name]["pss_sum"] += daemon_data.get("pss_kb", 0)
+            daemon_baseline[daemon_name]["count"] += 1
+
     daemon_overhead = {}
     for s in steady_samples:
         for daemon_name, daemon_data in s.get("daemons", {}).items():
@@ -653,10 +670,84 @@ def generate_summary(run_dir: Path, swap_result: dict = None) -> dict:
     daemon_summary = {}
     for name, data in daemon_overhead.items():
         if data["count"] > 0:
-            daemon_summary[name] = {
-                "mean_rss_mib": (data["rss_sum"] / data["count"]) / 1024,
-                "mean_pss_mib": (data["pss_sum"] / data["count"]) / 1024,
+            mean_rss_kb = data["rss_sum"] / data["count"]
+            mean_pss_kb = data["pss_sum"] / data["count"]
+            entry = {
+                "mean_rss_mib": mean_rss_kb / 1024,
+                "mean_pss_mib": mean_pss_kb / 1024,
             }
+            # Compute delta from baseline to isolate growth caused by agents
+            bl = daemon_baseline.get(name)
+            if bl and bl["count"] > 0:
+                bl_rss_kb = bl["rss_sum"] / bl["count"]
+                bl_pss_kb = bl["pss_sum"] / bl["count"]
+                entry["baseline_rss_mib"] = bl_rss_kb / 1024
+                entry["baseline_pss_mib"] = bl_pss_kb / 1024
+                entry["delta_rss_mib"] = (mean_rss_kb - bl_rss_kb) / 1024
+                entry["delta_pss_mib"] = (mean_pss_kb - bl_pss_kb) / 1024
+            daemon_summary[name] = entry
+
+    # --- CPU utilization ---
+    clk_tck = os.sysconf("SC_CLK_TCK")  # typically 100
+
+    # Host CPU %: delta of busy vs total jiffies across steady state
+    host_cpu_pct = None
+    cpu_samples = [s for s in steady_samples if s.get("host_cpu")]
+    if len(cpu_samples) >= 2:
+        first_cpu = cpu_samples[0]["host_cpu"]
+        last_cpu = cpu_samples[-1]["host_cpu"]
+        busy_fields = [f for f in HOST_CPU_FIELDS if f not in ("idle", "iowait")]
+        delta_busy = sum(last_cpu.get(f, 0) - first_cpu.get(f, 0) for f in busy_fields)
+        delta_total = sum(last_cpu.get(f, 0) - first_cpu.get(f, 0) for f in HOST_CPU_FIELDS)
+        if delta_total > 0:
+            host_cpu_pct = round(100.0 * delta_busy / delta_total, 1)
+
+    # Per-agent CPU seconds: delta of (utime+stime) / CLK_TCK
+    agent_cpu_seconds = []
+    entity_cpu_samples = [s for s in steady_samples if s.get("entity_cpu")]
+    if entity_cpu_samples:
+        # For each agent, find first and last sample where it appears
+        all_agents = set()
+        for s in entity_cpu_samples:
+            all_agents.update(s["entity_cpu"].keys())
+        for agent_id in sorted(all_agents):
+            first = None
+            last = None
+            for s in entity_cpu_samples:
+                if agent_id in s["entity_cpu"]:
+                    if first is None:
+                        first = s["entity_cpu"][agent_id]
+                    last = s["entity_cpu"][agent_id]
+            if first is not None and last is not None:
+                delta_u = last["utime"] - first["utime"]
+                delta_s = last["stime"] - first["stime"]
+                agent_cpu_seconds.append((delta_u + delta_s) / clk_tck)
+
+    per_agent_cpu_s = None
+    if agent_cpu_seconds:
+        per_agent_cpu_s = round(sum(agent_cpu_seconds) / len(agent_cpu_seconds), 1)
+
+    # Daemon CPU seconds
+    daemon_cpu_summary = {}
+    daemon_cpu_samples = [s for s in steady_samples if s.get("daemon_cpu")]
+    if daemon_cpu_samples:
+        all_daemons = set()
+        for s in daemon_cpu_samples:
+            all_daemons.update(s["daemon_cpu"].keys())
+        for daemon_name in sorted(all_daemons):
+            first = None
+            last = None
+            for s in daemon_cpu_samples:
+                if daemon_name in s["daemon_cpu"]:
+                    if first is None:
+                        first = s["daemon_cpu"][daemon_name]
+                    last = s["daemon_cpu"][daemon_name]
+            if first is not None and last is not None:
+                delta_u = last["utime"] - first["utime"]
+                delta_s = last["stime"] - first["stime"]
+                daemon_cpu_summary[daemon_name] = {
+                    "cpu_s": round((delta_u + delta_s) / clk_tck, 1),
+                }
 
     # Agent log stats
     agent_log_stats = parse_agent_logs(run_dir)
@@ -684,6 +775,14 @@ def generate_summary(run_dir: Path, swap_result: dict = None) -> dict:
         "daemon_overhead": daemon_summary,
         **agent_log_stats,
     }
+
+    # CPU stats
+    if host_cpu_pct is not None:
+        summary["host_cpu_pct"] = host_cpu_pct
+    if per_agent_cpu_s is not None:
+        summary["per_agent_cpu_s"] = per_agent_cpu_s
+    if daemon_cpu_summary:
+        summary["daemon_cpu"] = daemon_cpu_summary
 
     # Swap info
     if swap_result:
