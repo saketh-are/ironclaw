@@ -1,0 +1,21 @@
+{
+  "approach": "podman-rootless",
+  "mode": "loaded",
+  "num_agents": 5,
+  "config": {
+    "agent_memory_mb": 4096,
+    "agent_baseline_mb": 50,
+    "max_concurrent_workers": 5,
+    "spawn_interval_mean_s": 5,
+    "benchmark_duration_s": 180,
+    "worker_image": "bench-worker:latest",
+    "worker_memory_limit_mb": 2048,
+    "worker_memory_mb": 500,
+    "worker_duration_min_s": 30,
+    "worker_duration_max_s": 30
+  },
+  "run_id": "31639661f6e1",
+  "rng_seed": 42,
+  "sample_interval_ms": 500,
+  "timestamp": "20260305T221431"
+}

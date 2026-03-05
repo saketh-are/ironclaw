@@ -1,0 +1,115 @@
+{
+  "approach": "podman-rootless",
+  "mode": "loaded",
+  "num_agents": 5,
+  "run_id": "31639661f6e1",
+  "rng_seed": 42,
+  "baseline_mib": 2954.9263671875,
+  "steady_state_mean_mib": 10280.130095880682,
+  "peak_mib": 12149.3626953125,
+  "p50_mib": 10639.3470703125,
+  "p95_mib": 12010.3197265625,
+  "p99_mib": 12010.3197265625,
+  "avg_workers": 16.727272727272727,
+  "per_agent_mean_mib": 2056.0260191761363,
+  "drift_kb_per_s": -29623.4,
+  "total_samples": 39,
+  "steady_state_samples": 11,
+  "daemon_overhead": {},
+  "total_workers_spawned": 123,
+  "max_concurrent_workers": 5,
+  "host_cpu_pct": 13.4,
+  "per_agent_cpu_s": 0.2,
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 5,
+    "agents_missing_summary": 0,
+    "total_spawned": 123,
+    "total_checkins": 123,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 25,
+        "checkins": 25,
+        "ok": true,
+        "summary_spawned": 25,
+        "summary_checkins": 25,
+        "summary_ok": true
+      },
+      "agent-1": {
+        "spawned": 28,
+        "checkins": 28,
+        "ok": true,
+        "summary_spawned": 28,
+        "summary_checkins": 28,
+        "summary_ok": true
+      },
+      "agent-2": {
+        "spawned": 26,
+        "checkins": 26,
+        "ok": true,
+        "summary_spawned": 26,
+        "summary_checkins": 26,
+        "summary_ok": true
+      },
+      "agent-3": {
+        "spawned": 24,
+        "checkins": 24,
+        "ok": true,
+        "summary_spawned": 24,
+        "summary_checkins": 24,
+        "summary_ok": true
+      },
+      "agent-4": {
+        "spawned": 20,
+        "checkins": 20,
+        "ok": true,
+        "summary_spawned": 20,
+        "summary_checkins": 20,
+        "summary_ok": true
+      }
+    },
+    "all_ok": true
+  },
+  "spawn_latency": {
+    "total": {
+      "count": 123,
+      "min": 93.0,
+      "mean": 124.3,
+      "p50": 112.6,
+      "p95": 168.2,
+      "p99": 222.9,
+      "max": 782.4
+    },
+    "create": {
+      "count": 123,
+      "min": 18.9,
+      "mean": 33.5,
+      "p50": 24.3,
+      "p95": 47.3,
+      "p99": 134.3,
+      "max": 691.6
+    },
+    "start": {
+      "count": 123,
+      "min": 68.8,
+      "mean": 90.7,
+      "p50": 88.4,
+      "p95": 110.9,
+      "p99": 146.4,
+      "max": 163.1
+    },
+    "cold_start": {
+      "count": 123,
+      "min": 389.1,
+      "mean": 428.7,
+      "p50": 426.1,
+      "p95": 447.7,
+      "p99": 471.2,
+      "max": 732.0
+    }
+  }
+}

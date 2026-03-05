@@ -1,0 +1,368 @@
+{"t": 1772751217.1603096, "event": "agent_start", "agent_id": "agent-1", "baseline_mb": 50, "spawn_interval_mean_s": 5.0, "max_concurrent_workers": 5, "duration_s": 180, "rng_seed": 3925878728, "worker_runtime": "default", "worker_backend": "firecracker", "orchestrator_port": "50101", "orchestrator_url": "http://172.20.0.1:50101"}
+{"t": 1772751217.1603599, "event": "log", "agent_id": "agent-1", "message": "Allocating 50 MB baseline memory..."}
+{"t": 1772751217.1797056, "event": "log", "agent_id": "agent-1", "message": "Baseline memory allocated."}
+{"t": 1772751217.1812057, "event": "log", "agent_id": "agent-1", "message": "Firecracker backend: kernel=/opt/vmlinux, rootfs=/opt/worker-rootfs.ext4"}
+{"t": 1772751217.18644, "event": "log", "agent_id": "agent-1", "message": "Orchestrator HTTP server listening on 0.0.0.0:50101"}
+{"t": 1772751217.186703, "event": "status", "agent_id": "agent-1", "active_workers": 0}
+{"t": 1772751217.1867738, "event": "log", "agent_id": "agent-1", "message": "Entering spawn loop."}
+{"t": 1772751219.6679857, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 0/5)"}
+{"t": 1772751219.7855635, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "total_ms": 112.8}
+{"t": 1772751219.7856023, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "active_workers": 1}
+{"t": 1772751221.7759066, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 17532}
+{"t": 1772751222.1869733, "event": "status", "agent_id": "agent-1", "active_workers": 1}
+{"t": 1772751222.1870487, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 1, "checkins_received": 0, "checkins_ok": false}
+{"t": 1772751224.0861166, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 1/5)"}
+{"t": 1772751224.2051783, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "total_ms": 112.9}
+{"t": 1772751224.2052171, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "active_workers": 2}
+{"t": 1772751224.4406114, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "total_checkins": 1, "cold_start_ms": 4655.0}
+{"t": 1772751224.81302, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 2/5)"}
+{"t": 1772751224.932808, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "total_ms": 114.5}
+{"t": 1772751224.9328566, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "active_workers": 3}
+{"t": 1772751226.2594166, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 17272}
+{"t": 1772751226.779354, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 528184}
+{"t": 1772751226.967542, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 17220}
+{"t": 1772751227.1872842, "event": "status", "agent_id": "agent-1", "active_workers": 3}
+{"t": 1772751227.1873908, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 3, "checkins_received": 1, "checkins_ok": false}
+{"t": 1772751229.045918, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "total_checkins": 2, "cold_start_ms": 4840.7}
+{"t": 1772751229.670398, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "total_checkins": 3, "cold_start_ms": 4737.5}
+{"t": 1772751231.2276056, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 3/5)"}
+{"t": 1772751231.2624125, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 528192}
+{"t": 1772751231.345557, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "total_ms": 112.4}
+{"t": 1772751231.3456013, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "active_workers": 4}
+{"t": 1772751231.781584, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 528188}
+{"t": 1772751231.9705818, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 528208}
+{"t": 1772751232.187575, "event": "status", "agent_id": "agent-1", "active_workers": 4}
+{"t": 1772751232.1876712, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 4, "checkins_received": 3, "checkins_ok": false}
+{"t": 1772751233.3548706, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 17268}
+{"t": 1772751233.8124807, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 4/5)"}
+{"t": 1772751233.9307406, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "total_ms": 112.9}
+{"t": 1772751233.9307826, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "active_workers": 5}
+{"t": 1772751235.940837, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 17532}
+{"t": 1772751236.0844307, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "total_checkins": 4, "cold_start_ms": 4738.8}
+{"t": 1772751236.2648602, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 528196}
+{"t": 1772751236.7840698, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 528188}
+{"t": 1772751236.9728725, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 528212}
+{"t": 1772751237.1878357, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751237.1879272, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 4, "checkins_ok": false}
+{"t": 1772751238.3580253, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 528184}
+{"t": 1772751238.5191095, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "total_checkins": 5, "cold_start_ms": 4588.3}
+{"t": 1772751240.2719657, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751240.948643, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 528188}
+{"t": 1772751241.2672174, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 528196}
+{"t": 1772751241.7860594, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 528188}
+{"t": 1772751241.9750192, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 528212}
+{"t": 1772751242.1881094, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751242.1882017, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772751243.3602898, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 528188}
+{"t": 1772751243.580985, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751245.672653, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751245.950838, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 528192}
+{"t": 1772751246.2693563, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 528196}
+{"t": 1772751246.7881365, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 528188}
+{"t": 1772751246.977001, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 528212}
+{"t": 1772751247.188361, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751247.1884418, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772751248.362456, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 528188}
+{"t": 1772751250.9529696, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 528192}
+{"t": 1772751251.2715998, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 528196}
+{"t": 1772751251.3056152, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751251.790394, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 528192}
+{"t": 1772751251.9790597, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 528212}
+{"t": 1772751252.1886182, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751252.1887102, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772751253.3647175, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 528188}
+{"t": 1772751254.6105528, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "active_workers": 4}
+{"t": 1772751255.9550252, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 528192}
+{"t": 1772751256.2737436, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 528200}
+{"t": 1772751256.9811084, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 528216}
+{"t": 1772751257.188873, "event": "status", "agent_id": "agent-1", "active_workers": 4}
+{"t": 1772751257.1889567, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772751258.366833, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 528188}
+{"t": 1772751259.2080643, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "active_workers": 3}
+{"t": 1772751259.822197, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "active_workers": 2}
+{"t": 1772751260.9570692, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 528192}
+{"t": 1772751262.1891348, "event": "status", "agent_id": "agent-1", "active_workers": 2}
+{"t": 1772751262.189213, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772751263.3774319, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 528192}
+{"t": 1772751265.9591506, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 528196}
+{"t": 1772751266.2411776, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "active_workers": 1}
+{"t": 1772751267.1893754, "event": "status", "agent_id": "agent-1", "active_workers": 1}
+{"t": 1772751267.1894598, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772751268.0655575, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 1/5)"}
+{"t": 1772751268.1838105, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-6", "total_ms": 113.1}
+{"t": 1772751268.1838586, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-6", "active_workers": 2}
+{"t": 1772751268.1937678, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 2/5)"}
+{"t": 1772751268.3118494, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-7", "total_ms": 112.6}
+{"t": 1772751268.3118992, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-7", "active_workers": 3}
+{"t": 1772751268.6681156, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "active_workers": 2}
+{"t": 1772751270.155453, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-6", "rss_kb": 17660}
+{"t": 1772751270.2950568, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-7", "rss_kb": 17540}
+{"t": 1772751272.1896317, "event": "status", "agent_id": "agent-1", "active_workers": 2}
+{"t": 1772751272.1897118, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 7, "checkins_received": 5, "checkins_ok": false}
+{"t": 1772751272.8821619, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-6", "total_checkins": 6, "cold_start_ms": 4698.3}
+{"t": 1772751273.018678, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-7", "total_checkins": 7, "cold_start_ms": 4706.8}
+{"t": 1772751275.1585314, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-6", "rss_kb": 528164}
+{"t": 1772751275.2982147, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-7", "rss_kb": 528192}
+{"t": 1772751277.1898658, "event": "status", "agent_id": "agent-1", "active_workers": 2}
+{"t": 1772751277.1899436, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 7, "checkins_received": 7, "checkins_ok": true}
+{"t": 1772751277.2487724, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 2/5)"}
+{"t": 1772751277.3707595, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-8", "total_ms": 112.8}
+{"t": 1772751277.3708105, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-8", "active_workers": 3}
+{"t": 1772751279.40232, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-8", "rss_kb": 17008}
+{"t": 1772751280.1608868, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-6", "rss_kb": 528168}
+{"t": 1772751280.3005285, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-7", "rss_kb": 528196}
+{"t": 1772751282.1900964, "event": "status", "agent_id": "agent-1", "active_workers": 3}
+{"t": 1772751282.190176, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 8, "checkins_received": 7, "checkins_ok": false}
+{"t": 1772751282.1955106, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-8", "total_checkins": 8, "cold_start_ms": 4824.7}
+{"t": 1772751284.094883, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 3/5)"}
+{"t": 1772751284.212586, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-9", "total_ms": 112.0}
+{"t": 1772751284.21264, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-9", "active_workers": 4}
+{"t": 1772751284.4051104, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-8", "rss_kb": 528192}
+{"t": 1772751285.162998, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-6", "rss_kb": 528168}
+{"t": 1772751285.3486063, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-7", "rss_kb": 528196}
+{"t": 1772751286.2021394, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-9", "rss_kb": 17008}
+{"t": 1772751286.7057009, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 4/5)"}
+{"t": 1772751286.8240767, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-10", "total_ms": 113.3}
+{"t": 1772751286.8241222, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-10", "active_workers": 5}
+{"t": 1772751286.9019933, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751287.190344, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751287.1904294, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 10, "checkins_received": 8, "checkins_ok": false}
+{"t": 1772751287.8492317, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751288.5470912, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751288.8585691, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-10", "rss_kb": 17520}
+{"t": 1772751288.9337075, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-9", "total_checkins": 9, "cold_start_ms": 4721.0}
+{"t": 1772751289.4074395, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-8", "rss_kb": 528196}
+{"t": 1772751290.1657352, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-6", "rss_kb": 528168}
+{"t": 1772751290.3510509, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-7", "rss_kb": 528196}
+{"t": 1772751291.2047658, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-9", "rss_kb": 528192}
+{"t": 1772751291.4243422, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-10", "total_checkins": 10, "cold_start_ms": 4600.2}
+{"t": 1772751291.938454, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751292.1905665, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751292.1906369, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 10, "checkins_received": 10, "checkins_ok": true}
+{"t": 1772751293.8619049, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-10", "rss_kb": 528168}
+{"t": 1772751294.409762, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-8", "rss_kb": 528196}
+{"t": 1772751295.1679811, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-6", "rss_kb": 528168}
+{"t": 1772751295.2520945, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751295.3538039, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-7", "rss_kb": 528196}
+{"t": 1772751296.2071936, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-9", "rss_kb": 528196}
+{"t": 1772751297.1907907, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751297.1908677, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 10, "checkins_received": 10, "checkins_ok": true}
+{"t": 1772751298.8643186, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-10", "rss_kb": 528172}
+{"t": 1772751299.4118218, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-8", "rss_kb": 528196}
+{"t": 1772751300.1702802, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-6", "rss_kb": 528172}
+{"t": 1772751300.2169352, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751300.3562074, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-7", "rss_kb": 528200}
+{"t": 1772751301.0503085, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751301.2094305, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-9", "rss_kb": 528196}
+{"t": 1772751302.1910233, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751302.191116, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 10, "checkins_received": 10, "checkins_ok": true}
+{"t": 1772751303.0441074, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-6", "active_workers": 4}
+{"t": 1772751303.2220702, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-7", "active_workers": 3}
+{"t": 1772751303.8665342, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-10", "rss_kb": 528172}
+{"t": 1772751304.4140546, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-8", "rss_kb": 528196}
+{"t": 1772751304.4827526, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 3/5)"}
+{"t": 1772751304.5999348, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-11", "total_ms": 112.1}
+{"t": 1772751304.5999813, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-11", "active_workers": 4}
+{"t": 1772751306.2115133, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-9", "rss_kb": 528196}
+{"t": 1772751306.5634732, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-11", "rss_kb": 17392}
+{"t": 1772751307.0759153, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 4/5)"}
+{"t": 1772751307.191259, "event": "status", "agent_id": "agent-1", "active_workers": 4}
+{"t": 1772751307.1913261, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 12, "checkins_received": 10, "checkins_ok": false}
+{"t": 1772751307.1937122, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-12", "total_ms": 112.5}
+{"t": 1772751307.19375, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-12", "active_workers": 5}
+{"t": 1772751308.868622, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-10", "rss_kb": 528172}
+{"t": 1772751309.2167451, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-12", "rss_kb": 17528}
+{"t": 1772751309.2171218, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-11", "total_checkins": 11, "cold_start_ms": 4617.1}
+{"t": 1772751309.4164674, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-8", "rss_kb": 528200}
+{"t": 1772751311.213797, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-9", "rss_kb": 528196}
+{"t": 1772751311.566305, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-11", "rss_kb": 528308}
+{"t": 1772751311.8300622, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751311.994366, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-12", "total_checkins": 12, "cold_start_ms": 4800.6}
+{"t": 1772751312.1915371, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751312.1916246, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 12, "checkins_received": 12, "checkins_ok": true}
+{"t": 1772751312.3564317, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-8", "active_workers": 4}
+{"t": 1772751313.8709702, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-10", "rss_kb": 528172}
+{"t": 1772751314.2246735, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-12", "rss_kb": 528176}
+{"t": 1772751315.9484181, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 4/5)"}
+{"t": 1772751316.0653524, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-13", "total_ms": 111.7}
+{"t": 1772751316.065397, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-13", "active_workers": 5}
+{"t": 1772751316.2160645, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-9", "rss_kb": 528200}
+{"t": 1772751316.5685422, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-11", "rss_kb": 528312}
+{"t": 1772751317.191778, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751317.1918638, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 13, "checkins_received": 12, "checkins_ok": false}
+{"t": 1772751317.3713408, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751318.0721796, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-13", "rss_kb": 17320}
+{"t": 1772751318.8731105, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-10", "rss_kb": 528176}
+{"t": 1772751319.105579, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-9", "active_workers": 4}
+{"t": 1772751319.2271166, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-12", "rss_kb": 528180}
+{"t": 1772751320.786418, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-13", "total_checkins": 13, "cold_start_ms": 4721.0}
+{"t": 1772751321.5709739, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-11", "rss_kb": 528312}
+{"t": 1772751321.5875945, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-10", "active_workers": 3}
+{"t": 1772751322.1410925, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 3/5)"}
+{"t": 1772751322.192044, "event": "status", "agent_id": "agent-1", "active_workers": 3}
+{"t": 1772751322.1921284, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 14, "checkins_received": 13, "checkins_ok": false}
+{"t": 1772751322.2591796, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-14", "total_ms": 112.7}
+{"t": 1772751322.2592373, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-14", "active_workers": 4}
+{"t": 1772751323.075337, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-13", "rss_kb": 528276}
+{"t": 1772751324.2292361, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-12", "rss_kb": 528180}
+{"t": 1772751324.2555988, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-14", "rss_kb": 16988}
+{"t": 1772751326.3562505, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 4/5)"}
+{"t": 1772751326.4736857, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-15", "total_ms": 112.2}
+{"t": 1772751326.4737377, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-15", "active_workers": 5}
+{"t": 1772751326.5731497, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-11", "rss_kb": 528312}
+{"t": 1772751326.938091, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-14", "total_checkins": 14, "cold_start_ms": 4678.8}
+{"t": 1772751327.1923013, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751327.1923876, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 15, "checkins_received": 14, "checkins_ok": false}
+{"t": 1772751327.5403428, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751328.0777216, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-13", "rss_kb": 528280}
+{"t": 1772751328.5120268, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-15", "rss_kb": 17560}
+{"t": 1772751329.2311895, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-12", "rss_kb": 528180}
+{"t": 1772751329.2633674, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-14", "rss_kb": 528360}
+{"t": 1772751331.2912543, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-15", "total_checkins": 15, "cold_start_ms": 4817.5}
+{"t": 1772751331.5753927, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-11", "rss_kb": 528312}
+{"t": 1772751331.7106974, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751332.1925445, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751332.1926234, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 15, "checkins_received": 15, "checkins_ok": true}
+{"t": 1772751333.0798, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-13", "rss_kb": 528280}
+{"t": 1772751333.5152214, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-15", "rss_kb": 528212}
+{"t": 1772751334.2333946, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-12", "rss_kb": 528180}
+{"t": 1772751334.274311, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-14", "rss_kb": 528364}
+{"t": 1772751336.577474, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-11", "rss_kb": 528316}
+{"t": 1772751337.19279, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751337.1928737, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 15, "checkins_received": 15, "checkins_ok": true}
+{"t": 1772751338.0819583, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-13", "rss_kb": 528280}
+{"t": 1772751338.3142908, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751338.517761, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-15", "rss_kb": 528216}
+{"t": 1772751339.2355902, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-12", "rss_kb": 528184}
+{"t": 1772751339.276373, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-14", "rss_kb": 528364}
+{"t": 1772751339.3877351, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-11", "active_workers": 4}
+{"t": 1772751342.1539893, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-12", "active_workers": 3}
+{"t": 1772751342.1930115, "event": "status", "agent_id": "agent-1", "active_workers": 3}
+{"t": 1772751342.1930895, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 15, "checkins_received": 15, "checkins_ok": true}
+{"t": 1772751343.0840766, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-13", "rss_kb": 528280}
+{"t": 1772751343.5203266, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-15", "rss_kb": 528216}
+{"t": 1772751344.2867017, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-14", "rss_kb": 528364}
+{"t": 1772751347.1932683, "event": "status", "agent_id": "agent-1", "active_workers": 3}
+{"t": 1772751347.1933444, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 15, "checkins_received": 15, "checkins_ok": true}
+{"t": 1772751347.5372083, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 3/5)"}
+{"t": 1772751347.6538503, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-16", "total_ms": 111.4}
+{"t": 1772751347.6539009, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-16", "active_workers": 4}
+{"t": 1772751348.08617, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-13", "rss_kb": 528284}
+{"t": 1772751348.523211, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-15", "rss_kb": 528216}
+{"t": 1772751349.2888193, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-14", "rss_kb": 528364}
+{"t": 1772751349.669343, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-16", "rss_kb": 17404}
+{"t": 1772751350.4583676, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 4/5)"}
+{"t": 1772751350.5767288, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-17", "total_ms": 112.6}
+{"t": 1772751350.5767846, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-17", "active_workers": 5}
+{"t": 1772751350.9419475, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-13", "active_workers": 4}
+{"t": 1772751352.1934836, "event": "status", "agent_id": "agent-1", "active_workers": 4}
+{"t": 1772751352.1935713, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 17, "checkins_received": 15, "checkins_ok": false}
+{"t": 1772751352.344439, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-16", "total_checkins": 16, "cold_start_ms": 4690.5}
+{"t": 1772751352.5973856, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-17", "rss_kb": 17220}
+{"t": 1772751353.5256295, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-15", "rss_kb": 528216}
+{"t": 1772751354.2908063, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-14", "rss_kb": 528368}
+{"t": 1772751354.6723993, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-16", "rss_kb": 528272}
+{"t": 1772751355.2824323, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-17", "total_checkins": 17, "cold_start_ms": 4705.6}
+{"t": 1772751356.5076804, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 4/5)"}
+{"t": 1772751356.6249876, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-18", "total_ms": 112.0}
+{"t": 1772751356.625034, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-18", "active_workers": 5}
+{"t": 1772751357.1093361, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-14", "active_workers": 4}
+{"t": 1772751357.1937265, "event": "status", "agent_id": "agent-1", "active_workers": 4}
+{"t": 1772751357.1937969, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 18, "checkins_received": 17, "checkins_ok": false}
+{"t": 1772751357.3827555, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 4/5)"}
+{"t": 1772751357.500136, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-19", "total_ms": 112.4}
+{"t": 1772751357.5001776, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-19", "active_workers": 5}
+{"t": 1772751357.6070328, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-17", "rss_kb": 528172}
+{"t": 1772751358.267358, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751358.5278103, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-15", "rss_kb": 528220}
+{"t": 1772751358.643564, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-18", "rss_kb": 17048}
+{"t": 1772751359.516744, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751359.5429919, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-19", "rss_kb": 17528}
+{"t": 1772751359.6746027, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-16", "rss_kb": 528276}
+{"t": 1772751361.2372506, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751361.394857, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-18", "total_checkins": 18, "cold_start_ms": 4769.8}
+{"t": 1772751361.4870987, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-15", "active_workers": 4}
+{"t": 1772751362.193959, "event": "status", "agent_id": "agent-1", "active_workers": 4}
+{"t": 1772751362.194036, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 19, "checkins_received": 18, "checkins_ok": false}
+{"t": 1772751362.2309525, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-19", "total_checkins": 19, "cold_start_ms": 4730.8}
+{"t": 1772751362.6096365, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-17", "rss_kb": 528176}
+{"t": 1772751363.1998465, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 4/5)"}
+{"t": 1772751363.317438, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-20", "total_ms": 112.3}
+{"t": 1772751363.317485, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-20", "active_workers": 5}
+{"t": 1772751363.646399, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-18", "rss_kb": 528168}
+{"t": 1772751364.10003, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751364.5458982, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-19", "rss_kb": 528176}
+{"t": 1772751364.6768796, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-16", "rss_kb": 528276}
+{"t": 1772751365.3081136, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-20", "rss_kb": 17244}
+{"t": 1772751367.1941748, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751367.1942482, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 20, "checkins_received": 19, "checkins_ok": false}
+{"t": 1772751367.6418993, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-17", "rss_kb": 528176}
+{"t": 1772751367.789375, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751367.9187338, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751367.9208255, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-20", "total_checkins": 20, "cold_start_ms": 4603.3}
+{"t": 1772751368.6488404, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-18", "rss_kb": 528172}
+{"t": 1772751369.5484002, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-19", "rss_kb": 528180}
+{"t": 1772751369.6792052, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-16", "rss_kb": 528276}
+{"t": 1772751370.3109787, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-20", "rss_kb": 528196}
+{"t": 1772751371.068762, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751372.1944077, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751372.1944835, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 20, "checkins_received": 20, "checkins_ok": true}
+{"t": 1772751372.6458244, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-17", "rss_kb": 528176}
+{"t": 1772751373.651021, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-18", "rss_kb": 528172}
+{"t": 1772751374.5505981, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-19", "rss_kb": 528180}
+{"t": 1772751374.6814692, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-16", "rss_kb": 528276}
+{"t": 1772751374.8925657, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751375.313078, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-20", "rss_kb": 528200}
+{"t": 1772751377.1946762, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751377.1947625, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 20, "checkins_received": 20, "checkins_ok": true}
+{"t": 1772751377.648063, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-17", "rss_kb": 528176}
+{"t": 1772751378.6530385, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-18", "rss_kb": 528172}
+{"t": 1772751379.5527153, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-19", "rss_kb": 528180}
+{"t": 1772751379.6837206, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-16", "rss_kb": 528280}
+{"t": 1772751380.3153226, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-20", "rss_kb": 528200}
+{"t": 1772751381.3714347, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751381.5533972, "event": "log", "agent_id": "agent-1", "message": "At capacity (5/5). Skipping spawn."}
+{"t": 1772751382.1949072, "event": "status", "agent_id": "agent-1", "active_workers": 5}
+{"t": 1772751382.1949804, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 20, "checkins_received": 20, "checkins_ok": true}
+{"t": 1772751382.512567, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-16", "active_workers": 4}
+{"t": 1772751382.650261, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-17", "rss_kb": 528180}
+{"t": 1772751383.6552386, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-18", "rss_kb": 528172}
+{"t": 1772751384.5548716, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-19", "rss_kb": 528180}
+{"t": 1772751385.317396, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-20", "rss_kb": 528200}
+{"t": 1772751385.4705908, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-17", "active_workers": 3}
+{"t": 1772751387.1951416, "event": "status", "agent_id": "agent-1", "active_workers": 3}
+{"t": 1772751387.1952267, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 20, "checkins_received": 20, "checkins_ok": true}
+{"t": 1772751388.6573348, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-18", "rss_kb": 528176}
+{"t": 1772751389.556973, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-19", "rss_kb": 528184}
+{"t": 1772751390.3195186, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-20", "rss_kb": 528200}
+{"t": 1772751391.5500996, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-18", "active_workers": 2}
+{"t": 1772751392.1953952, "event": "status", "agent_id": "agent-1", "active_workers": 2}
+{"t": 1772751392.195476, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 20, "checkins_received": 20, "checkins_ok": true}
+{"t": 1772751392.3966691, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-19", "active_workers": 1}
+{"t": 1772751393.2262256, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 1/5)"}
+{"t": 1772751393.343224, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-21", "total_ms": 111.9}
+{"t": 1772751393.3432791, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-21", "active_workers": 2}
+{"t": 1772751394.4329515, "event": "log", "agent_id": "agent-1", "message": "Spawning worker (active: 2/5)"}
+{"t": 1772751394.549681, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-22", "total_ms": 111.8}
+{"t": 1772751394.5497384, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-22", "active_workers": 3}
+{"t": 1772751395.3150094, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-21", "rss_kb": 17004}
+{"t": 1772751395.3213508, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-20", "rss_kb": 528204}
+{"t": 1772751396.522382, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-22", "rss_kb": 17308}
+{"t": 1772751397.1956792, "event": "status", "agent_id": "agent-1", "active_workers": 3}
+{"t": 1772751397.1957674, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 22, "checkins_received": 20, "checkins_ok": false}
+{"t": 1772751398.0021815, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-21", "total_checkins": 21, "cold_start_ms": 4658.9}
+{"t": 1772751398.078399, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-20", "active_workers": 2}
+{"t": 1772751399.2636123, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-22", "total_checkins": 22, "cold_start_ms": 4713.9}
+{"t": 1772751400.3183372, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-21", "rss_kb": 528188}
+{"t": 1772751401.5250683, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-22", "rss_kb": 528164}
+{"t": 1772751402.195946, "event": "status", "agent_id": "agent-1", "active_workers": 2}
+{"t": 1772751402.1960323, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 22, "checkins_received": 22, "checkins_ok": true}
+{"t": 1772751402.5550492, "event": "log", "agent_id": "agent-1", "message": "Received signal 15, shutting down..."}
+{"t": 1772751402.5551567, "event": "log", "agent_id": "agent-1", "message": "Waiting 10s for 2 in-flight workers to check in..."}
+{"t": 1772751402.5551834, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 22, "checkins_received": 22, "checkins_ok": true}
+{"t": 1772751402.5552027, "event": "log", "agent_id": "agent-1", "message": "Cleaning up Firecracker VMs..."}
+{"t": 1772751402.5575788, "event": "log", "agent_id": "agent-1", "message": "Killed 2 Firecracker processes."}
+{"t": 1772751402.6249483, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-22", "active_workers": 1}
+{"t": 1772751402.6250503, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-21", "active_workers": 0}
+{"t": 1772751404.5579615, "event": "agent_stop", "agent_id": "agent-1", "total_workers_spawned": 22}
+{"t": 1772751404.5580332, "event": "log", "agent_id": "agent-1", "message": "Agent stopped."}
