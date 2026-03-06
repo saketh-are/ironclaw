@@ -38,7 +38,7 @@ Sysbox provides competitive performance in all metrics while offering nested con
 
 Test parameters: `SPAWN_INTERVAL_MEAN_S=5`, `WORKER_DURATION=30s`, `MAX_CONCURRENT_WORKERS=5`, `BENCHMARK_DURATION_S=180`, `RNG_SEED=42`.
 
-| Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Per-Agent (MiB) | Workers Spawned | Avg Workers | Time-to-checkin p50/p95 (ms) | Checkins OK |
+| Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Agent+Workers / Agent (MiB) | Workers Spawned | Avg Workers | Time-to-checkin p50/p95 (ms) | Checkins OK |
 |----------|---------------:|-----------:|----------:|----------------:|----------------:|------------:|------------------------------:|------------:|
 | `container-docker` | 11227 | 13462 | 13364 | 2245 | 118 | 19.1 | 836 / 940 | 118/118 |
 | `container-gvisor-dind` | 10581 | 12213 | 11704 | 2116 | 83 | 13.8 | 8116 / 8503 | 83/83 |
@@ -52,7 +52,7 @@ Notes:
 
 ### Results (loaded mode, 50 agents)
 
-| Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Per-Agent (MiB) | Workers Spawned | Avg Workers | Time-to-checkin p50/p95 (ms) | Checkins OK |
+| Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Agent+Workers / Agent (MiB) | Workers Spawned | Avg Workers | Time-to-checkin p50/p95 (ms) | Checkins OK |
 |----------|---------------:|-----------:|----------:|----------------:|----------------:|------------:|------------------------------:|------------:|
 | `container-docker` | 101284 | 119767 | 112977 | 2026 | 1131 | 179.7 | 1323 / 4534 | 1131/1131 |
 | `container-gvisor-dind` | 13412 | 47492 | 34221 | 268 | 928 | 19.4 | 5182 / 8022 | 928/928 |
