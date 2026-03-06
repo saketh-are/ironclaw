@@ -74,7 +74,10 @@ def discover_ironclaw_approaches():
 # ---------------------------------------------------------------------------
 
 def check_tool_execution_in_logs(agent_index):
-    """Check agent container logs for evidence of shell tool execution.
+    """Check agent container logs for evidence of sandboxed shell tool execution.
+
+    Parses the structured tool-result JSON from ironclaw's debug logs to verify
+    the shell command actually ran inside a sandbox container and exited cleanly.
 
     Returns (executed: bool, details: str).
     """
@@ -86,24 +89,40 @@ def check_tool_execution_in_logs(agent_index):
         )
         combined = result.stdout + result.stderr
 
-        # Look for evidence that ironclaw processed a message and ran a tool.
-        # Log patterns observed (with RUST_LOG=ironclaw=debug):
-        #   "Received message from benchmark on gateway"
-        #   "LLM call used 10 input + 20 output tokens"
-        #   "Tool call started tool=shell"
-        #   "Tool call completed tool=shell"
-        #   "Sandbox initialized"  (sandbox container path)
         indicators = {
             "message_received": "Received message from" in combined,
             "llm_call": "LLM call used" in combined,
             "tool_started": "Tool call started" in combined and "shell" in combined,
-            "tool_completed": "Tool call completed" in combined or "Tool call succeeded" in combined or "Tool call failed" in combined,
             "sandbox_init": "Sandbox initialized" in combined,
-            "benchmark_ok": "benchmark-worker-ok" in combined,
+            "tool_succeeded": False,
+            "sandboxed": False,
+            "exit_code_0": False,
         }
 
-        # Pass if we see the LLM was called and the shell tool was invoked
-        executed = indicators["llm_call"] and indicators["tool_started"]
+        # Parse the structured tool result from the "Tool call succeeded" log line.
+        # Format: Tool call succeeded tool=shell elapsed_ms=220 result={"exit_code":0,...}
+        # Note: logs contain ANSI escape codes, so strip them first.
+        import re
+        ansi_re = re.compile(r'\x1b\[[0-9;]*m')
+        combined = ansi_re.sub('', combined)
+        for line in combined.split("\n"):
+            m = re.search(r'Tool call succeeded tool=shell.*result=(\{.*\})', line)
+            if m:
+                indicators["tool_succeeded"] = True
+                try:
+                    result_json = json.loads(m.group(1))
+                    indicators["sandboxed"] = result_json.get("sandboxed") is True
+                    indicators["exit_code_0"] = result_json.get("exit_code") == 0
+                except (json.JSONDecodeError, AttributeError):
+                    pass
+
+        # Pass requires: LLM called, tool dispatched, tool succeeded in sandbox
+        # with exit code 0.
+        executed = (
+            indicators["tool_succeeded"]
+            and indicators["sandboxed"]
+            and indicators["exit_code_0"]
+        )
 
         detail_parts = [f"{k}={'yes' if v else 'no'}" for k, v in indicators.items()]
         return executed, ", ".join(detail_parts)
@@ -115,10 +134,10 @@ def check_tool_execution_in_logs(agent_index):
 # Smoke test runner
 # ---------------------------------------------------------------------------
 
-def run_smoke_test(approach, approach_name):
+def run_smoke_test(approach, approach_name, num_agents=NUM_AGENTS):
     """Run the smoke test for a single approach. Returns (passed, details)."""
     print(f"\n{'='*60}")
-    print(f"SMOKE TEST: {approach_name}")
+    print(f"SMOKE TEST: {approach_name}  (N={num_agents})")
     print(f"{'='*60}\n")
 
     config = BenchmarkConfig(
@@ -135,7 +154,7 @@ def run_smoke_test(approach, approach_name):
         orchestrator_base_port=51000,
     )
 
-    details = {"approach": approach_name, "agents": NUM_AGENTS}
+    details = {"approach": approach_name, "agents": num_agents}
     start_time = time.monotonic()
 
     try:
@@ -144,12 +163,12 @@ def run_smoke_test(approach, approach_name):
         approach.setup(config)
 
         # 2. Start agents
-        print(f"[smoke] Starting {NUM_AGENTS} agents...")
-        agent_ids = approach.start_agents(NUM_AGENTS, config)
+        print(f"[smoke] Starting {num_agents} agents...")
+        agent_ids = approach.start_agents(num_agents, config)
         details["agent_ids"] = agent_ids
 
-        if len(agent_ids) < NUM_AGENTS:
-            details["error"] = f"Only {len(agent_ids)}/{NUM_AGENTS} agents started"
+        if len(agent_ids) < num_agents:
+            details["error"] = f"Only {len(agent_ids)}/{num_agents} agents started"
             return False, details
 
         # 3. Verify health
@@ -198,14 +217,14 @@ def run_smoke_test(approach, approach_name):
 
         details["agents_executed"] = agents_executed
 
-        if agents_executed >= NUM_AGENTS:
-            print(f"[smoke] PASS: {agents_executed}/{NUM_AGENTS} agents "
+        if agents_executed >= num_agents:
+            print(f"[smoke] PASS: {agents_executed}/{num_agents} agents "
                   "executed shell commands")
             details["passed"] = True
             return True, details
         else:
             details["error"] = (
-                f"Only {agents_executed}/{NUM_AGENTS} agents executed commands"
+                f"Only {agents_executed}/{num_agents} agents executed commands"
             )
             return False, details
 
@@ -236,6 +255,8 @@ def main():
     parser = argparse.ArgumentParser(description="Ironclaw benchmark smoke tests")
     parser.add_argument("--approach", help="Run only this approach")
     parser.add_argument("--list", action="store_true", help="List available approaches")
+    parser.add_argument("--agents", type=int, default=NUM_AGENTS,
+                        help=f"Number of agents to run (default: {NUM_AGENTS})")
     parser.add_argument("--output", default="smoke-results.json",
                         help="Output file for results")
     args = parser.parse_args()
@@ -265,7 +286,7 @@ def main():
     all_passed = True
 
     for name, approach in sorted(approaches.items()):
-        passed, details = run_smoke_test(approach, name)
+        passed, details = run_smoke_test(approach, name, num_agents=args.agents)
         results[name] = details
         if not passed:
             all_passed = False
