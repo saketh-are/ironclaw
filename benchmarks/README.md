@@ -50,6 +50,17 @@ Test parameters: `SPAWN_INTERVAL_MEAN_S=5`, `WORKER_DURATION=30s`, `MAX_CONCURRE
 Notes:
 - `container-gvisor-dind`: fewer workers spawned because inner `container.create()` still takes multiple seconds on this host, which materially eats into the `5s` mean spawn interval.
 
+### Results (loaded mode, 50 agents)
+
+| Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Per-Agent (MiB) | Workers Spawned | Avg Workers | Time-to-checkin p50/p95 (ms) | Checkins OK |
+|----------|---------------:|-----------:|----------:|----------------:|----------------:|------------:|------------------------------:|------------:|
+| `container-docker` | 101284 | 119767 | 112977 | 2026 | 1131 | 179.7 | 1323 / 4534 | 1131/1131 |
+| `container-gvisor-dind` | 13412 | 47492 | 34221 | 268 | 928 | 19.4 | 5182 / 8022 | 928/928 |
+| `container-sysbox-dind` | 97564 | 113196 | 112227 | 1951 | 1127 | 167.5 | 1738 / 3632 | 1127/1127 |
+| `podman-rootless` | failed | failed | failed | failed | failed | failed | failed | failed |
+| `hybrid-firecracker` | 110515 | 127185 | 120664 | 2210 | 1172 | 185.0 | 2069 / 2249 | 1172/1172 |
+| `vm-qemu` | 172451 | 172938 | 172904 | 3449 | 1181 | 190.7 | 864 / 1741 | 1181/1181 |
+
 ## Decomposed Overhead
 
 The fixed-per-agent and marginal-per-worker figures above come from a local idle sweep (`N=1,5,10,20`, `BENCHMARK_DURATION_S=60`) paired with plateau runs at `AGENTS=5`, schedule `0,1,2,3,4,5`, `PLATEAU_HOLD_S=60`, `PLATEAU_SETTLE_S=20`, and `WORKER_MEMORY_MB=500` / `0`. Reproduction details are in [USAGE.md](USAGE.md#decomposing-agent-vs-worker-overhead).
