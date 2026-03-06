@@ -1,0 +1,33 @@
+# Ironclaw benchmark agent — shared-daemon variant.
+#
+# Expects the pre-built ironclaw binary at workload/.ironclaw-bin
+# (produced by `cargo build --release --no-default-features --features libsql`).
+#
+# Bundles a mock LLM server so the agent can run without real API keys.
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 ca-certificates curl docker.io && \
+    rm -rf /var/lib/apt/lists/*
+
+# Ironclaw binary (pre-compiled on the host)
+COPY .ironclaw-bin /usr/local/bin/ironclaw
+RUN chmod +x /usr/local/bin/ironclaw
+
+# Mock LLM server
+COPY mock_llm_server.py /opt/mock_llm_server.py
+
+# Docker socket proxy (for approaches that need API translation)
+COPY docker_socket_proxy.py /opt/docker_socket_proxy.py
+
+# Entrypoint
+COPY ironclaw-bench-entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Create workspace directory
+RUN mkdir -p /tmp/workspace && chmod 777 /tmp/workspace
+
+EXPOSE 3000
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

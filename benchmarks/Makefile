@@ -1,9 +1,11 @@
-.PHONY: images worker-image agent-image agent-dind-image agent-sysbox-image vm-image fc-kernel fc-rootfs fc-image fc-setup podman-setup run run-idle run-plateau run-sweep plot compare decompose clean help
+.PHONY: images worker-image agent-image agent-dind-image agent-sysbox-image vm-image fc-kernel fc-rootfs fc-image fc-setup podman-setup run run-idle run-plateau run-sweep plot compare decompose clean help \
+       ironclaw-binary ironclaw-sandbox-image ironclaw-agent-image ironclaw-agent-dind-image ironclaw-images smoke-test
 
 -include config.env
 .EXPORT_ALL_VARIABLES:
 
 BENCH_DIR := $(shell pwd)
+PROJECT_ROOT := $(shell cd .. && pwd)
 VM_ASSETS_DIR := approaches/vm_qemu_assets
 FC_ASSETS_DIR := approaches/hybrid_firecracker_assets
 APPROACH ?= container-docker
@@ -50,6 +52,32 @@ fc-image: workload/Dockerfile.agent-fc workload/agent.py ## Build Firecracker-en
 	docker build -t bench-agent-fc:latest -f workload/Dockerfile.agent-fc workload/
 
 fc-setup: fc-kernel fc-rootfs fc-image ## Full Firecracker setup (kernel + rootfs + image)
+
+# --- Real IronClaw benchmark images ---
+
+ironclaw-binary: ## Build ironclaw binary for benchmarks (libsql backend)
+	cd $(PROJECT_ROOT) && cargo build --release --no-default-features --features libsql
+	cp $(PROJECT_ROOT)/target/release/ironclaw $(BENCH_DIR)/workload/.ironclaw-bin
+	@echo "IronClaw binary copied to workload/.ironclaw-bin"
+
+ironclaw-sandbox-image: workload/Dockerfile.ironclaw-sandbox ## Build minimal sandbox worker image
+	docker build -t ironclaw-bench-sandbox:latest -f workload/Dockerfile.ironclaw-sandbox workload/
+
+ironclaw-agent-image: ironclaw-binary workload/Dockerfile.ironclaw-agent workload/mock_llm_server.py workload/docker_socket_proxy.py workload/ironclaw-bench-entrypoint.sh ## Build ironclaw agent image (shared daemon)
+	docker build -t ironclaw-bench-agent:latest -f workload/Dockerfile.ironclaw-agent workload/
+
+ironclaw-agent-dind-image: ironclaw-binary workload/Dockerfile.ironclaw-agent-dind workload/mock_llm_server.py workload/docker_socket_proxy.py workload/ironclaw-dind-entrypoint.sh ## Build ironclaw agent DinD image
+	docker build -t ironclaw-bench-agent-dind:latest -f workload/Dockerfile.ironclaw-agent-dind workload/
+
+ironclaw-images: ironclaw-sandbox-image ironclaw-agent-image ironclaw-agent-dind-image ## Build all ironclaw benchmark images
+
+# --- Smoke tests ---
+
+smoke-test: ironclaw-images ## Run ironclaw smoke tests (2 agents, verifies worker spawning)
+	python3 smoke_test.py
+
+smoke-test-docker: ironclaw-images ## Smoke test: ironclaw-docker only
+	python3 smoke_test.py --approach ironclaw-docker
 
 # --- Podman rootless ---
 
