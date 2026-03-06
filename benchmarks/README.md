@@ -159,11 +159,15 @@ sudo bash benchmarks/setup-gcp.sh
 |------|-------------|----------|
 | `loaded` | Stochastic workload — agents spawn workers randomly (default) | Realistic memory profile under load |
 | `idle` | No workers — agents sit idle | Measure pure isolation overhead per agent |
+| `plateau` | Deterministic steady-state worker plateaus | Isolate per-worker overhead from per-agent overhead |
 
 ```bash
 # Explicit mode selection
 make run APPROACH=container-docker AGENTS=5 MODE=loaded
 make run APPROACH=container-docker AGENTS=100 MODE=idle
+make run-plateau APPROACH=container-docker AGENTS=5 \
+  PLATEAU_WORKERS_PER_AGENT=0,1,2,3,4,5 \
+  PLATEAU_HOLD_S=60 PLATEAU_SETTLE_S=20
 ```
 
 ## Configuration
@@ -178,6 +182,10 @@ MAX_CONCURRENT_WORKERS=5      # Max workers per agent
 WORKER_MEMORY_MB=500          # Memory each worker allocates
 WORKER_DURATION_MIN_S=30      # Min worker lifetime
 WORKER_DURATION_MAX_S=120     # Max worker lifetime
+WORKER_LIFETIME_MODE=timed    # timed (default) or hold
+PLATEAU_WORKERS_PER_AGENT=    # e.g. 0,1,2,3,4,5 for plateau mode
+PLATEAU_HOLD_S=60             # Seconds per plateau
+PLATEAU_SETTLE_S=20           # Seconds to discard at plateau start
 ```
 
 ## Host Tuning
@@ -236,6 +244,44 @@ Each sample includes:
 - Daemon overhead breakdown (with baseline delta to isolate agent-caused growth)
 - Host CPU utilization (%), per-agent CPU seconds, per-daemon CPU seconds
 - Total workers spawned and max concurrent
+- Plateau-mode zero-point, first-worker tax, steady-worker slope, and per-stage points
+
+## Decomposing Agent vs Worker Overhead
+
+Use two runs, not one:
+
+1. `idle` sweep to fit fixed per-agent overhead.
+2. `plateau` run to fit marginal per-worker overhead at steady state.
+
+Recommended sequence:
+
+```bash
+# Fixed per-agent overhead
+for n in 1 5 10 20; do
+  make run-idle APPROACH=container-docker AGENTS=$n BENCHMARK_DURATION_S=60
+done
+
+# Per-worker steady-state overhead
+make run-plateau APPROACH=container-docker AGENTS=5 \
+  PLATEAU_WORKERS_PER_AGENT=0,1,2,3,4,5 \
+  PLATEAU_HOLD_S=60 PLATEAU_SETTLE_S=20
+
+# Optional: isolation/runtime tax without worker payload
+make run-plateau APPROACH=container-docker AGENTS=5 \
+  PLATEAU_WORKERS_PER_AGENT=0,1,2,3,4,5 \
+  PLATEAU_HOLD_S=60 PLATEAU_SETTLE_S=20 \
+  WORKER_MEMORY_MB=0
+
+# Fit the decomposition from results/
+make decompose
+```
+
+Notes:
+
+- `plateau` schedules must start at `0` and be non-decreasing.
+- `plateau` forces `WORKER_LIFETIME_MODE=hold` so workers stay alive for the full stage.
+- The orchestrator releases all agents into plateau mode through the agent HTTP control endpoint after collection starts, so the stages align across backends.
+- `loaded` remains the realism benchmark. Use `plateau` for decomposition, not for headline density numbers.
 
 ## Worker Lifecycle
 

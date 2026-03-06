@@ -21,6 +21,9 @@ from typing import Dict, List, Optional
 class BenchmarkConfig:
     """Configuration passed to approaches from config.env / CLI."""
 
+    # Benchmark mode
+    benchmark_mode: str = "loaded"
+
     # Agent settings
     agent_memory_mb: int = 4096
     agent_baseline_mb: int = 50
@@ -34,6 +37,12 @@ class BenchmarkConfig:
     worker_memory_mb: int = 500
     worker_duration_min_s: int = 30
     worker_duration_max_s: int = 120
+    worker_lifetime_mode: str = "timed"
+
+    # Plateau mode
+    plateau_workers_per_agent: List[int] = field(default_factory=list)
+    plateau_hold_s: int = 60
+    plateau_settle_s: int = 20
 
     # Networking
     orchestrator_base_port: int = 50100  # Starting host port for container approaches
@@ -50,8 +59,15 @@ class BenchmarkConfig:
         """Load config from environment variables (or a dict)."""
         import os
 
+        def parse_int_list(raw: str) -> List[int]:
+            raw = (raw or "").strip()
+            if not raw:
+                return []
+            return [int(part.strip()) for part in raw.split(",") if part.strip()]
+
         e = env or os.environ
         return cls(
+            benchmark_mode=e.get("BENCHMARK_MODE", "loaded"),
             agent_memory_mb=int(e.get("AGENT_MEMORY_MB", "4096")),
             agent_baseline_mb=int(e.get("AGENT_BASELINE_MB", "50")),
             max_concurrent_workers=int(e.get("MAX_CONCURRENT_WORKERS", "5")),
@@ -62,10 +78,19 @@ class BenchmarkConfig:
             worker_memory_mb=int(e.get("WORKER_MEMORY_MB", "500")),
             worker_duration_min_s=int(e.get("WORKER_DURATION_MIN_S", "30")),
             worker_duration_max_s=int(e.get("WORKER_DURATION_MAX_S", "120")),
+            worker_lifetime_mode=e.get("WORKER_LIFETIME_MODE", "timed"),
+            plateau_workers_per_agent=parse_int_list(
+                e.get("PLATEAU_WORKERS_PER_AGENT", "")
+            ),
+            plateau_hold_s=int(e.get("PLATEAU_HOLD_S", "60")),
+            plateau_settle_s=int(e.get("PLATEAU_SETTLE_S", "20")),
             orchestrator_base_port=int(e.get("ORCHESTRATOR_BASE_PORT", "50100")),
             storage_validation=e.get("STORAGE_VALIDATION", "").lower() in ("1", "true", "yes"),
             rng_seed=int(e.get("RNG_SEED", "42")),
         )
+
+    def plateau_workers_csv(self) -> str:
+        return ",".join(str(v) for v in self.plateau_workers_per_agent)
 
 
 class Approach(ABC):
@@ -121,6 +146,10 @@ class Approach(ABC):
         Override per approach: docker logs for containers, console logs for VMs.
         Default is a no-op.
         """
+        pass
+
+    def start_benchmark(self) -> None:
+        """Optional synchronization hook before the timed benchmark window begins."""
         pass
 
     @abstractmethod

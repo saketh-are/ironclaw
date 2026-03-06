@@ -12,6 +12,7 @@ No persistent daemon runs. Podman's API is socket-activated (transient
 
 import subprocess
 import time
+import urllib.request
 from pathlib import Path
 from typing import Dict, List
 
@@ -164,6 +165,7 @@ class PodmanRootlessApproach(Approach):
     def __init__(self):
         self._agent_ids: List[str] = []
         self._users: List[str] = []
+        self._host_ports: Dict[str, int] = {}
         self._agent_image = "bench-agent:latest"
         self._run_id: str = "unknown"
 
@@ -219,6 +221,7 @@ class PodmanRootlessApproach(Approach):
     def start_agents(self, n: int, config: BenchmarkConfig) -> List[str]:
         self._agent_ids = []
         self._users = []
+        self._host_ports = {}
 
         images_to_load = [self._agent_image, config.worker_image]
 
@@ -294,6 +297,7 @@ class PodmanRootlessApproach(Approach):
                 "-e", "WORKER_BACKEND=docker",
                 # Standard config env vars
                 "-e", f"AGENT_ID={agent_id}",
+                "-e", f"BENCHMARK_MODE={config.benchmark_mode}",
                 "-e", f"AGENT_BASELINE_MB={config.agent_baseline_mb}",
                 "-e", f"SPAWN_INTERVAL_MEAN_S={config.spawn_interval_mean_s}",
                 "-e", f"MAX_CONCURRENT_WORKERS={config.max_concurrent_workers}",
@@ -303,6 +307,10 @@ class PodmanRootlessApproach(Approach):
                 "-e", f"WORKER_MEMORY_MB={config.worker_memory_mb}",
                 "-e", f"WORKER_DURATION_MIN_S={config.worker_duration_min_s}",
                 "-e", f"WORKER_DURATION_MAX_S={config.worker_duration_max_s}",
+                "-e", f"WORKER_LIFETIME_MODE={config.worker_lifetime_mode}",
+                "-e", f"PLATEAU_WORKERS_PER_AGENT={config.plateau_workers_csv()}",
+                "-e", f"PLATEAU_HOLD_S={config.plateau_hold_s}",
+                "-e", f"PLATEAU_SETTLE_S={config.plateau_settle_s}",
                 "-e", f"RNG_SEED={config.rng_seed}",
                 "-e", f"BENCH_RUN_ID={config.run_id}",
                 "-e", f"BENCH_APPROACH={self.name}",
@@ -359,7 +367,34 @@ class PodmanRootlessApproach(Approach):
 
             self._agent_ids.append(agent_id)
             self._users.append(user)
+            self._host_ports[agent_id] = host_port
             print(f"[{self.name}] Started {container_name} as user {user}")
+
+        health_timeout_s = max(60, 5 * n)
+        print(f"[{self.name}] Waiting for {n} agents to become healthy...")
+        deadline = time.monotonic() + health_timeout_s
+        ready = set()
+        while time.monotonic() < deadline and len(ready) < n:
+            for agent_id, port in self._host_ports.items():
+                if agent_id in ready:
+                    continue
+                try:
+                    resp = urllib.request.urlopen(
+                        f"http://127.0.0.1:{port}/health", timeout=2
+                    )
+                    if resp.status == 200:
+                        ready.add(agent_id)
+                        print(f"[{self.name}] {agent_id} healthy")
+                except Exception:
+                    pass
+            if len(ready) < n:
+                time.sleep(2)
+
+        if len(ready) < n:
+            not_ready = set(self._host_ports) - ready
+            raise RuntimeError(
+                f"Agents not ready after {health_timeout_s}s: {sorted(not_ready)}"
+            )
 
         print(f"[{self.name}] {n} agents started.")
         return list(self._agent_ids)
@@ -404,6 +439,23 @@ class PodmanRootlessApproach(Approach):
             except subprocess.SubprocessError:
                 pass
         return total
+
+    def start_benchmark(self) -> None:
+        for agent_id, port in self._host_ports.items():
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/control/start",
+                data=b"{}",
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                resp = urllib.request.urlopen(req, timeout=5)
+                if resp.status != 200:
+                    raise RuntimeError(f"HTTP {resp.status}")
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to start benchmark on {agent_id}:{port}: {e}"
+                ) from e
 
     # ------------------------------------------------------------------
     # logs
@@ -469,6 +521,7 @@ class PodmanRootlessApproach(Approach):
                 "systemctl", "--user", "stop", "podman.socket",
             ])
         self._agent_ids = []
+        self._host_ports = {}
         print(f"[{self.name}] All containers removed.")
 
     def cleanup(self) -> None:
@@ -492,5 +545,6 @@ class PodmanRootlessApproach(Approach):
             )
 
         self._users = []
+        self._host_ports = {}
 
         print(f"[{self.name}] Cleanup complete (users removed).")

@@ -1,4 +1,7 @@
-.PHONY: images worker-image agent-image agent-dind-image agent-sysbox-image vm-image fc-kernel fc-rootfs fc-image fc-setup podman-setup run run-idle run-sweep plot compare clean help
+.PHONY: images worker-image agent-image agent-dind-image agent-sysbox-image vm-image fc-kernel fc-rootfs fc-image fc-setup podman-setup run run-idle run-plateau run-sweep plot compare decompose clean help
+
+-include config.env
+.EXPORT_ALL_VARIABLES:
 
 BENCH_DIR := $(shell pwd)
 APPROACH ?= container-docker
@@ -55,11 +58,14 @@ podman-setup: images ## Install podman + deps for podman-rootless approach
 
 # --- Run benchmarks ---
 
-run: images ## Run benchmark: make run APPROACH=container-docker AGENTS=5 [MODE=idle]
+run: images ## Run benchmark: make run APPROACH=container-docker AGENTS=5 [MODE=loaded|idle|plateau]
 	python3 -m runner.orchestrate --approach $(APPROACH) --agents $(AGENTS) --mode $(MODE)
 
 run-idle: images ## Run idle benchmark (no workers): make run-idle APPROACH=container-docker AGENTS=50
 	python3 -m runner.orchestrate --approach $(APPROACH) --agents $(AGENTS) --mode idle
+
+run-plateau: images ## Run plateau benchmark: make run-plateau APPROACH=container-docker AGENTS=5 PLATEAU_WORKERS_PER_AGENT=0,1,2,3,4,5
+	python3 -m runner.orchestrate --approach $(APPROACH) --agents $(AGENTS) --mode plateau
 
 run-sweep: images ## Run idle sweep at multiple N: make run-sweep APPROACH=container-docker
 	@for n in 1 5 10 50 100; do \
@@ -74,6 +80,9 @@ plot: ## Generate charts from results/
 
 compare: ## Print comparison table from results/
 	python3 -m analysis.compare
+
+decompose: ## Fit per-agent idle slope and print plateau worker costs
+	python3 -m analysis.decompose
 
 # --- Cleanup ---
 

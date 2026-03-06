@@ -10,12 +10,14 @@ Environment variables:
     WORKER_MEMORY_MB       Memory to allocate and touch (default: 500)
     WORKER_DURATION_MIN_S  Minimum hold duration in seconds (default: 30)
     WORKER_DURATION_MAX_S  Maximum hold duration in seconds (default: 120)
+    WORKER_LIFETIME_MODE   timed (default) or hold
 """
 
 import json
 import mmap
 import os
 import random
+import signal
 import socket
 import sys
 import threading
@@ -23,6 +25,11 @@ import time
 import urllib.request
 
 PAGE_SIZE = os.sysconf("SC_PAGESIZE")  # Usually 4096
+
+
+class _NoopAllocation:
+    def close(self):
+        pass
 
 
 def get_rss_kb() -> int:
@@ -133,6 +140,8 @@ def do_checkin(storage_read_ok: bool = False):
 
 def allocate_and_touch(size_mb: int) -> mmap.mmap:
     """Allocate anonymous memory and touch every page to force physical allocation."""
+    if size_mb <= 0:
+        return _NoopAllocation()
     size_bytes = size_mb * 1024 * 1024
     # MAP_ANONYMOUS + MAP_PRIVATE = anonymous private mapping
     mm = mmap.mmap(-1, size_bytes, mmap.MAP_PRIVATE | mmap.MAP_ANONYMOUS)
@@ -146,8 +155,19 @@ def main():
     memory_mb = int(os.environ.get("WORKER_MEMORY_MB", "500"))
     duration_min = int(os.environ.get("WORKER_DURATION_MIN_S", "30"))
     duration_max = int(os.environ.get("WORKER_DURATION_MAX_S", "120"))
+    lifetime_mode = os.environ.get("WORKER_LIFETIME_MODE", "timed")
+    if lifetime_mode not in ("timed", "hold"):
+        print(f"[worker] Unknown WORKER_LIFETIME_MODE={lifetime_mode}", flush=True)
+        sys.exit(1)
 
     duration = random.uniform(duration_min, duration_max)
+    stop_requested = threading.Event()
+
+    def handle_signal(sig, frame):
+        stop_requested.set()
+
+    signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGINT, handle_signal)
 
     # Start heartbeat thread if orchestrator URL is configured
     stop_heartbeat = threading.Event()
@@ -163,7 +183,7 @@ def main():
     rss = get_rss_kb()
     print(
         f"[worker] Allocated. RSS={rss} KiB ({rss // 1024} MiB). "
-        f"Holding for {duration:.0f}s.",
+        f"Lifetime mode={lifetime_mode}.",
         flush=True,
     )
 
@@ -174,7 +194,13 @@ def main():
     if ORCHESTRATOR_URL:
         do_checkin(storage_read_ok=storage_read_ok)
 
-    time.sleep(duration)
+    if lifetime_mode == "hold":
+        print("[worker] Hold mode: waiting for stop signal.", flush=True)
+        while not stop_requested.wait(timeout=1.0):
+            pass
+    else:
+        print(f"[worker] Timed mode: holding for {duration:.0f}s.", flush=True)
+        stop_requested.wait(timeout=duration)
 
     stop_heartbeat.set()
     mem.close()

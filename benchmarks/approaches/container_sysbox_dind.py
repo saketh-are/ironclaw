@@ -131,6 +131,7 @@ class ContainerSysboxDindApproach(Approach):
                 "--label", f"bench_approach={self.name}",
                 # Pass configuration via environment
                 "-e", f"AGENT_ID={agent_id}",
+                "-e", f"BENCHMARK_MODE={config.benchmark_mode}",
                 "-e", f"AGENT_BASELINE_MB={config.agent_baseline_mb}",
                 "-e", f"SPAWN_INTERVAL_MEAN_S={config.spawn_interval_mean_s}",
                 "-e", f"MAX_CONCURRENT_WORKERS={config.max_concurrent_workers}",
@@ -140,6 +141,10 @@ class ContainerSysboxDindApproach(Approach):
                 "-e", f"WORKER_MEMORY_MB={config.worker_memory_mb}",
                 "-e", f"WORKER_DURATION_MIN_S={config.worker_duration_min_s}",
                 "-e", f"WORKER_DURATION_MAX_S={config.worker_duration_max_s}",
+                "-e", f"WORKER_LIFETIME_MODE={config.worker_lifetime_mode}",
+                "-e", f"PLATEAU_WORKERS_PER_AGENT={config.plateau_workers_csv()}",
+                "-e", f"PLATEAU_HOLD_S={config.plateau_hold_s}",
+                "-e", f"PLATEAU_SETTLE_S={config.plateau_settle_s}",
                 "-e", f"RNG_SEED={config.rng_seed}",
                 "-e", f"BENCH_RUN_ID={config.run_id}",
                 "-e", f"BENCH_APPROACH={self.name}",
@@ -195,6 +200,23 @@ class ContainerSysboxDindApproach(Approach):
 
         print(f"[{self.name}] {len(ready)}/{n} agents started (Sysbox DinD, private daemon per agent).")
         return list(self._agent_ids)
+
+    def start_benchmark(self) -> None:
+        for agent_id, port in self._host_ports.items():
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/control/start",
+                data=b"{}",
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                resp = urllib.request.urlopen(req, timeout=5)
+                if resp.status != 200:
+                    raise RuntimeError(f"HTTP {resp.status}")
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to start benchmark on {agent_id}:{port}: {e}"
+                ) from e
 
     def get_agent_pids(self) -> Dict[str, int]:
         """Get host PIDs for agent containers via docker inspect."""

@@ -425,6 +425,142 @@ def compute_drift_slope(timestamps: list, values: list) -> float:
     return numerator / denominator
 
 
+def linear_regression(xs: list, ys: list) -> dict:
+    """Fit y = intercept + slope * x and return slope/intercept/r2."""
+    n = len(xs)
+    if n < 2:
+        return {}
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    numerator = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    denominator = sum((x - mean_x) ** 2 for x in xs)
+    if denominator == 0:
+        return {}
+    slope = numerator / denominator
+    intercept = mean_y - slope * mean_x
+    ss_tot = sum((y - mean_y) ** 2 for y in ys)
+    ss_res = sum((y - (intercept + slope * x)) ** 2 for x, y in zip(xs, ys))
+    r2 = 1.0 if ss_tot == 0 else max(0.0, 1.0 - (ss_res / ss_tot))
+    return {"slope": slope, "intercept": intercept, "r2": r2}
+
+
+def build_plateau_summary(
+    running_samples: list,
+    baseline_kb: float,
+    params: dict,
+    num_agents: int,
+) -> dict:
+    """Compute per-plateau steady-state points and worker marginal costs."""
+    config = params.get("config", {})
+    targets = config.get("plateau_workers_per_agent") or []
+    hold_s = config.get("plateau_hold_s", 0)
+    settle_s = config.get("plateau_settle_s", 0)
+
+    if not targets or hold_s <= 0:
+        return None
+
+    points = []
+    plateau_steady_samples = []
+    for index, target in enumerate(targets):
+        stage_start = index * hold_s
+        stage_end = stage_start + hold_s
+        stage_samples = [
+            s for s in running_samples
+            if stage_start <= s["timestamp_s"] < stage_end
+        ]
+        if not stage_samples:
+            points.append({
+                "workers_per_agent": target,
+                "error": "no samples",
+            })
+            continue
+        steady_start = stage_start + min(settle_s, hold_s)
+        stage_steady = [s for s in stage_samples if s["timestamp_s"] >= steady_start]
+        if not stage_steady:
+            stage_steady = stage_samples
+        plateau_steady_samples.extend(stage_steady)
+
+        consumed_values = [s["host_consumed_kb"] for s in stage_steady]
+        worker_values = [s["active_workers"] for s in stage_steady]
+        point = {
+            "workers_per_agent": target,
+            "samples": len(stage_samples),
+            "steady_samples": len(stage_steady),
+            "mean_net_mib": round(
+                ((sum(consumed_values) / len(consumed_values)) - baseline_kb) / 1024, 3
+            ),
+            "peak_net_mib": round((max(consumed_values) - baseline_kb) / 1024, 3),
+            "mean_active_workers": round(sum(worker_values) / len(worker_values), 3),
+        }
+        points.append(point)
+
+    zero_point = next(
+        (
+            point for point in points
+            if point.get("workers_per_agent") == 0 and "mean_net_mib" in point
+        ),
+        None,
+    )
+
+    first_worker_tax_mib = None
+    steady_worker_mib = None
+    worker_fit_r2 = None
+    zero_point_per_agent_mib = None
+
+    if zero_point:
+        zero_workers = zero_point["mean_active_workers"]
+        zero_net_mib = zero_point["mean_net_mib"]
+        zero_point_per_agent_mib = zero_net_mib / max(num_agents, 1)
+        delta_points = []
+        for point in points:
+            if "mean_net_mib" not in point:
+                continue
+            delta_workers = point["mean_active_workers"] - zero_workers
+            delta_mib = point["mean_net_mib"] - zero_net_mib
+            point["delta_active_workers"] = round(delta_workers, 3)
+            point["delta_net_mib"] = round(delta_mib, 3)
+            if delta_workers > 0:
+                delta_points.append({
+                    "workers_per_agent": point["workers_per_agent"],
+                    "delta_active_workers": delta_workers,
+                    "delta_net_mib": delta_mib,
+                })
+
+        if delta_points:
+            first = delta_points[0]
+            first_worker_tax_mib = first["delta_net_mib"] / first["delta_active_workers"]
+
+        regression_points = [
+            point for point in delta_points if point["workers_per_agent"] >= 2
+        ]
+        if len(regression_points) < 2:
+            regression_points = delta_points
+        if len(regression_points) >= 2:
+            fit = linear_regression(
+                [point["delta_active_workers"] for point in regression_points],
+                [point["delta_net_mib"] for point in regression_points],
+            )
+            if fit:
+                steady_worker_mib = fit["slope"]
+                worker_fit_r2 = fit["r2"]
+
+    return {
+        "workers_per_agent": targets,
+        "hold_s": hold_s,
+        "settle_s": settle_s,
+        "points": points,
+        "zero_point_per_agent_mib": round(zero_point_per_agent_mib, 3)
+        if zero_point_per_agent_mib is not None else None,
+        "first_worker_tax_mib": round(first_worker_tax_mib, 3)
+        if first_worker_tax_mib is not None else None,
+        "steady_worker_mib": round(steady_worker_mib, 3)
+        if steady_worker_mib is not None else None,
+        "worker_fit_r2": round(worker_fit_r2, 4)
+        if worker_fit_r2 is not None else None,
+        "steady_samples": len(plateau_steady_samples),
+    }
+
+
 def run_benchmark(
     approach: Approach,
     num_agents: int,
@@ -444,6 +580,7 @@ def run_benchmark(
         "mode": mode,
         "num_agents": num_agents,
         "config": {
+            "benchmark_mode": config.benchmark_mode,
             "agent_memory_mb": config.agent_memory_mb,
             "agent_baseline_mb": config.agent_baseline_mb,
             "max_concurrent_workers": config.max_concurrent_workers,
@@ -454,6 +591,10 @@ def run_benchmark(
             "worker_memory_mb": config.worker_memory_mb,
             "worker_duration_min_s": config.worker_duration_min_s,
             "worker_duration_max_s": config.worker_duration_max_s,
+            "worker_lifetime_mode": config.worker_lifetime_mode,
+            "plateau_workers_per_agent": config.plateau_workers_per_agent,
+            "plateau_hold_s": config.plateau_hold_s,
+            "plateau_settle_s": config.plateau_settle_s,
         },
         "run_id": config.run_id,
         "rng_seed": config.rng_seed,
@@ -514,6 +655,10 @@ def run_benchmark(
             count_workers=approach.count_active_workers,
         )
 
+        if mode in ("idle", "plateau"):
+            print(f"Releasing {mode} benchmark start barrier...")
+            approach.start_benchmark()
+
         # Phase 3: Run for benchmark duration
         duration = config.benchmark_duration_s
         print(f"Collecting data for {duration}s...")
@@ -565,6 +710,19 @@ def run_benchmark(
     avg_w = summary.get('avg_workers', 0)
     print(f"  Avg workers: {avg_w:.1f}" if avg_w >= 0 else "  Avg workers: N/A")
     print(f"  Per-agent: {summary.get('per_agent_mean_mib', 0):.0f} MiB")
+    plateau = summary.get("plateau")
+    if plateau:
+        zero = plateau.get("zero_point_per_agent_mib")
+        first = plateau.get("first_worker_tax_mib")
+        steady = plateau.get("steady_worker_mib")
+        fit_r2 = plateau.get("worker_fit_r2")
+        if zero is not None:
+            print(f"  Plateau zero-point: {zero:.1f} MiB/agent")
+        if first is not None:
+            print(f"  First worker tax: {first:.1f} MiB/worker")
+        if steady is not None:
+            suffix = f" (r2={fit_r2:.3f})" if fit_r2 is not None else ""
+            print(f"  Steady worker slope: {steady:.1f} MiB/worker{suffix}")
     drift = summary.get('drift_kb_per_s', 0)
     if abs(drift) > 10:
         print(f"  Drift: {drift:.1f} KiB/s (potential leak)")
@@ -649,11 +807,9 @@ def generate_summary(run_dir: Path, swap_result: dict = None) -> dict:
         else 0
     )
 
-    # Steady state: running-phase samples during the configured benchmark
-    # window only. Exclude teardown/settle samples that are still tagged as
-    # "running" because the collector stays active through log collection and
-    # cleanup. Those tail samples can significantly understate loaded memory
-    # for slower backends such as rootless Podman.
+    # Running window: samples captured during the configured benchmark only.
+    # Exclude teardown/settle samples that are still tagged as "running"
+    # because the collector stays active through log collection and cleanup.
     benchmark_duration_s = params.get("config", {}).get("benchmark_duration_s")
     running_samples = [
         s for s in samples
@@ -665,11 +821,31 @@ def generate_summary(run_dir: Path, swap_result: dict = None) -> dict:
     ]
     if not running_samples:
         running_samples = [s for s in samples if s not in baseline_samples]
-    warmup_s = 60
-    steady_samples = [s for s in running_samples if s["timestamp_s"] >= warmup_s]
 
-    if not steady_samples:
-        steady_samples = running_samples
+    mode = params.get("mode", "loaded")
+    plateau = None
+    if mode == "plateau":
+        plateau = build_plateau_summary(running_samples, baseline_kb, params, num_agents)
+        steady_samples = []
+        config = params.get("config", {})
+        hold_s = config.get("plateau_hold_s", 0)
+        settle_s = config.get("plateau_settle_s", 0)
+        targets = config.get("plateau_workers_per_agent") or []
+        for index, _target in enumerate(targets):
+            stage_start = index * hold_s
+            stage_end = stage_start + hold_s
+            steady_start = stage_start + min(settle_s, hold_s)
+            steady_samples.extend(
+                s for s in running_samples
+                if steady_start <= s["timestamp_s"] < stage_end
+            )
+        if not steady_samples:
+            steady_samples = running_samples
+    else:
+        warmup_s = 60
+        steady_samples = [s for s in running_samples if s["timestamp_s"] >= warmup_s]
+        if not steady_samples:
+            steady_samples = running_samples
 
     consumed_values = [s["host_consumed_kb"] for s in steady_samples]
     worker_values = [s["active_workers"] for s in steady_samples]
@@ -798,7 +974,7 @@ def generate_summary(run_dir: Path, swap_result: dict = None) -> dict:
 
     summary = {
         "approach": params["approach"],
-        "mode": params.get("mode", "loaded"),
+        "mode": mode,
         "num_agents": num_agents,
         "run_id": params.get("run_id", "unknown"),
         "rng_seed": params.get("rng_seed"),
@@ -843,6 +1019,9 @@ def generate_summary(run_dir: Path, swap_result: dict = None) -> dict:
     if spawn_latency is not None:
         summary["spawn_latency"] = spawn_latency
 
+    if plateau is not None:
+        summary["plateau"] = plateau
+
     return summary
 
 
@@ -863,10 +1042,27 @@ def main():
     )
     parser.add_argument(
         "--mode",
-        choices=["loaded", "idle"],
+        choices=["loaded", "idle", "plateau"],
         default="loaded",
-        help="Benchmark mode: 'loaded' (default, stochastic workload) "
-             "or 'idle' (no workers, measures pure isolation overhead)",
+        help="Benchmark mode: 'loaded' (default), 'idle', or 'plateau'",
+    )
+    parser.add_argument(
+        "--plateau-workers-per-agent",
+        type=str,
+        default=None,
+        help="Comma-separated plateau worker targets per agent, e.g. 0,1,2,3,4,5",
+    )
+    parser.add_argument(
+        "--plateau-hold-s",
+        type=int,
+        default=None,
+        help="Seconds to hold each plateau target",
+    )
+    parser.add_argument(
+        "--plateau-settle-s",
+        type=int,
+        default=None,
+        help="Seconds to discard at the start of each plateau window",
     )
     parser.add_argument(
         "--output-dir",
@@ -895,6 +1091,18 @@ def main():
     )
     output_dir = Path(args.output_dir) if args.output_dir else BENCH_DIR / "results"
 
+    config.benchmark_mode = args.mode
+    if args.plateau_workers_per_agent is not None:
+        config.plateau_workers_per_agent = [
+            int(part.strip())
+            for part in args.plateau_workers_per_agent.split(",")
+            if part.strip()
+        ]
+    if args.plateau_hold_s is not None:
+        config.plateau_hold_s = args.plateau_hold_s
+    if args.plateau_settle_s is not None:
+        config.plateau_settle_s = args.plateau_settle_s
+
     # Apply mode overrides
     if args.mode == "idle":
         config.max_concurrent_workers = 0
@@ -902,6 +1110,42 @@ def main():
         if config.benchmark_duration_s > 120:
             config.benchmark_duration_s = 120
             print(f"Idle mode: reduced duration to {config.benchmark_duration_s}s")
+    elif args.mode == "plateau":
+        if not config.plateau_workers_per_agent:
+            config.plateau_workers_per_agent = list(
+                range(config.max_concurrent_workers + 1)
+            )
+        if config.plateau_workers_per_agent[0] != 0:
+            raise SystemExit("Plateau mode requires the first target to be 0 workers.")
+        if any(target < 0 for target in config.plateau_workers_per_agent):
+            raise SystemExit("Plateau mode does not allow negative worker targets.")
+        if any(
+            later < earlier
+            for earlier, later in zip(
+                config.plateau_workers_per_agent,
+                config.plateau_workers_per_agent[1:],
+            )
+        ):
+            raise SystemExit(
+                "Plateau mode currently requires a non-decreasing worker schedule."
+            )
+        if config.plateau_hold_s <= 0:
+            raise SystemExit("Plateau mode requires PLATEAU_HOLD_S > 0.")
+        if config.plateau_settle_s < 0 or config.plateau_settle_s >= config.plateau_hold_s:
+            raise SystemExit(
+                "Plateau mode requires 0 <= PLATEAU_SETTLE_S < PLATEAU_HOLD_S."
+            )
+        config.max_concurrent_workers = max(config.plateau_workers_per_agent)
+        config.worker_lifetime_mode = "hold"
+        config.benchmark_duration_s = (
+            len(config.plateau_workers_per_agent) * config.plateau_hold_s
+        )
+        print(
+            "Plateau mode: "
+            f"targets={config.plateau_workers_per_agent} "
+            f"hold={config.plateau_hold_s}s settle={config.plateau_settle_s}s "
+            f"duration={config.benchmark_duration_s}s"
+        )
 
     # Discover and select approach
     discover_approaches()

@@ -8,6 +8,7 @@ Docker daemon — the same path ironclaw uses when SANDBOX_ENABLED=true.
 
 import subprocess
 import time
+import urllib.request
 from pathlib import Path
 from typing import Dict, List
 
@@ -19,6 +20,7 @@ class ContainerDockerApproach(Approach):
 
     def __init__(self):
         self._agent_ids: List[str] = []
+        self._host_ports: Dict[str, int] = {}
         self._agent_image = "bench-agent:latest"
         self._run_id: str = "unknown"
 
@@ -43,6 +45,7 @@ class ContainerDockerApproach(Approach):
     def start_agents(self, n: int, config: BenchmarkConfig) -> List[str]:
         """Start N agent containers, each with Docker socket access."""
         self._agent_ids = []
+        self._host_ports = {}
 
         for i in range(n):
             agent_id = f"agent-{i}"
@@ -64,6 +67,7 @@ class ContainerDockerApproach(Approach):
                 "-v", "/var/run/docker.sock:/var/run/docker.sock",
                 # Pass configuration via environment
                 "-e", f"AGENT_ID={agent_id}",
+                "-e", f"BENCHMARK_MODE={config.benchmark_mode}",
                 "-e", f"AGENT_BASELINE_MB={config.agent_baseline_mb}",
                 "-e", f"SPAWN_INTERVAL_MEAN_S={config.spawn_interval_mean_s}",
                 "-e", f"MAX_CONCURRENT_WORKERS={config.max_concurrent_workers}",
@@ -73,6 +77,10 @@ class ContainerDockerApproach(Approach):
                 "-e", f"WORKER_MEMORY_MB={config.worker_memory_mb}",
                 "-e", f"WORKER_DURATION_MIN_S={config.worker_duration_min_s}",
                 "-e", f"WORKER_DURATION_MAX_S={config.worker_duration_max_s}",
+                "-e", f"WORKER_LIFETIME_MODE={config.worker_lifetime_mode}",
+                "-e", f"PLATEAU_WORKERS_PER_AGENT={config.plateau_workers_csv()}",
+                "-e", f"PLATEAU_HOLD_S={config.plateau_hold_s}",
+                "-e", f"PLATEAU_SETTLE_S={config.plateau_settle_s}",
                 "-e", f"RNG_SEED={config.rng_seed}",
                 "-e", f"BENCH_RUN_ID={config.run_id}",
                 "-e", f"BENCH_APPROACH={self.name}",
@@ -101,7 +109,33 @@ class ContainerDockerApproach(Approach):
                 )
 
             self._agent_ids.append(agent_id)
+            self._host_ports[agent_id] = host_port
             print(f"[{self.name}] Started {container_name}")
+
+        print(f"[{self.name}] Waiting for {n} agents to become healthy...")
+        deadline = time.monotonic() + 60
+        ready = set()
+        while time.monotonic() < deadline and len(ready) < n:
+            for agent_id, port in self._host_ports.items():
+                if agent_id in ready:
+                    continue
+                try:
+                    resp = urllib.request.urlopen(
+                        f"http://127.0.0.1:{port}/health", timeout=2
+                    )
+                    if resp.status == 200:
+                        ready.add(agent_id)
+                        print(f"[{self.name}] {agent_id} healthy")
+                except Exception:
+                    pass
+            if len(ready) < n:
+                time.sleep(2)
+
+        if len(ready) < n:
+            not_ready = set(self._host_ports) - ready
+            raise RuntimeError(
+                f"Agents not ready after 60s: {sorted(not_ready)}"
+            )
 
         print(f"[{self.name}] {n} agents started.")
         return list(self._agent_ids)
@@ -182,6 +216,23 @@ class ContainerDockerApproach(Approach):
             except subprocess.SubprocessError as e:
                 print(f"[{self.name}] Failed to collect logs for {agent_id}: {e}")
 
+    def start_benchmark(self) -> None:
+        for agent_id, port in self._host_ports.items():
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/control/start",
+                data=b"{}",
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                resp = urllib.request.urlopen(req, timeout=5)
+                if resp.status != 200:
+                    raise RuntimeError(f"HTTP {resp.status}")
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to start benchmark on {agent_id}:{port}: {e}"
+                ) from e
+
     def stop_agents(self) -> None:
         """Gracefully stop agent containers (SIGTERM with timeout).
 
@@ -214,6 +265,7 @@ class ContainerDockerApproach(Approach):
                     capture_output=True,
                 )
         self._agent_ids = []
+        self._host_ports = {}
         print(f"[{self.name}] All containers removed.")
 
     def cleanup(self) -> None:

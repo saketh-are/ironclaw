@@ -124,6 +124,28 @@ def print_table(summaries: list) -> None:
                 print(f"| {name:<30} | {total:>13} | {max_c:>14} |")
         print()
 
+    plateau_summaries = [s for s in summaries if s.get("plateau")]
+    if plateau_summaries:
+        print("Plateau Decomposition:")
+        print("| Approach | Run | Zero/Agent | First Worker | Steady Worker | R2 |")
+        print("|----------|-----|------------|--------------|---------------|----|")
+        for s in sorted(plateau_summaries, key=sort_key):
+            plateau = s["plateau"]
+            run_name = s.get("run_dir", "unknown")
+            zero = plateau.get("zero_point_per_agent_mib")
+            first = plateau.get("first_worker_tax_mib")
+            steady = plateau.get("steady_worker_mib")
+            r2 = plateau.get("worker_fit_r2")
+
+            def _fmt(v, digits=1):
+                return f"{v:.{digits}f}" if v is not None else "-"
+
+            print(
+                f"| {s.get('approach', 'unknown')} | {run_name} | "
+                f"{_fmt(zero)} | {_fmt(first)} | {_fmt(steady)} | {_fmt(r2, 4)} |"
+            )
+        print()
+
     # Print spawn latency stats if available
     has_latency = any(s.get("spawn_latency") for s in summaries)
     if has_latency:

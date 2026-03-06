@@ -87,6 +87,7 @@ class VmQemuApproach(Approach):
             # Build environment variables to pass into the VM
             env_vars = [
                 f"AGENT_BASELINE_MB={config.agent_baseline_mb}",
+                f"BENCHMARK_MODE={config.benchmark_mode}",
                 f"SPAWN_INTERVAL_MEAN_S={config.spawn_interval_mean_s}",
                 f"MAX_CONCURRENT_WORKERS={config.max_concurrent_workers}",
                 f"BENCHMARK_DURATION_S={config.benchmark_duration_s}",
@@ -95,6 +96,10 @@ class VmQemuApproach(Approach):
                 f"WORKER_MEMORY_MB={config.worker_memory_mb}",
                 f"WORKER_DURATION_MIN_S={config.worker_duration_min_s}",
                 f"WORKER_DURATION_MAX_S={config.worker_duration_max_s}",
+                f"WORKER_LIFETIME_MODE={config.worker_lifetime_mode}",
+                f"PLATEAU_WORKERS_PER_AGENT={config.plateau_workers_csv()}",
+                f"PLATEAU_HOLD_S={config.plateau_hold_s}",
+                f"PLATEAU_SETTLE_S={config.plateau_settle_s}",
                 f"RNG_SEED={config.rng_seed}",
                 f"BENCH_RUN_ID={config.run_id}",
                 f"BENCH_APPROACH={self.name}",
@@ -187,6 +192,23 @@ class VmQemuApproach(Approach):
 
         print(f"[{self.name}] {len(ready)}/{n} VMs started.")
         return list(self._agent_ids)
+
+    def start_benchmark(self) -> None:
+        for agent_id, port in self._host_ports.items():
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/control/start",
+                data=b"{}",
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                resp = urllib.request.urlopen(req, timeout=5)
+                if resp.status != 200:
+                    raise RuntimeError(f"HTTP {resp.status}")
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to start benchmark on {agent_id}:{port}: {e}"
+                ) from e
 
     def get_agent_pids(self) -> Dict[str, int]:
         """Get QEMU process PIDs from pidfiles."""

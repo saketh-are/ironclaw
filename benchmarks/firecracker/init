@@ -19,6 +19,7 @@ for param in $CMDLINE; do
         worker_memory_mb=*)       export WORKER_MEMORY_MB="${param#*=}" ;;
         worker_duration_min_s=*)  export WORKER_DURATION_MIN_S="${param#*=}" ;;
         worker_duration_max_s=*)  export WORKER_DURATION_MAX_S="${param#*=}" ;;
+        worker_lifetime_mode=*)   export WORKER_LIFETIME_MODE="${param#*=}" ;;
         storage_challenge=*)      export STORAGE_CHALLENGE="${param#*=}" ;;
         worker_name=*)            export WORKER_NAME="${param#*=}" ;;
         orchestrator_url=*)       export ORCHESTRATOR_URL="${param#*=}" ;;
@@ -33,7 +34,7 @@ if [ -e /dev/vdb ]; then
 fi
 
 # Run the worker
-echo "[init] Starting worker: memory=${WORKER_MEMORY_MB:-500}MB name=${WORKER_NAME:-unknown}"
+echo "[init] Starting worker: memory=${WORKER_MEMORY_MB:-500}MB name=${WORKER_NAME:-unknown} lifetime=${WORKER_LIFETIME_MODE:-timed}"
 python3 /usr/local/bin/worker.py
 
 # Power off the VM

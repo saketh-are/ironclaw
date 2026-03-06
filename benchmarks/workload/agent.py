@@ -16,6 +16,7 @@ Emits structured JSONL events to stdout for host-side collection:
 
 Environment variables:
   AGENT_ID                Unique agent identifier (required)
+  BENCHMARK_MODE          Benchmark mode: loaded, idle, or plateau
   AGENT_BASELINE_MB       Agent process memory footprint (default: 50)
   SPAWN_INTERVAL_MEAN_S   Mean time between spawns, exponential dist (default: 30)
   MAX_CONCURRENT_WORKERS  Max workers running at once per agent (default: 5)
@@ -25,6 +26,10 @@ Environment variables:
   WORKER_MEMORY_MB        Memory each worker allocates (default: 500)
   WORKER_DURATION_MIN_S   Min worker lifetime (default: 30)
   WORKER_DURATION_MAX_S   Max worker lifetime (default: 120)
+  WORKER_LIFETIME_MODE    timed (default) or hold
+  PLATEAU_WORKERS_PER_AGENT  Non-decreasing comma-separated worker targets
+  PLATEAU_HOLD_S          Seconds per plateau stage (default: 60)
+  PLATEAU_SETTLE_S        Samples after this many seconds count as steady-state
   RNG_SEED                Base RNG seed for reproducibility (default: 42)
   BENCH_RUN_ID            Unique run identifier for container labels (default: unknown)
   BENCH_APPROACH          Approach name for container labels (default: unknown)
@@ -58,6 +63,7 @@ if WORKER_BACKEND == "docker":
 # ---------------------------------------------------------------------------
 
 AGENT_ID = os.environ.get("AGENT_ID", "agent-0")
+BENCHMARK_MODE = os.environ.get("BENCHMARK_MODE", "loaded")
 AGENT_BASELINE_MB = int(os.environ.get("AGENT_BASELINE_MB", "50"))
 SPAWN_INTERVAL_MEAN_S = float(os.environ.get("SPAWN_INTERVAL_MEAN_S", "30"))
 MAX_CONCURRENT_WORKERS = int(os.environ.get("MAX_CONCURRENT_WORKERS", "5"))
@@ -67,6 +73,7 @@ WORKER_MEMORY_LIMIT_MB = int(os.environ.get("WORKER_MEMORY_LIMIT_MB", "2048"))
 WORKER_MEMORY_MB = int(os.environ.get("WORKER_MEMORY_MB", "500"))
 WORKER_DURATION_MIN_S = int(os.environ.get("WORKER_DURATION_MIN_S", "30"))
 WORKER_DURATION_MAX_S = int(os.environ.get("WORKER_DURATION_MAX_S", "120"))
+WORKER_LIFETIME_MODE = os.environ.get("WORKER_LIFETIME_MODE", "timed")
 RNG_SEED_BASE = int(os.environ.get("RNG_SEED", "42"))
 BENCH_RUN_ID = os.environ.get("BENCH_RUN_ID", "unknown")
 BENCH_APPROACH = os.environ.get("BENCH_APPROACH", "unknown")
@@ -75,6 +82,13 @@ WORKER_NETWORK = os.environ.get("WORKER_NETWORK", "")  # e.g. "podman" for bridg
 WORKER_NETWORK_MODE = os.environ.get("WORKER_NETWORK_MODE", "")  # e.g. "container:bench-agent-0"
 ORCHESTRATOR_PORT = os.environ.get("ORCHESTRATOR_PORT", "")  # HTTP server port (empty = disabled)
 ORCHESTRATOR_HOST_PORT = os.environ.get("ORCHESTRATOR_HOST_PORT", "")  # Host-mapped port (container approaches)
+PLATEAU_WORKERS_PER_AGENT = [
+    int(v.strip())
+    for v in os.environ.get("PLATEAU_WORKERS_PER_AGENT", "").split(",")
+    if v.strip()
+]
+PLATEAU_HOLD_S = int(os.environ.get("PLATEAU_HOLD_S", "60"))
+PLATEAU_SETTLE_S = int(os.environ.get("PLATEAU_SETTLE_S", "20"))
 
 # Storage validation: opt-in via STORAGE_VALIDATION=1
 STORAGE_VALIDATION = os.environ.get("STORAGE_VALIDATION", "").lower() in ("1", "true", "yes")
@@ -99,6 +113,9 @@ FC_VM_DIR = "/tmp/fc-vms"
 # ---------------------------------------------------------------------------
 
 _log_lock = threading.Lock()
+_benchmark_start = threading.Event()
+_current_plateau_index = -1
+_current_plateau_target = 0
 
 
 def emit_event(event: str, **kwargs):
@@ -113,6 +130,19 @@ def emit_event(event: str, **kwargs):
 def log(msg: str):
     """Emit a human-readable log line (also structured)."""
     emit_event("log", message=msg)
+
+
+def set_plateau_stage(index: int, target: int) -> None:
+    global _current_plateau_index, _current_plateau_target
+    _current_plateau_index = index
+    _current_plateau_target = target
+
+
+def get_plateau_state() -> dict:
+    return {
+        "plateau_index": _current_plateau_index,
+        "plateau_target_workers": _current_plateau_target,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -360,7 +390,12 @@ class OrchestratorHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            body = json.dumps({"active_workers": get_active_workers()})
+            body = json.dumps({
+                "active_workers": get_active_workers(),
+                "benchmark_mode": BENCHMARK_MODE,
+                "benchmark_started": _benchmark_start.is_set(),
+                **get_plateau_state(),
+            })
             self.wfile.write(body.encode())
         else:
             self.send_error(404)
@@ -388,6 +423,10 @@ class OrchestratorHandler(BaseHTTPRequestHandler):
             # Record storage read result if present
             if "storage_read_ok" in data:
                 record_storage_read(worker_id, bool(data["storage_read_ok"]))
+            self._respond_ok()
+        elif self.path == "/control/start":
+            _benchmark_start.set()
+            emit_event("benchmark_start_signal")
             self._respond_ok()
         else:
             self.send_error(404)
@@ -478,6 +517,7 @@ def spawn_worker(client, rng: random.Random) -> bool:
         "WORKER_MEMORY_MB": str(WORKER_MEMORY_MB),
         "WORKER_DURATION_MIN_S": str(WORKER_DURATION_MIN_S),
         "WORKER_DURATION_MAX_S": str(WORKER_DURATION_MAX_S),
+        "WORKER_LIFETIME_MODE": WORKER_LIFETIME_MODE,
     }
     orchestrator_url = compute_orchestrator_url()
     if orchestrator_url:
@@ -705,7 +745,8 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
         f"init=/sbin/init "
         f"worker_memory_mb={WORKER_MEMORY_MB} "
         f"worker_duration_min_s={WORKER_DURATION_MIN_S} "
-        f"worker_duration_max_s={WORKER_DURATION_MAX_S}"
+        f"worker_duration_max_s={WORKER_DURATION_MAX_S} "
+        f"worker_lifetime_mode={WORKER_LIFETIME_MODE}"
     )
 
     # Add networking config via kernel ip= parameter
@@ -882,7 +923,7 @@ def cleanup_workers_firecracker():
 def status_emitter(stop_event: threading.Event):
     """Periodically emit status events with active worker count."""
     while not stop_event.is_set():
-        emit_event("status", active_workers=get_active_workers())
+        emit_event("status", active_workers=get_active_workers(), **get_plateau_state())
         # Emit periodic checkin_summary so approaches that can't deliver
         # SIGTERM (rootless Podman) still have recent validation data.
         if ORCHESTRATOR_PORT and _worker_counter > 0:
@@ -901,6 +942,136 @@ def status_emitter(stop_event: threading.Event):
 # Main spawn loop
 # ---------------------------------------------------------------------------
 
+def validate_config() -> None:
+    if BENCHMARK_MODE not in ("loaded", "idle", "plateau"):
+        log(f"Unknown BENCHMARK_MODE={BENCHMARK_MODE}, exiting.")
+        sys.exit(1)
+    if WORKER_LIFETIME_MODE not in ("timed", "hold"):
+        log(f"Unknown WORKER_LIFETIME_MODE={WORKER_LIFETIME_MODE}, exiting.")
+        sys.exit(1)
+    if BENCHMARK_MODE == "plateau":
+        if not ORCHESTRATOR_PORT:
+            log("Plateau mode requires ORCHESTRATOR_PORT for synchronized start.")
+            sys.exit(1)
+        if not PLATEAU_WORKERS_PER_AGENT:
+            log("Plateau mode requires PLATEAU_WORKERS_PER_AGENT.")
+            sys.exit(1)
+        if PLATEAU_WORKERS_PER_AGENT[0] != 0:
+            log("Plateau mode requires the first target to be 0 workers.")
+            sys.exit(1)
+        if any(target < 0 for target in PLATEAU_WORKERS_PER_AGENT):
+            log("Plateau mode does not allow negative worker targets.")
+            sys.exit(1)
+        if any(
+            later < earlier
+            for earlier, later in zip(
+                PLATEAU_WORKERS_PER_AGENT, PLATEAU_WORKERS_PER_AGENT[1:]
+            )
+        ):
+            log("Plateau mode currently requires a non-decreasing worker schedule.")
+            sys.exit(1)
+        if max(PLATEAU_WORKERS_PER_AGENT) > MAX_CONCURRENT_WORKERS:
+            log("Plateau schedule exceeds MAX_CONCURRENT_WORKERS.")
+            sys.exit(1)
+        if PLATEAU_HOLD_S <= 0:
+            log("PLATEAU_HOLD_S must be > 0.")
+            sys.exit(1)
+        if PLATEAU_SETTLE_S < 0 or PLATEAU_SETTLE_S >= PLATEAU_HOLD_S:
+            log("PLATEAU_SETTLE_S must be >= 0 and < PLATEAU_HOLD_S.")
+            sys.exit(1)
+        if WORKER_LIFETIME_MODE != "hold":
+            log("Plateau mode requires WORKER_LIFETIME_MODE=hold.")
+            sys.exit(1)
+
+
+def maybe_spawn_worker(client, rng: random.Random) -> bool:
+    if WORKER_BACKEND == "firecracker":
+        return spawn_worker_firecracker(rng)
+    return spawn_worker(client, rng)
+
+
+def wait_for_benchmark_start(stop: threading.Event) -> bool:
+    if BENCHMARK_MODE == "loaded":
+        _benchmark_start.set()
+        return True
+    log(f"{BENCHMARK_MODE.capitalize()} mode armed. Waiting for orchestrator start signal.")
+    while not stop.is_set():
+        if _benchmark_start.wait(timeout=0.5):
+            return True
+    return False
+
+
+def run_loaded_loop(stop: threading.Event, client, rng: random.Random) -> None:
+    start_time = time.monotonic()
+    log("Entering stochastic spawn loop.")
+
+    while not stop.is_set():
+        elapsed = time.monotonic() - start_time
+        if elapsed >= BENCHMARK_DURATION_S:
+            log(f"Benchmark duration reached ({elapsed:.0f}s). Stopping.")
+            break
+
+        delay = rng.expovariate(1.0 / SPAWN_INTERVAL_MEAN_S)
+        if stop.wait(timeout=delay):
+            break
+
+        active = get_active_workers()
+        if active >= MAX_CONCURRENT_WORKERS:
+            log(f"At capacity ({active}/{MAX_CONCURRENT_WORKERS}). Skipping spawn.")
+            continue
+
+        log(f"Spawning worker (active: {active}/{MAX_CONCURRENT_WORKERS})")
+        maybe_spawn_worker(client, rng)
+
+
+def run_plateau_loop(stop: threading.Event, client, rng: random.Random) -> None:
+    log(
+        "Entering plateau loop: "
+        f"targets={PLATEAU_WORKERS_PER_AGENT} hold_s={PLATEAU_HOLD_S} "
+        f"settle_s={PLATEAU_SETTLE_S}"
+    )
+    benchmark_start = time.monotonic()
+
+    for stage_index, target in enumerate(PLATEAU_WORKERS_PER_AGENT):
+        if stop.is_set():
+            break
+
+        set_plateau_stage(stage_index, target)
+        emit_event(
+            "plateau_stage_start",
+            plateau_index=stage_index,
+            target_workers=target,
+            hold_s=PLATEAU_HOLD_S,
+            settle_s=PLATEAU_SETTLE_S,
+        )
+        stage_deadline = time.monotonic() + PLATEAU_HOLD_S
+
+        while not stop.is_set() and time.monotonic() < stage_deadline:
+            active = get_active_workers()
+            if active < target:
+                log(f"Plateau {stage_index}: filling to target ({active}/{target})")
+                if not maybe_spawn_worker(client, rng):
+                    remaining = max(0.0, stage_deadline - time.monotonic())
+                    stop.wait(timeout=min(1.0, remaining))
+                    continue
+                remaining = max(0.0, stage_deadline - time.monotonic())
+                stop.wait(timeout=min(0.5, remaining))
+                continue
+
+            remaining = max(0.0, stage_deadline - time.monotonic())
+            stop.wait(timeout=min(1.0, remaining))
+
+        emit_event(
+            "plateau_stage_end",
+            plateau_index=stage_index,
+            target_workers=target,
+            active_workers=get_active_workers(),
+        )
+
+    elapsed = time.monotonic() - benchmark_start
+    log(f"Plateau schedule complete ({elapsed:.0f}s). Stopping.")
+
+
 def main():
     # Resolve DOCKER_BRIDGE_GATEWAY=auto to this container's own IP.
     # Used with Podman CNI bridge where containers share a bridge network
@@ -914,8 +1085,10 @@ def main():
 
     # Set up reproducible RNG
     rng = random.Random(AGENT_SEED)
+    validate_config()
 
     emit_event("agent_start",
+               benchmark_mode=BENCHMARK_MODE,
                baseline_mb=AGENT_BASELINE_MB,
                spawn_interval_mean_s=SPAWN_INTERVAL_MEAN_S,
                max_concurrent_workers=MAX_CONCURRENT_WORKERS,
@@ -923,6 +1096,10 @@ def main():
                rng_seed=AGENT_SEED,
                worker_runtime=WORKER_RUNTIME or "default",
                worker_backend=WORKER_BACKEND,
+               worker_lifetime_mode=WORKER_LIFETIME_MODE,
+               plateau_workers_per_agent=PLATEAU_WORKERS_PER_AGENT,
+               plateau_hold_s=PLATEAU_HOLD_S,
+               plateau_settle_s=PLATEAU_SETTLE_S,
                orchestrator_port=ORCHESTRATOR_PORT or "disabled",
                orchestrator_url=compute_orchestrator_url() or "disabled")
 
@@ -969,34 +1146,12 @@ def main():
     )
     status_thread.start()
 
-    # Spawn loop
-    start_time = time.monotonic()
-    log("Entering spawn loop.")
-
-    while not stop.is_set():
-        # Check duration
-        elapsed = time.monotonic() - start_time
-        if elapsed >= BENCHMARK_DURATION_S:
-            log(f"Benchmark duration reached ({elapsed:.0f}s). Stopping.")
-            break
-
-        # Sleep for random interval (exponential distribution)
-        delay = rng.expovariate(1.0 / SPAWN_INTERVAL_MEAN_S)
-        if stop.wait(timeout=delay):
-            break  # Signalled to stop during sleep
-
-        # Check capacity
-        active = get_active_workers()
-        if active >= MAX_CONCURRENT_WORKERS:
-            log(f"At capacity ({active}/{MAX_CONCURRENT_WORKERS}). Skipping spawn.")
-            continue
-
-        # Spawn (dispatch by backend)
-        log(f"Spawning worker (active: {active}/{MAX_CONCURRENT_WORKERS})")
-        if WORKER_BACKEND == "firecracker":
-            spawn_worker_firecracker(rng)
-        else:
-            spawn_worker(client, rng)
+    if not wait_for_benchmark_start(stop):
+        log("Stopped before benchmark start signal arrived.")
+    elif BENCHMARK_MODE == "plateau":
+        run_plateau_loop(stop, client, rng)
+    else:
+        run_loaded_loop(stop, client, rng)
 
     # Cleanup
     stop.set()
