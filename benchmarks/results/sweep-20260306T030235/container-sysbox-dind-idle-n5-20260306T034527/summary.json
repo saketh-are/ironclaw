@@ -1,0 +1,109 @@
+{
+  "approach": "container-sysbox-dind",
+  "mode": "idle",
+  "num_agents": 5,
+  "run_id": "f53ce3502970",
+  "rng_seed": 42,
+  "baseline_mib": 7278.564453125,
+  "steady_state_mean_mib": 1059.476384943182,
+  "peak_mib": 1224.611328125,
+  "p50_mib": 1026.591796875,
+  "p95_mib": 1195.599609375,
+  "p99_mib": 1212.669921875,
+  "avg_workers": 0.0,
+  "per_agent_mean_mib": 211.8952769886364,
+  "drift_kb_per_s": -4486.63,
+  "total_samples": 83,
+  "steady_state_samples": 55,
+  "daemon_overhead": {
+    "dockerd": {
+      "mean_rss_mib": 125.81811079545454,
+      "mean_pss_mib": 123.27205255681818,
+      "baseline_rss_mib": 136.453125,
+      "baseline_pss_mib": 133.9150390625,
+      "delta_rss_mib": -10.635014204545456,
+      "delta_pss_mib": -10.642986505681819
+    },
+    "containerd": {
+      "mean_rss_mib": 83.62890625,
+      "mean_pss_mib": 82.06823508522727,
+      "baseline_rss_mib": 84.5,
+      "baseline_pss_mib": 82.947265625,
+      "delta_rss_mib": -0.87109375,
+      "delta_pss_mib": -0.879030539772728
+    },
+    "sysbox-fs": {
+      "mean_rss_mib": 30.5546875,
+      "mean_pss_mib": 30.55078125,
+      "baseline_rss_mib": 27.0078125,
+      "baseline_pss_mib": 27.00390625,
+      "delta_rss_mib": 3.546875,
+      "delta_pss_mib": 3.546875
+    },
+    "sysbox-mgr": {
+      "mean_rss_mib": 23.33984375,
+      "mean_pss_mib": 23.3359375,
+      "baseline_rss_mib": 21.8671875,
+      "baseline_pss_mib": 21.86328125,
+      "delta_rss_mib": 1.47265625,
+      "delta_pss_mib": 1.47265625
+    }
+  },
+  "total_workers_spawned": 0,
+  "max_concurrent_workers": 0,
+  "host_cpu_pct": 0.5,
+  "per_agent_cpu_s": 0.1,
+  "daemon_cpu": {
+    "containerd": {
+      "cpu_s": 0.1
+    },
+    "dockerd": {
+      "cpu_s": 0.7
+    },
+    "sysbox-fs": {
+      "cpu_s": 0.0
+    },
+    "sysbox-mgr": {
+      "cpu_s": 0.3
+    }
+  },
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 5,
+    "agents_missing_summary": 0,
+    "total_spawned": 0,
+    "total_checkins": 0,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-1": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-2": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-3": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-4": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      }
+    },
+    "all_ok": true
+  }
+}

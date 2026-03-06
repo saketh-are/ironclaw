@@ -1,0 +1,67 @@
+{
+  "approach": "container-gvisor-dind",
+  "mode": "idle",
+  "num_agents": 1,
+  "run_id": "7001d895c61f",
+  "rng_seed": 42,
+  "baseline_mib": 7020.971354166667,
+  "steady_state_mean_mib": 316.6097870516878,
+  "peak_mib": 357.06770833333303,
+  "p50_mib": 320.18880208333303,
+  "p95_mib": 348.43880208333303,
+  "p99_mib": 355.62239583333303,
+  "avg_workers": 0.0,
+  "per_agent_mean_mib": 316.6097870516878,
+  "drift_kb_per_s": 477.62,
+  "total_samples": 109,
+  "steady_state_samples": 79,
+  "daemon_overhead": {
+    "dockerd": {
+      "mean_rss_mib": 133.33984375,
+      "mean_pss_mib": 130.79966871044303,
+      "baseline_rss_mib": 134.76171875,
+      "baseline_pss_mib": 132.22337239583334,
+      "delta_rss_mib": -1.421875,
+      "delta_pss_mib": -1.4237036853903078
+    },
+    "containerd": {
+      "mean_rss_mib": 86.9609375,
+      "mean_pss_mib": 85.4061016613924,
+      "baseline_rss_mib": 88.1484375,
+      "baseline_pss_mib": 86.59537760416667,
+      "delta_rss_mib": -1.1875,
+      "delta_pss_mib": -1.1892759427742732
+    }
+  },
+  "total_workers_spawned": 0,
+  "max_concurrent_workers": 0,
+  "host_cpu_pct": 0.4,
+  "per_agent_cpu_s": 6.3,
+  "daemon_cpu": {
+    "containerd": {
+      "cpu_s": 0.1
+    },
+    "dockerd": {
+      "cpu_s": 0.2
+    }
+  },
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 1,
+    "agents_missing_summary": 0,
+    "total_spawned": 0,
+    "total_checkins": 0,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      }
+    },
+    "all_ok": true
+  }
+}

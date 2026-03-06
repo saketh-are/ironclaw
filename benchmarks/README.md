@@ -21,62 +21,34 @@ Notes:
 
 ## Decision Summary
 
-Key decision factors on GCP `n2-standard-16`:
+Key decision factors on the local bare-metal Xeon host:
 
-| Approach | Agent Mem | Worker Mem | Agent CPU | Worker CPU | Spawn p50/p95 | Ready p50/p95 |
-|---|---:|---:|---:|---:|---:|---:|
-| `container-docker` | 87.0 | 20.9 | 5.8 | 0.1 | 138 / 177 | 528 / 569 |
-| `container-gvisor-dind` | 313.6 | 70.0 | 11.6 | 0.9 | 3503 / 3883 | 4120 / 4538 |
-| `container-sysbox-dind` | 174.6 | 20.4 | 5.8 | 0.1 | 318 / 377 | 709 / 767 |
-| `podman-rootless` | 118.7 | 15.1 | 7.8 | 20.5* | 113 / 168 | 541 / 600 |
-| `hybrid-firecracker` | 79.2 | 54.9 | 12.0 | 0.4 | 112 / 116 | 4817 / 4923 |
-| `vm-qemu` | 1018.8 | ~0** | 12.4 | ~0** | 397 / 824 | 804 / 3997 |
+| Approach | Agent Mem | Worker Mem | Loaded Spawned / Avg | Ready p50/p95 |
+|---|---:|---:|---:|---:|
+| `container-docker` | 92.7 | 18.4 | 118 / 19.1 | 836 / 940 |
+| `container-gvisor-dind` | 339.1 | 67.5 | 83 / 13.8 | 8116 / 8503 |
+| `container-sysbox-dind` | 187.2 | 17.0 | 120 / 19.4 | 1205 / 1289 |
+| `podman-rootless` | 124.4 | 11.9 | 125 / 19.2 | 751 / 784 |
+| `hybrid-firecracker` | 82.0 | 53.9 | 115 / 19.2 | 2109 / 2136 |
+| `vm-qemu` | 904.4 | 21.0* | 117 / 19.1 | 1045 / 1567 |
 
 Notes:
 - `Agent Mem` / `Worker Mem` are memory taxes in MiB, not totals including the benchmark's intentional `500 MB` worker payload.
-- `Agent CPU` / `Worker CPU` are approximate steady-state host CPU slopes in `mCPU` on a `16 vCPU` host (`1000 mCPU = 1 vCPU`).
+- `Loaded Spawned / Avg` and `Ready p50/p95` come from the local bare-metal loaded benchmark below.
 - `Ready` is launch -> first worker checkin.
-- `*` `podman-rootless` has a large first-worker CPU activation jump; the table shows the steady marginal worker CPU slope after that jump.
-- `**` `vm-qemu` worker tax fits are effectively unresolved around zero for this method; interpret them as noise, not literal zero cost.
+- `*` `vm-qemu` shows a small marginal worker memory tax on this host, but it is still dominated by the much larger fixed per-agent VM cost.
+
+Current takeaway: `podman-rootless` is the best pure-performance option on this
+host. If we want nested Docker semantics with a cleaner isolation story than the
+shared host `docker.sock` model, and without the Podman-specific proxy/shared-
+network caveat, `container-sysbox-dind` is the best compromise.
 
 ## Results (loaded mode, 5 agents)
 
 Test parameters: `SPAWN_INTERVAL_MEAN_S=5`, `WORKER_DURATION=30s`,
 `MAX_CONCURRENT_WORKERS=5`, `BENCHMARK_DURATION_S=180`, `RNG_SEED=42`.
-GCP `n2-standard-16`.
-
-| Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Per-Agent (MiB) | Workers Spawned | Avg Workers | Checkins OK |
-|----------|---------------|------------|-----------|----------------|----------------|-------------|-------------|
-| `container-docker` | 11225 | 13819 | 13384 | 2245 | 121 | 19.3 | 121/121 |
-| `container-gvisor-dind` | 10793 | 13516 | 12539 | 2159 | 104 | 17.7 | 104/104 |
-| `container-sysbox-dind` | 11310 | 14018 | 13519 | 2262 | 119 | 19.2 | 119/119 |
-| `podman-rootless` | 10280 | 12149 | 12010 | 2056 | 123 | 16.7 | 123/123 |
-| `hybrid-firecracker` | 9515 | 13102 | 12406 | 1903 | 107 | 19.4 | 107/107 |
-| `vm-qemu` | 17544 | 17578 | 17566 | 3509 | 115 | 19.3 | 114/115 |
-
-Notes:
-- `container-gvisor-dind`: Fewer workers spawned because inner `container.create()` still takes about `3.3s-3.7s`, which materially eats into the `5s` mean spawn interval.
-- `vm-qemu`: One worker started right as shutdown began and never emitted a `checkin`, so the corrected ratio is `114/115`.
-
-Ready latency (launch -> first checkin, ms):
-
-| Approach | Ready p50/p95 |
-|----------|---------------|
-| `container-docker` | 528 / 569 |
-| `container-gvisor-dind` | 4120 / 4538 |
-| `container-sysbox-dind` | 709 / 767 |
-| `podman-rootless` | 541 / 600 |
-| `hybrid-firecracker` | 4817 / 4923 |
-| `vm-qemu` | 804 / 3997 |
-
-Regenerate with `make compare`.
-Detailed create/start/post-start breakdown remains available in the
-`Spawn Latency Detail` section of the compare output.
-
-## Results (loaded mode, 5 agents — bare-metal Xeon)
-
-Same test parameters as above, run on a bare-metal dual-socket Intel Xeon Gold
-6554S (144 threads, 503 GiB RAM) with Ubuntu 22.04 (kernel 6.8).
+Run on a bare-metal dual-socket Intel Xeon Gold
+6554S (144 threads, 503 GiB RAM).
 
 | Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Per-Agent (MiB) | Workers Spawned | Avg Workers | Checkins OK |
 |----------|---------------|------------|-----------|----------------|----------------|-------------|-------------|
@@ -86,6 +58,9 @@ Same test parameters as above, run on a bare-metal dual-socket Intel Xeon Gold
 | `podman-rootless` | 10635 | 13472 | 12777 | 2127 | 125 | 19.2 | 125/125 |
 | `hybrid-firecracker` | 11413 | 14092 | 13747 | 2283 | 115 | 19.2 | 115/115 |
 | `vm-qemu` | 17489 | 17625 | 17573 | 3498 | 117 | 19.1 | 117/117 |
+
+Notes:
+- `container-gvisor-dind`: Fewer workers spawned because inner `container.create()` still takes multiple seconds on this host, which materially eats into the `5s` mean spawn interval.
 
 Ready latency (launch -> first checkin, ms):
 
@@ -98,41 +73,9 @@ Ready latency (launch -> first checkin, ms):
 | `hybrid-firecracker` | 2109 / 2136 |
 | `vm-qemu` | 1045 / 1567 |
 
-Current takeaway: `container-sysbox-dind` is the most balanced option in this
-benchmark. It stays competitive on memory overhead, CPU overhead, throughput,
-and ready latency while avoiding both the shared host `docker.sock` model used
-by `container-docker` and the custom filtering proxy needed for
-`podman-rootless`. The caveat is that workers still share the parent agent's
-outer Sysbox boundary rather than getting a separate per-worker Sysbox sandbox.
-
-### Differences from GCP reference
-
-The bare-metal Xeon and GCP `n2-standard-16` (Ice Lake, 16 vCPUs, 64 GiB)
-produce broadly consistent memory-per-agent numbers — within ~5% for most
-approaches — confirming that the benchmark is measuring isolation overhead rather
-than host-specific artifacts.
-
-Key differences:
-
-- **gVisor DinD spawn latency is ~2x slower** (6.7s vs 3.3s `create` p50).
-  The `runsc` container-creation path is CPU-bound and serialized; the Xeon's
-  lower single-thread turbo clock (3.0 GHz base vs ~3.5 GHz on GCP Ice Lake)
-  amplifies this. The result is only 83 workers spawned vs 104 on GCP, and a
-  correspondingly lower average concurrency (13.8 vs 17.7).
-- **Sysbox DinD `start` latency is ~2x higher** (553ms vs 276ms p50) for the
-  same clock-speed reason, though `create` remains fast enough that total
-  throughput (120 workers) is on par with GCP (119).
-- **container-docker `create` latency is higher** (57ms vs 23ms) — likely due
-  to the higher core count creating more scheduler contention on the host
-  `dockerd`. Total throughput is still comparable (118 vs 121).
-- **Firecracker cold-start is faster** (2.0s vs 4.7s) because the bare-metal
-  host has direct KVM access without nested virtualization overhead.
-- **vm-qemu** memory is nearly identical (~3500 MiB/agent on both), confirming
-  that QEMU's fixed memory allocation dominates. Cold-start latency is lower
-  (552ms vs 405ms p50) because the inner Docker daemon benefits from the host's
-  larger page cache.
-- **100% checkins** on all approaches (vs 114/115 on GCP `vm-qemu`), likely due
-  to the bare-metal host having more headroom during the shutdown window.
+Regenerate with `make compare`.
+Detailed create/start/post-start breakdown remains available in the
+`Spawn Latency Detail` section of the compare output.
 
 ## Quick Start
 
@@ -206,23 +149,6 @@ make run APPROACH=hybrid-firecracker AGENTS=3
 Agents run in Docker containers with `/dev/kvm` passthrough. Workers are
 Firecracker microVMs spawned directly by the agent.
 
-### GCP VM Setup
-
-```bash
-# Create a GCP VM with nested virtualization
-gcloud compute instances create bench-vm \
-  --zone=us-central1-a \
-  --machine-type=n2-standard-16 \
-  --enable-nested-virtualization \
-  --image-family=ubuntu-2204-lts \
-  --image-project=ubuntu-os-cloud \
-  --boot-disk-size=50GB
-
-# SSH in and run setup
-gcloud compute ssh bench-vm
-sudo bash benchmarks/setup-gcp.sh
-```
-
 ## Prerequisites
 
 - **All approaches**: Linux, Docker daemon, Python 3.8+, `docker` Python SDK
@@ -232,7 +158,6 @@ sudo bash benchmarks/setup-gcp.sh
 - **VM approach**: QEMU (`qemu-system-x86_64`), KVM (`/dev/kvm` accessible to the benchmark user or run as `root`), libguestfs-tools, `genisoimage` or `mkisofs`
 - **Firecracker hybrid**: `firecracker` binary, KVM (`/dev/kvm`)
 - **Charts**: `pip install matplotlib`
-- **GCP**: Use `setup-gcp.sh` to install everything
 
 ## Modes
 
@@ -271,7 +196,7 @@ PLATEAU_SETTLE_S=20           # Seconds to discard at plateau start
 
 ## Host Tuning
 
-For accurate measurements, run `setup-gcp.sh` or manually apply:
+For accurate measurements, apply:
 
 ```bash
 # Disable transparent huge pages
@@ -357,16 +282,16 @@ make run-plateau APPROACH=container-docker AGENTS=5 \
 make decompose
 ```
 
-Decomposition results (March 6, 2026, `n2-standard-16`):
+Decomposition results (March 6, 2026, local bare-metal Xeon Gold 6554S):
 
 | Approach | Agent Fixed MiB | Worker Runtime Tax MiB |
 |----------|----------------:|-----------------------:|
-| `container-docker` | 87.0 | 20.9 |
-| `container-gvisor-dind` | 313.6 | 70.0 |
-| `container-sysbox-dind` | 174.6 | 20.4 |
-| `podman-rootless` | 118.7 | 15.1 |
-| `hybrid-firecracker` | 79.2 | 54.9 |
-| `vm-qemu` | 1018.8 | ~0* |
+| `container-docker` | 92.7 | 18.4 |
+| `container-gvisor-dind` | 339.1 | 67.5 |
+| `container-sysbox-dind` | 187.2 | 17.0 |
+| `podman-rootless` | 124.4 | 11.9 |
+| `hybrid-firecracker` | 82.0 | 53.9 |
+| `vm-qemu` | 904.4 | 21.0* |
 
 Notes:
 
@@ -378,7 +303,7 @@ Notes:
 - `Agent Fixed MiB` comes from the idle-fit slope, not from a single run.
 - `Worker Runtime Tax MiB` comes from the `WORKER_MEMORY_MB=0` plateau slope.
 - Worker totals that include the benchmark's intentional `500 MB` worker allocation are omitted here; use runtime tax as the representative per-worker overhead.
-- `*` `vm-qemu`'s zero-payload worker slope fit was `-4.9 MiB/worker`; interpret that as measurement noise around zero, not a real negative memory cost.
+- `*` `vm-qemu`'s local worker slope is positive on this host, but still small relative to the much larger fixed per-agent VM tax.
 
 ## Worker Lifecycle
 

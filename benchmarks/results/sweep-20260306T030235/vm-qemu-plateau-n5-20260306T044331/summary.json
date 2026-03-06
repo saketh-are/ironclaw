@@ -1,0 +1,194 @@
+{
+  "approach": "vm-qemu",
+  "mode": "plateau",
+  "num_agents": 5,
+  "run_id": "48ef26e4f738",
+  "rng_seed": 42,
+  "baseline_mib": 7543.201171875,
+  "steady_state_mean_mib": 4663.977204436189,
+  "peak_mib": 4900.271484375,
+  "p50_mib": 4654.169921875,
+  "p95_mib": 4894.224609375,
+  "p99_mib": 4898.396484375,
+  "avg_workers": 12.51048951048951,
+  "per_agent_mean_mib": 932.7954408872378,
+  "drift_kb_per_s": 1218.38,
+  "total_samples": 689,
+  "steady_state_samples": 429,
+  "daemon_overhead": {},
+  "total_workers_spawned": 25,
+  "max_concurrent_workers": 5,
+  "host_cpu_pct": 0.3,
+  "per_agent_cpu_s": 14.8,
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 5,
+    "agents_missing_summary": 0,
+    "total_spawned": 25,
+    "total_checkins": 25,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 5,
+        "checkins": 5,
+        "ok": true,
+        "summary_spawned": 5,
+        "summary_checkins": 5,
+        "summary_ok": true
+      },
+      "agent-1": {
+        "spawned": 5,
+        "checkins": 5,
+        "ok": true,
+        "summary_spawned": 5,
+        "summary_checkins": 5,
+        "summary_ok": true
+      },
+      "agent-2": {
+        "spawned": 5,
+        "checkins": 5,
+        "ok": true,
+        "summary_spawned": 5,
+        "summary_checkins": 5,
+        "summary_ok": true
+      },
+      "agent-3": {
+        "spawned": 5,
+        "checkins": 5,
+        "ok": true,
+        "summary_spawned": 5,
+        "summary_checkins": 5,
+        "summary_ok": true
+      },
+      "agent-4": {
+        "spawned": 5,
+        "checkins": 5,
+        "ok": true,
+        "summary_spawned": 5,
+        "summary_checkins": 5,
+        "summary_ok": true
+      }
+    },
+    "all_ok": true
+  },
+  "spawn_latency": {
+    "total": {
+      "count": 25,
+      "min": 413.1,
+      "mean": 505.2,
+      "p50": 515.1,
+      "p95": 593.0,
+      "p99": 603.3,
+      "max": 613.4
+    },
+    "create": {
+      "count": 25,
+      "min": 40.7,
+      "mean": 70.6,
+      "p50": 69.2,
+      "p95": 87.9,
+      "p99": 90.8,
+      "max": 101.0
+    },
+    "start": {
+      "count": 25,
+      "min": 348.2,
+      "mean": 434.6,
+      "p50": 440.8,
+      "p95": 498.4,
+      "p99": 517.7,
+      "max": 522.7
+    },
+    "cold_start": {
+      "count": 25,
+      "min": 164.2,
+      "mean": 294.0,
+      "p50": 301.7,
+      "p95": 319.7,
+      "p99": 320.7,
+      "max": 335.6
+    }
+  },
+  "plateau": {
+    "workers_per_agent": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "hold_s": 60,
+    "settle_s": 20,
+    "points": [
+      {
+        "workers_per_agent": 0,
+        "samples": 107,
+        "steady_samples": 71,
+        "mean_net_mib": 4549.451,
+        "peak_net_mib": 4639.709,
+        "mean_active_workers": 0.014,
+        "delta_active_workers": 0.0,
+        "delta_net_mib": 0.0
+      },
+      {
+        "workers_per_agent": 1,
+        "samples": 108,
+        "steady_samples": 72,
+        "mean_net_mib": 4526.575,
+        "peak_net_mib": 4651.244,
+        "mean_active_workers": 5.083,
+        "delta_active_workers": 5.069,
+        "delta_net_mib": -22.876
+      },
+      {
+        "workers_per_agent": 2,
+        "samples": 107,
+        "steady_samples": 72,
+        "mean_net_mib": 4578.053,
+        "peak_net_mib": 4694.811,
+        "mean_active_workers": 10.069,
+        "delta_active_workers": 10.055,
+        "delta_net_mib": 28.602
+      },
+      {
+        "workers_per_agent": 3,
+        "samples": 107,
+        "steady_samples": 72,
+        "mean_net_mib": 4669.002,
+        "peak_net_mib": 4777.057,
+        "mean_active_workers": 15.069,
+        "delta_active_workers": 15.055,
+        "delta_net_mib": 119.551
+      },
+      {
+        "workers_per_agent": 4,
+        "samples": 106,
+        "steady_samples": 71,
+        "mean_net_mib": 4774.503,
+        "peak_net_mib": 4890.041,
+        "mean_active_workers": 20.014,
+        "delta_active_workers": 20.0,
+        "delta_net_mib": 225.052
+      },
+      {
+        "workers_per_agent": 5,
+        "samples": 107,
+        "steady_samples": 71,
+        "mean_net_mib": 4889.354,
+        "peak_net_mib": 4900.271,
+        "mean_active_workers": 24.915,
+        "delta_active_workers": 24.901,
+        "delta_net_mib": 339.903
+      }
+    ],
+    "zero_point_per_agent_mib": 909.89,
+    "first_worker_tax_mib": -4.513,
+    "steady_worker_mib": 21.0,
+    "worker_fit_r2": 0.9969,
+    "steady_samples": 429
+  }
+}

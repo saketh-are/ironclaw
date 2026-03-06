@@ -1,0 +1,42 @@
+{
+  "approach": "podman-rootless",
+  "mode": "idle",
+  "num_agents": 1,
+  "run_id": "939312a54d15",
+  "rng_seed": 42,
+  "baseline_mib": 7716.635546875,
+  "steady_state_mean_mib": 173.537841796875,
+  "peak_mib": 605.2511718750002,
+  "p50_mib": 139.48164062500018,
+  "p95_mib": 487.3449218750002,
+  "p99_mib": 544.1613281250002,
+  "avg_workers": 0.0,
+  "per_agent_mean_mib": 173.537841796875,
+  "drift_kb_per_s": -6759.9,
+  "total_samples": 123,
+  "steady_state_samples": 80,
+  "daemon_overhead": {},
+  "total_workers_spawned": 0,
+  "max_concurrent_workers": 0,
+  "host_cpu_pct": 0.5,
+  "per_agent_cpu_s": 0.0,
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 1,
+    "agents_missing_summary": 0,
+    "total_spawned": 0,
+    "total_checkins": 0,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      }
+    },
+    "all_ok": true
+  }
+}

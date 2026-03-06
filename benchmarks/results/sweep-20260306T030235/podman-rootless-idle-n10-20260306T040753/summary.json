@@ -1,0 +1,87 @@
+{
+  "approach": "podman-rootless",
+  "mode": "idle",
+  "num_agents": 10,
+  "run_id": "b40c0adbb2a7",
+  "rng_seed": 42,
+  "baseline_mib": 7302.7625,
+  "steady_state_mean_mib": 1564.6937499999995,
+  "peak_mib": 2395.62421875,
+  "p50_mib": 1456.1945312500002,
+  "p95_mib": 2106.12421875,
+  "p99_mib": 2106.12421875,
+  "avg_workers": 0.0,
+  "per_agent_mean_mib": 156.46937499999996,
+  "drift_kb_per_s": -13832.21,
+  "total_samples": 63,
+  "steady_state_samples": 20,
+  "daemon_overhead": {},
+  "total_workers_spawned": 0,
+  "max_concurrent_workers": 0,
+  "host_cpu_pct": 1.2,
+  "per_agent_cpu_s": 0.0,
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 10,
+    "agents_missing_summary": 0,
+    "total_spawned": 0,
+    "total_checkins": 0,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-1": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-2": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-3": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-4": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-5": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-6": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-7": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-8": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-9": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      }
+    },
+    "all_ok": true
+  }
+}

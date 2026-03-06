@@ -1,0 +1,96 @@
+{
+  "approach": "vm-qemu",
+  "mode": "idle",
+  "num_agents": 10,
+  "run_id": "db1426dba539",
+  "rng_seed": 42,
+  "baseline_mib": 7574.14140625,
+  "steady_state_mean_mib": 8793.702547200523,
+  "peak_mib": 8966.96796875,
+  "p50_mib": 8785.159375,
+  "p95_mib": 8946.61640625,
+  "p99_mib": 8950.77265625,
+  "avg_workers": 0.0,
+  "per_agent_mean_mib": 879.3702547200522,
+  "drift_kb_per_s": -602.81,
+  "total_samples": 147,
+  "steady_state_samples": 96,
+  "daemon_overhead": {},
+  "total_workers_spawned": 0,
+  "max_concurrent_workers": 0,
+  "host_cpu_pct": 0.7,
+  "per_agent_cpu_s": 4.1,
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 10,
+    "agents_missing_summary": 0,
+    "total_spawned": 0,
+    "total_checkins": 0,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true,
+        "summary_missing": true
+      },
+      "agent-1": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true,
+        "summary_missing": true
+      },
+      "agent-2": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true,
+        "summary_missing": true
+      },
+      "agent-3": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true,
+        "summary_missing": true
+      },
+      "agent-4": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true,
+        "summary_missing": true
+      },
+      "agent-5": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true,
+        "summary_missing": true
+      },
+      "agent-6": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true,
+        "summary_missing": true
+      },
+      "agent-7": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-8": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true,
+        "summary_missing": true
+      },
+      "agent-9": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true,
+        "summary_missing": true
+      }
+    },
+    "all_ok": true
+  }
+}

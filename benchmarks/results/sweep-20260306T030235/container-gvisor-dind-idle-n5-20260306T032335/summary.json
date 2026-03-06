@@ -1,0 +1,87 @@
+{
+  "approach": "container-gvisor-dind",
+  "mode": "idle",
+  "num_agents": 5,
+  "run_id": "4e13e57abee4",
+  "rng_seed": 42,
+  "baseline_mib": 7119.225520833334,
+  "steady_state_mean_mib": 2152.5833290642076,
+  "peak_mib": 2512.7002604166664,
+  "p50_mib": 2172.2158854166664,
+  "p95_mib": 2481.6885416666664,
+  "p99_mib": 2511.7158854166664,
+  "avg_workers": 0.0,
+  "per_agent_mean_mib": 430.51666581284155,
+  "drift_kb_per_s": -12525.03,
+  "total_samples": 95,
+  "steady_state_samples": 61,
+  "daemon_overhead": {
+    "dockerd": {
+      "mean_rss_mib": 125.75979764344262,
+      "mean_pss_mib": 123.21381915983606,
+      "baseline_rss_mib": 134.24609375,
+      "baseline_pss_mib": 131.7080078125,
+      "delta_rss_mib": -8.486296106557376,
+      "delta_pss_mib": -8.494188652663937
+    },
+    "containerd": {
+      "mean_rss_mib": 84.83203125,
+      "mean_pss_mib": 83.27142033811475,
+      "baseline_rss_mib": 89.19140625,
+      "baseline_pss_mib": 87.638671875,
+      "delta_rss_mib": -4.359375,
+      "delta_pss_mib": -4.367251536885249
+    }
+  },
+  "total_workers_spawned": 0,
+  "max_concurrent_workers": 0,
+  "host_cpu_pct": 0.7,
+  "per_agent_cpu_s": 5.9,
+  "daemon_cpu": {
+    "containerd": {
+      "cpu_s": 0.1
+    },
+    "dockerd": {
+      "cpu_s": 0.8
+    }
+  },
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 5,
+    "agents_missing_summary": 0,
+    "total_spawned": 0,
+    "total_checkins": 0,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-1": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-2": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-3": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-4": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      }
+    },
+    "all_ok": true
+  }
+}

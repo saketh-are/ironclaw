@@ -1,0 +1,87 @@
+{
+  "approach": "container-docker",
+  "mode": "idle",
+  "num_agents": 5,
+  "run_id": "c1693d0d619f",
+  "rng_seed": 42,
+  "baseline_mib": 7012.33203125,
+  "steady_state_mean_mib": 696.261067708333,
+  "peak_mib": 779.109375,
+  "p50_mib": 713.30859375,
+  "p95_mib": 770.7421875,
+  "p99_mib": 776.94140625,
+  "avg_workers": 0.0,
+  "per_agent_mean_mib": 139.2522135416666,
+  "drift_kb_per_s": 1563.95,
+  "total_samples": 96,
+  "steady_state_samples": 66,
+  "daemon_overhead": {
+    "dockerd": {
+      "mean_rss_mib": 125.16625236742425,
+      "mean_pss_mib": 122.61968809185606,
+      "baseline_rss_mib": 119.3125,
+      "baseline_pss_mib": 116.77427455357143,
+      "delta_rss_mib": 5.853752367424249,
+      "delta_pss_mib": 5.845413538284632
+    },
+    "containerd": {
+      "mean_rss_mib": 75.53000710227273,
+      "mean_pss_mib": 73.96886837121212,
+      "baseline_rss_mib": 71.07198660714286,
+      "baseline_pss_mib": 69.51911272321429,
+      "delta_rss_mib": 4.4580204951298725,
+      "delta_pss_mib": 4.449755647997833
+    }
+  },
+  "total_workers_spawned": 0,
+  "max_concurrent_workers": 0,
+  "host_cpu_pct": 0.5,
+  "per_agent_cpu_s": 0.0,
+  "daemon_cpu": {
+    "containerd": {
+      "cpu_s": 0.1
+    },
+    "dockerd": {
+      "cpu_s": 1.0
+    }
+  },
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 5,
+    "agents_missing_summary": 0,
+    "total_spawned": 0,
+    "total_checkins": 0,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-1": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-2": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-3": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-4": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      }
+    },
+    "all_ok": true
+  }
+}

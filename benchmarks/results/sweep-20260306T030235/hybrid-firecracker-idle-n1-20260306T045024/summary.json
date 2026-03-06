@@ -1,0 +1,67 @@
+{
+  "approach": "hybrid-firecracker",
+  "mode": "idle",
+  "num_agents": 1,
+  "run_id": "0a47ab7cf280",
+  "rng_seed": 42,
+  "baseline_mib": 7545.729166666667,
+  "steady_state_mean_mib": 325.5668521689495,
+  "peak_mib": 437.95442708333303,
+  "p50_mib": 345.61848958333303,
+  "p95_mib": 422.25520833333303,
+  "p99_mib": 426.47395833333303,
+  "avg_workers": 0.0,
+  "per_agent_mean_mib": 325.5668521689495,
+  "drift_kb_per_s": 4131.89,
+  "total_samples": 104,
+  "steady_state_samples": 73,
+  "daemon_overhead": {
+    "dockerd": {
+      "mean_rss_mib": 120.48672945205479,
+      "mean_pss_mib": 117.94600813356165,
+      "baseline_rss_mib": 111.8984375,
+      "baseline_pss_mib": 109.3603515625,
+      "delta_rss_mib": 8.588291952054789,
+      "delta_pss_mib": 8.585656571061648
+    },
+    "containerd": {
+      "mean_rss_mib": 74.35873287671232,
+      "mean_pss_mib": 72.80341663099315,
+      "baseline_rss_mib": 67.75364583333334,
+      "baseline_pss_mib": 66.20091145833334,
+      "delta_rss_mib": 6.605087043378987,
+      "delta_pss_mib": 6.602505172659818
+    }
+  },
+  "total_workers_spawned": 0,
+  "max_concurrent_workers": 0,
+  "host_cpu_pct": 0.4,
+  "per_agent_cpu_s": 0.0,
+  "daemon_cpu": {
+    "containerd": {
+      "cpu_s": 1.1
+    },
+    "dockerd": {
+      "cpu_s": 1.4
+    }
+  },
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 1,
+    "agents_missing_summary": 0,
+    "total_spawned": 0,
+    "total_checkins": 0,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      }
+    },
+    "all_ok": true
+  }
+}
