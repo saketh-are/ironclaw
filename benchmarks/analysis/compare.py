@@ -3,8 +3,8 @@
 Compare benchmark results from multiple runs.
 
 Reads summary.json files from all run directories in results/,
-prints a markdown comparison table with percentiles, daemon overhead,
-and swap warnings.
+recursively, then prints a markdown comparison table with percentiles,
+daemon overhead, and swap warnings.
 
 Usage:
     python3 -m analysis.compare [results-dir]
@@ -18,15 +18,14 @@ BENCH_DIR = Path(__file__).resolve().parent.parent
 
 
 def load_summaries(results_dir: Path) -> list:
-    """Load all summary.json files from result directories."""
+    """Load all summary.json files from result directories recursively."""
     summaries = []
-    for run_dir in sorted(results_dir.iterdir()):
-        summary_file = run_dir / "summary.json"
-        if summary_file.exists():
-            with open(summary_file) as f:
-                summary = json.load(f)
-                summary["run_dir"] = str(run_dir.name)
-                summaries.append(summary)
+    for summary_file in sorted(results_dir.rglob("summary.json")):
+        run_dir = summary_file.parent
+        with open(summary_file) as f:
+            summary = json.load(f)
+            summary["run_dir"] = str(run_dir.relative_to(results_dir))
+            summaries.append(summary)
     return summaries
 
 
@@ -120,7 +119,7 @@ def print_table(summaries: list) -> None:
             total = s.get("total_workers_spawned", 0)
             max_c = s.get("max_concurrent_workers", 0)
             if total > 0:
-                name = f"{s.get('approach', '?')}-{s.get('mode', '?')}-n{s.get('num_agents', '?')}"
+                name = s.get("run_dir", "unknown")
                 print(f"| {name:<30} | {total:>13} | {max_c:>14} |")
         print()
 
@@ -149,6 +148,15 @@ def print_table(summaries: list) -> None:
     # Print spawn latency stats if available
     has_latency = any(s.get("spawn_latency") for s in summaries)
     if has_latency:
+        ready_summaries = []
+        for s in sorted(summaries, key=sort_key):
+            sl = s.get("spawn_latency")
+            if not sl:
+                continue
+            rt = sl.get("ready_total", {})
+            if rt.get("count", 0) > 0:
+                ready_summaries.append((s, rt))
+
         print("Ready Latency (launch -> first checkin, ms):")
         header = (
             "| Approach         | Ready p50 | Ready p95 |"
@@ -158,12 +166,8 @@ def print_table(summaries: list) -> None:
         )
         print(header)
         print(sep)
-        for s in sorted(summaries, key=sort_key):
-            sl = s.get("spawn_latency")
-            if not sl:
-                continue
+        for s, rt in ready_summaries:
             approach = s.get("approach", "unknown")
-            rt = sl.get("ready_total", {})
 
             def _fmt(v):
                 return f"{v:.0f}" if v else "-"

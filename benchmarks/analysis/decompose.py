@@ -33,16 +33,22 @@ def linear_regression(xs: list, ys: list) -> dict:
 
 def load_runs(results_dir: Path) -> list:
     runs = []
-    for run_dir in sorted(results_dir.iterdir()):
-        summary_file = run_dir / "summary.json"
+    for summary_file in sorted(results_dir.rglob("summary.json")):
+        run_dir = summary_file.parent
         params_file = run_dir / "params.json"
-        if not summary_file.exists() or not params_file.exists():
+        if not params_file.exists():
             continue
         with open(summary_file) as f:
             summary = json.load(f)
         with open(params_file) as f:
             params = json.load(f)
-        runs.append({"run_dir": run_dir.name, "summary": summary, "params": params})
+        runs.append(
+            {
+                "run_dir": str(run_dir.relative_to(results_dir)),
+                "summary": summary,
+                "params": params,
+            }
+        )
     return runs
 
 

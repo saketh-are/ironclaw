@@ -2,6 +2,8 @@
 
 This document covers setup, reproducibility, output format, and benchmark internals. For the approach summary and the current benchmark results, see [../README.md](../README.md).
 
+The committed reference dataset is organized under `results/baremetal-xeon6554s/`. The analysis commands recurse through nested result folders, so `make compare` and `make decompose` work against that consolidated layout.
+
 ## Quick Start
 
 ```bash
@@ -139,10 +141,10 @@ The orchestrator warns at startup if swap is enabled and reports whether any swa
 
 ## Output Format
 
-Each run creates a directory under `results/`:
+Each run creates a directory under `results/`. For the committed reference data in this repo, those run directories live under `results/baremetal-xeon6554s/`:
 
 ```text
-results/container-docker-loaded-n5-20260304T143022/
+results/baremetal-xeon6554s/container-docker-loaded-n5-20260306T014541/
 ├── params.json        # Full configuration for reproducibility
 ├── timeseries.jsonl   # Memory samples (one JSON object per line)
 ├── summary.json       # Aggregated statistics
@@ -212,6 +214,7 @@ Notes:
 - `loaded` remains the realism benchmark. Use `plateau` for decomposition, not for headline density numbers.
 - The headline `Agent Mem` figure comes from the idle-fit slope, not from a single run.
 - The headline `Worker Mem` figure comes from the `WORKER_MEMORY_MB=0` plateau slope.
+- The committed sweep used for the headline decomposition lives at `results/baremetal-xeon6554s/sweep-20260306T030235/`.
 
 ## Worker Lifecycle
 

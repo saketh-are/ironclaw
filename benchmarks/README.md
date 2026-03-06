@@ -23,7 +23,7 @@ Notes:
 
 ## Decision Summary
 
-All tables below use local bare-metal runs on a 2x 36-core, 512 GiB host. A separate spot-check on GCP was directionally consistent, but only the bare-metal data is included here.
+All tables below use local bare-metal runs on a 2x 36-core, 512 GiB host. The committed reference dataset lives under `results/baremetal-xeon6554s/`. A separate spot-check on GCP was directionally consistent, but only the bare-metal data is included here.
 
 | Approach | Agent Mem | Worker Mem | Loaded Spawned / Avg | Ready p50/p95 |
 |---|---:|---:|---:|---:|
