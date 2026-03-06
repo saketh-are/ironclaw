@@ -13,15 +13,11 @@ Synthetic benchmark for multi-agent deployments. A trivial "agent" is deployed w
 | `vm-qemu` | One QEMU/KVM VM per agent | Inner Docker container inside that VM | Inner Docker namespaces/cgroups inside the same VM |
 | `hybrid-firecracker` | Docker container on host; not VM-grade, and granted `KVM`/`NET_ADMIN` access | Firecracker microVM (`KVM`) | Firecracker microVM boundary; parent agent manages its lifecycle from outside |
 
-Notes:
-- In `container-gvisor-dind` and `container-sysbox-dind`, workers do not get their own separate gVisor/Sysbox sandbox. They share the parent agent's outer boundary.
-- In `podman-rootless`, the worker/agent boundary is weaker than a fully separate container boundary because workers are intentionally launched with `network_mode=container:<agent>`.
-
 **Daemon model:** `container-docker` = shared host `dockerd`; `container-gvisor-dind` / `container-sysbox-dind` / `vm-qemu` = per-agent inner `dockerd`; `podman-rootless` = per-user socket-activated Podman service; `hybrid-firecracker` = no worker container daemon (agents spawn Firecracker VMs directly).
 
 ## Decision Summary
 
-Key decision factors on the local bare-metal Xeon host:
+All results presented in this README were collected on a bare-metal host (2x 36-core CPU, 512 GB RAM). They were largely consistent with independent testing on a GCP `n2-standard-16` instance with nested virtualization.
 
 | Approach | Agent Mem | Worker Mem | Loaded Spawned / Avg | Ready p50/p95 |
 |---|---:|---:|---:|---:|
@@ -34,21 +30,12 @@ Key decision factors on the local bare-metal Xeon host:
 
 Notes:
 - `Agent Mem` / `Worker Mem` are memory taxes in MiB, not totals including the benchmark's intentional `500 MB` worker payload.
-- `Loaded Spawned / Avg` and `Ready p50/p95` come from the local bare-metal loaded benchmark below.
 - `Ready` is launch -> first worker checkin.
-- `*` `vm-qemu` shows a small marginal worker memory tax on this host, but it is still dominated by the much larger fixed per-agent VM cost.
-
-Current takeaway: `podman-rootless` is the best pure-performance option on this
-host. If we want nested Docker semantics with a cleaner isolation story than the
-shared host `docker.sock` model, and without the Podman-specific proxy/shared-
-network caveat, `container-sysbox-dind` is the best compromise.
 
 ## Results (loaded mode, 5 agents)
 
 Test parameters: `SPAWN_INTERVAL_MEAN_S=5`, `WORKER_DURATION=30s`,
 `MAX_CONCURRENT_WORKERS=5`, `BENCHMARK_DURATION_S=180`, `RNG_SEED=42`.
-Run on a bare-metal dual-socket Intel Xeon Gold
-6554S (144 threads, 503 GiB RAM).
 
 | Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Per-Agent (MiB) | Workers Spawned | Avg Workers | Checkins OK |
 |----------|---------------|------------|-----------|----------------|----------------|-------------|-------------|
