@@ -109,7 +109,9 @@ def _load_docker_image_to_user(user: str, image: str) -> None:
     # Parse the loaded name and re-tag to the expected name.
     loaded_name = None
     for line in (load_result.stdout or "").splitlines():
-        if line.startswith("Loaded image(s):"):
+        # Podman 4.x outputs "Loaded image: ..." while older versions
+        # use "Loaded image(s): ...".  Match both.
+        if line.startswith("Loaded image"):
             loaded_name = line.split(":", 1)[1].strip()
             break
 

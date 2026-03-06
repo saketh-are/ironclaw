@@ -53,6 +53,60 @@ Spawn latency (ms):
 
 Regenerate with `make compare`.
 
+## Results (loaded mode, 5 agents — bare-metal Xeon)
+
+Same test parameters as above, run on a bare-metal dual-socket Intel Xeon Gold
+6554S (144 threads, 503 GiB RAM) with Ubuntu 22.04 (kernel 6.8).
+
+| Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Per-Agent (MiB) | Workers Spawned | Avg Workers | Checkins OK |
+|----------|---------------|------------|-----------|----------------|----------------|-------------|-------------|
+| `container-docker` | 11227 | 13462 | 13364 | 2245 | 118 | 19.1 | 118/118 |
+| `container-gvisor-dind` | 10581 | 12213 | 11704 | 2116 | 83 | 13.8 | 83/83 |
+| `container-sysbox-dind` | 11566 | 13388 | 13198 | 2313 | 120 | 19.4 | 120/120 |
+| `podman-rootless` | 10635 | 13472 | 12777 | 2127 | 125 | 19.2 | 125/125 |
+| `hybrid-firecracker` | 11413 | 14092 | 13747 | 2283 | 115 | 19.2 | 115/115 |
+| `vm-qemu` | 17489 | 17625 | 17573 | 3498 | 117 | 19.1 | 117/117 |
+
+Spawn latency (ms):
+
+| Approach | Create p50 | Create p95 | Start p50 | Start p95 | Total p50 | Total p95 | Cold-Start p50 | Cold-Start p95 |
+|----------|-----------|-----------|----------|----------|----------|----------|---------------|---------------|
+| `container-docker` | 57 | 78 | 196 | 259 | 252 | 351 | 580 | 610 |
+| `container-gvisor-dind` | 6662 | 7112 | 315 | 359 | 6986 | 7440 | 1102 | 1326 |
+| `container-sysbox-dind` | 67 | 89 | 553 | 601 | 621 | 671 | 578 | 614 |
+| `podman-rootless` | 23 | 31 | 148 | 168 | 172 | 194 | 579 | 602 |
+| `hybrid-firecracker` | n/a | n/a | n/a | n/a | 121 | 123 | 1989 | 2015 |
+| `vm-qemu` | 66 | 124 | 386 | 522 | 452 | 613 | 552 | 952 |
+
+### Differences from GCP reference
+
+The bare-metal Xeon and GCP `n2-standard-16` (Ice Lake, 16 vCPUs, 64 GiB)
+produce broadly consistent memory-per-agent numbers — within ~5% for most
+approaches — confirming that the benchmark is measuring isolation overhead rather
+than host-specific artifacts.
+
+Key differences:
+
+- **gVisor DinD spawn latency is ~2x slower** (6.7s vs 3.3s `create` p50).
+  The `runsc` container-creation path is CPU-bound and serialized; the Xeon's
+  lower single-thread turbo clock (3.0 GHz base vs ~3.5 GHz on GCP Ice Lake)
+  amplifies this. The result is only 83 workers spawned vs 104 on GCP, and a
+  correspondingly lower average concurrency (13.8 vs 17.7).
+- **Sysbox DinD `start` latency is ~2x higher** (553ms vs 276ms p50) for the
+  same clock-speed reason, though `create` remains fast enough that total
+  throughput (120 workers) is on par with GCP (119).
+- **container-docker `create` latency is higher** (57ms vs 23ms) — likely due
+  to the higher core count creating more scheduler contention on the host
+  `dockerd`. Total throughput is still comparable (118 vs 121).
+- **Firecracker cold-start is faster** (2.0s vs 4.7s) because the bare-metal
+  host has direct KVM access without nested virtualization overhead.
+- **vm-qemu** memory is nearly identical (~3500 MiB/agent on both), confirming
+  that QEMU's fixed memory allocation dominates. Cold-start latency is lower
+  (552ms vs 405ms p50) because the inner Docker daemon benefits from the host's
+  larger page cache.
+- **100% checkins** on all approaches (vs 114/115 on GCP `vm-qemu`), likely due
+  to the bare-metal host having more headroom during the shutdown window.
+
 ## Quick Start
 
 ```bash

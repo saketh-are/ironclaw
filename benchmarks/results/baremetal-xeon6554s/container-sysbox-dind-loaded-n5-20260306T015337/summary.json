@@ -1,0 +1,129 @@
+{
+  "approach": "container-sysbox-dind",
+  "mode": "loaded",
+  "num_agents": 5,
+  "run_id": "8e6f68560d6d",
+  "rng_seed": 42,
+  "baseline_mib": 7694.112630208333,
+  "steady_state_mean_mib": 11565.864899553573,
+  "peak_mib": 13388.211588541668,
+  "p50_mib": 11761.719401041668,
+  "p95_mib": 13198.035807291668,
+  "p99_mib": 13370.485026041668,
+  "avg_workers": 19.419047619047618,
+  "per_agent_mean_mib": 2313.1729799107147,
+  "drift_kb_per_s": -16585.97,
+  "total_samples": 188,
+  "steady_state_samples": 105,
+  "daemon_overhead": {},
+  "total_workers_spawned": 120,
+  "max_concurrent_workers": 5,
+  "host_cpu_pct": 1.5,
+  "per_agent_cpu_s": 0.5,
+  "daemon_cpu": {
+    "containerd": {
+      "cpu_s": 0.2
+    },
+    "dockerd": {
+      "cpu_s": 1.7
+    },
+    "sysbox-fs": {
+      "cpu_s": 19.5
+    },
+    "sysbox-mgr": {
+      "cpu_s": 0.6
+    }
+  },
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 5,
+    "agents_missing_summary": 0,
+    "total_spawned": 120,
+    "total_checkins": 120,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 24,
+        "checkins": 24,
+        "ok": true,
+        "summary_spawned": 24,
+        "summary_checkins": 24,
+        "summary_ok": true
+      },
+      "agent-1": {
+        "spawned": 25,
+        "checkins": 25,
+        "ok": true,
+        "summary_spawned": 25,
+        "summary_checkins": 25,
+        "summary_ok": true
+      },
+      "agent-2": {
+        "spawned": 26,
+        "checkins": 26,
+        "ok": true,
+        "summary_spawned": 26,
+        "summary_checkins": 26,
+        "summary_ok": true
+      },
+      "agent-3": {
+        "spawned": 23,
+        "checkins": 23,
+        "ok": true,
+        "summary_spawned": 23,
+        "summary_checkins": 23,
+        "summary_ok": true
+      },
+      "agent-4": {
+        "spawned": 22,
+        "checkins": 22,
+        "ok": true,
+        "summary_spawned": 22,
+        "summary_checkins": 22,
+        "summary_ok": true
+      }
+    },
+    "all_ok": true
+  },
+  "spawn_latency": {
+    "total": {
+      "count": 120,
+      "min": 575.4,
+      "mean": 628.5,
+      "p50": 621.4,
+      "p95": 670.8,
+      "p99": 689.5,
+      "max": 792.7
+    },
+    "create": {
+      "count": 120,
+      "min": 55.9,
+      "mean": 71.7,
+      "p50": 67.2,
+      "p95": 89.4,
+      "p99": 110.4,
+      "max": 193.9
+    },
+    "start": {
+      "count": 120,
+      "min": 510.4,
+      "mean": 556.8,
+      "p50": 553.3,
+      "p95": 601.4,
+      "p99": 616.2,
+      "max": 617.8
+    },
+    "cold_start": {
+      "count": 120,
+      "min": 400.4,
+      "mean": 580.7,
+      "p50": 577.8,
+      "p95": 613.8,
+      "p99": 627.0,
+      "max": 646.0
+    }
+  }
+}
