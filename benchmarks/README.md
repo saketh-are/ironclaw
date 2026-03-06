@@ -48,28 +48,17 @@ Current takeaway: `podman-rootless` is the best pure-performance option on this 
 
 Test parameters: `SPAWN_INTERVAL_MEAN_S=5`, `WORKER_DURATION=30s`, `MAX_CONCURRENT_WORKERS=5`, `BENCHMARK_DURATION_S=180`, `RNG_SEED=42`.
 
-| Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Per-Agent (MiB) | Workers Spawned | Avg Workers | Checkins OK |
-|----------|---------------:|-----------:|----------:|----------------:|----------------:|------------:|------------:|
-| `container-docker` | 11227 | 13462 | 13364 | 2245 | 118 | 19.1 | 118/118 |
-| `container-gvisor-dind` | 10581 | 12213 | 11704 | 2116 | 83 | 13.8 | 83/83 |
-| `container-sysbox-dind` | 11566 | 13388 | 13198 | 2313 | 120 | 19.4 | 120/120 |
-| `podman-rootless` | 10635 | 13472 | 12777 | 2127 | 125 | 19.2 | 125/125 |
-| `hybrid-firecracker` | 11413 | 14092 | 13747 | 2283 | 115 | 19.2 | 115/115 |
-| `vm-qemu` | 17489 | 17625 | 17573 | 3498 | 117 | 19.1 | 117/117 |
+| Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Per-Agent (MiB) | Workers Spawned | Avg Workers | Time-to-checkin p50/p95 (ms) | Checkins OK |
+|----------|---------------:|-----------:|----------:|----------------:|----------------:|------------:|------------------------------:|------------:|
+| `container-docker` | 11227 | 13462 | 13364 | 2245 | 118 | 19.1 | 836 / 940 | 118/118 |
+| `container-gvisor-dind` | 10581 | 12213 | 11704 | 2116 | 83 | 13.8 | 8116 / 8503 | 83/83 |
+| `container-sysbox-dind` | 11566 | 13388 | 13198 | 2313 | 120 | 19.4 | 1205 / 1289 | 120/120 |
+| `podman-rootless` | 10635 | 13472 | 12777 | 2127 | 125 | 19.2 | 751 / 784 | 125/125 |
+| `hybrid-firecracker` | 11413 | 14092 | 13747 | 2283 | 115 | 19.2 | 2109 / 2136 | 115/115 |
+| `vm-qemu` | 17489 | 17625 | 17573 | 3498 | 117 | 19.1 | 1045 / 1567 | 117/117 |
 
 Notes:
 - `container-gvisor-dind`: fewer workers spawned because inner `container.create()` still takes multiple seconds on this host, which materially eats into the `5s` mean spawn interval.
-
-Time-to-checkin (launch to first checkin, ms):
-
-| Approach | p50 / p95 |
-|----------|----------:|
-| `container-docker` | 836 / 940 |
-| `container-gvisor-dind` | 8116 / 8503 |
-| `container-sysbox-dind` | 1205 / 1289 |
-| `podman-rootless` | 751 / 784 |
-| `hybrid-firecracker` | 2109 / 2136 |
-| `vm-qemu` | 1045 / 1567 |
 
 Regenerate with `make compare`. Detailed create/start/post-start breakdown remains available in the `Spawn Latency Detail` section of the compare output.
 
