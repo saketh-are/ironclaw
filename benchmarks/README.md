@@ -38,18 +38,20 @@ Notes:
 - `container-gvisor-dind`: Fewer workers spawned because inner `container.create()` still takes about `3.3s-3.7s`, which materially eats into the `5s` mean spawn interval.
 - `vm-qemu`: One worker started right as shutdown began and never emitted a `checkin`, so the corrected ratio is `114/115`.
 
-Spawn latency (ms):
+Ready latency (launch -> first checkin, ms):
 
-| Approach | Create p50 | Create p95 | Start p50 | Start p95 | Total p50 | Total p95 | Cold-Start p50 | Cold-Start p95 |
-|----------|-----------|-----------|----------|----------|----------|----------|---------------|---------------|
-| `container-docker` | 23 | 29 | 114 | 140 | 138 | 177 | 389 | 401 |
-| `container-gvisor-dind` | 3308 | 3657 | 203 | 248 | 3503 | 3883 | 606 | 747 |
-| `container-sysbox-dind` | 39 | 53 | 276 | 339 | 318 | 377 | 392 | 403 |
-| `podman-rootless` | 24 | 47 | 88 | 111 | 113 | 168 | 426 | 448 |
-| `hybrid-firecracker` | n/a | n/a | n/a | n/a | 112 | 116 | 4706 | 4808 |
-| `vm-qemu` | 46 | 103 | 352 | 727 | 397 | 824 | 405 | 3195 |
+| Approach | Ready p50/p95 |
+|----------|---------------|
+| `container-docker` | 528 / 569 |
+| `container-gvisor-dind` | 4120 / 4538 |
+| `container-sysbox-dind` | 709 / 767 |
+| `podman-rootless` | 541 / 600 |
+| `hybrid-firecracker` | 4817 / 4923 |
+| `vm-qemu` | 804 / 3997 |
 
 Regenerate with `make compare`.
+Detailed create/start/post-start breakdown remains available in the
+`Spawn Latency Detail` section of the compare output.
 
 ## Results (loaded mode, 5 agents — bare-metal Xeon)
 
@@ -65,16 +67,23 @@ Same test parameters as above, run on a bare-metal dual-socket Intel Xeon Gold
 | `hybrid-firecracker` | 11413 | 14092 | 13747 | 2283 | 115 | 19.2 | 115/115 |
 | `vm-qemu` | 17489 | 17625 | 17573 | 3498 | 117 | 19.1 | 117/117 |
 
-Spawn latency (ms):
+Ready latency (launch -> first checkin, ms):
 
-| Approach | Create p50 | Create p95 | Start p50 | Start p95 | Total p50 | Total p95 | Cold-Start p50 | Cold-Start p95 |
-|----------|-----------|-----------|----------|----------|----------|----------|---------------|---------------|
-| `container-docker` | 57 | 78 | 196 | 259 | 252 | 351 | 580 | 610 |
-| `container-gvisor-dind` | 6662 | 7112 | 315 | 359 | 6986 | 7440 | 1102 | 1326 |
-| `container-sysbox-dind` | 67 | 89 | 553 | 601 | 621 | 671 | 578 | 614 |
-| `podman-rootless` | 23 | 31 | 148 | 168 | 172 | 194 | 579 | 602 |
-| `hybrid-firecracker` | n/a | n/a | n/a | n/a | 121 | 123 | 1989 | 2015 |
-| `vm-qemu` | 66 | 124 | 386 | 522 | 452 | 613 | 552 | 952 |
+| Approach | Ready p50/p95 |
+|----------|---------------|
+| `container-docker` | 836 / 940 |
+| `container-gvisor-dind` | 8116 / 8503 |
+| `container-sysbox-dind` | 1205 / 1289 |
+| `podman-rootless` | 751 / 784 |
+| `hybrid-firecracker` | 2109 / 2136 |
+| `vm-qemu` | 1045 / 1567 |
+
+Current takeaway: `container-sysbox-dind` is the most balanced option in this
+benchmark. It stays competitive on memory overhead, CPU overhead, throughput,
+and ready latency while avoiding both the shared host `docker.sock` model used
+by `container-docker` and the custom filtering proxy needed for
+`podman-rootless`. The caveat is that workers still share the parent agent's
+outer Sysbox boundary rather than getting a separate per-worker Sysbox sandbox.
 
 ### Differences from GCP reference
 
@@ -330,14 +339,14 @@ make decompose
 
 Decomposition results (March 6, 2026, `n2-standard-16`):
 
-| Approach | Agent Fixed MiB | Worker Runtime Tax MiB | Worker Payload Tax MiB | Worker Total MiB | First Worker MiB |
-|----------|----------------:|-----------------------:|-----------------------:|-----------------:|-----------------:|
-| `container-docker` | 87.0 | 20.9 | 501.2 | 522.1 | 521.1 |
-| `container-gvisor-dind` | 313.6 | 70.0 | 492.5 | 562.5 | 584.9 |
-| `container-sysbox-dind` | 174.6 | 20.4 | 500.0 | 520.4 | 485.8 |
-| `podman-rootless` | 118.7 | 15.1 | 501.1 | 516.2 | 491.2 |
-| `hybrid-firecracker` | 79.2 | 54.9 | 512.9 | 567.8 | 573.4 |
-| `vm-qemu` | 1018.8 | ~0* | 528.5 | 528.5 | 349.2 |
+| Approach | Agent Fixed MiB | Worker Runtime Tax MiB |
+|----------|----------------:|-----------------------:|
+| `container-docker` | 87.0 | 20.9 |
+| `container-gvisor-dind` | 313.6 | 70.0 |
+| `container-sysbox-dind` | 174.6 | 20.4 |
+| `podman-rootless` | 118.7 | 15.1 |
+| `hybrid-firecracker` | 79.2 | 54.9 |
+| `vm-qemu` | 1018.8 | ~0* |
 
 Notes:
 
@@ -347,8 +356,8 @@ Notes:
 - `loaded` remains the realism benchmark. Use `plateau` for decomposition, not for headline density numbers.
 - The table above uses an `idle` sweep at `N=1,5,10,20` (`BENCHMARK_DURATION_S=60`) plus paired `plateau` runs at `5` agents with schedule `0,1,2,3,4,5`, `PLATEAU_HOLD_S=60`, `PLATEAU_SETTLE_S=20`, and `WORKER_MEMORY_MB=500` / `0`.
 - `Agent Fixed MiB` comes from the idle-fit slope, not from a single run.
-- `Worker Runtime Tax MiB` comes from the `WORKER_MEMORY_MB=0` plateau slope; `Worker Payload Tax MiB` is the remainder to reach the `500 MB` plateau slope.
-- `First Worker MiB` is the observed `0 -> 1 worker/agent` jump in the `500 MB` plateau run and captures one-time warm/cache effects that the steady slope smooths out.
+- `Worker Runtime Tax MiB` comes from the `WORKER_MEMORY_MB=0` plateau slope.
+- Worker totals that include the benchmark's intentional `500 MB` worker allocation are omitted here; use runtime tax as the representative per-worker overhead.
 - `*` `vm-qemu`'s zero-payload worker slope fit was `-4.9 MiB/worker`; interpret that as measurement noise around zero, not a real negative memory cost.
 
 ## Worker Lifecycle

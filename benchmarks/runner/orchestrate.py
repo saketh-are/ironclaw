@@ -342,19 +342,27 @@ def validate_storage(run_dir: Path) -> dict:
 def parse_spawn_latencies(run_dir: Path) -> dict:
     """Parse worker_spawn_timing and checkin events to compute spawn latency stats.
 
-    Returns a dict with raw arrays and percentile stats for create_ms,
-    start_ms, total_ms, and cold_start_ms.  Returns None if no timing data.
+    Returns percentile stats for:
+      - create: launch request -> create complete
+      - start: create complete -> started
+      - total: launch request -> started
+      - cold_start: started -> first checkin
+      - ready_total: launch request -> first checkin
+
+    Returns None if no timing data.
     """
     create_vals = []
     start_vals = []
     total_vals = []
     cold_start_vals = []
+    ready_total_vals = []
 
     log_files = sorted(run_dir.glob("agent-*.jsonl"))
     if not log_files:
         log_files = sorted(run_dir.glob("agent-*.log"))
 
     for log_file in log_files:
+        spawn_total_by_worker = {}
         try:
             with open(log_file) as f:
                 for line in f:
@@ -366,15 +374,24 @@ def parse_spawn_latencies(run_dir: Path) -> dict:
                     except json.JSONDecodeError:
                         continue
                     if event.get("event") == "worker_spawn_timing":
+                        worker_id = event.get("worker_id")
                         if "create_ms" in event:
                             create_vals.append(event["create_ms"])
                         if "start_ms" in event:
                             start_vals.append(event["start_ms"])
                         if "total_ms" in event:
-                            total_vals.append(event["total_ms"])
+                            total_ms = event["total_ms"]
+                            total_vals.append(total_ms)
+                            if worker_id:
+                                spawn_total_by_worker[worker_id] = total_ms
                     elif event.get("event") == "checkin":
                         if "cold_start_ms" in event:
-                            cold_start_vals.append(event["cold_start_ms"])
+                            cold_start_ms = event["cold_start_ms"]
+                            cold_start_vals.append(cold_start_ms)
+                            worker_id = event.get("worker_id")
+                            total_ms = spawn_total_by_worker.get(worker_id)
+                            if total_ms is not None:
+                                ready_total_vals.append(total_ms + cold_start_ms)
         except Exception:
             pass
 
@@ -403,6 +420,8 @@ def parse_spawn_latencies(run_dir: Path) -> dict:
         result["start"] = _stats(start_vals)
     if cold_start_vals:
         result["cold_start"] = _stats(cold_start_vals)
+    if ready_total_vals:
+        result["ready_total"] = _stats(ready_total_vals)
     return result
 
 
@@ -782,9 +801,13 @@ def run_benchmark(
         t = sl.get("total", {})
         print(f"  Spawn latency (total): p50={t.get('p50', 0):.0f}ms "
               f"p95={t.get('p95', 0):.0f}ms max={t.get('max', 0):.0f}ms")
+        rt = sl.get("ready_total")
+        if rt:
+            print(f"  Ready latency (launch→checkin): p50={rt.get('p50', 0):.0f}ms "
+                  f"p95={rt.get('p95', 0):.0f}ms max={rt.get('max', 0):.0f}ms")
         cs = sl.get("cold_start")
         if cs:
-            print(f"  Cold-start (spawn→checkin): p50={cs.get('p50', 0):.0f}ms "
+            print(f"  Post-start checkin: p50={cs.get('p50', 0):.0f}ms "
                   f"p95={cs.get('p95', 0):.0f}ms max={cs.get('max', 0):.0f}ms")
 
     return run_dir

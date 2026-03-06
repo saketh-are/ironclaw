@@ -149,14 +149,12 @@ def print_table(summaries: list) -> None:
     # Print spawn latency stats if available
     has_latency = any(s.get("spawn_latency") for s in summaries)
     if has_latency:
-        print("Spawn Latency (ms):")
+        print("Ready Latency (launch -> first checkin, ms):")
         header = (
-            "| Approach         | Create p50 | Create p95 | Start p50 | Start p95 "
-            "| Total p50 | Total p95 | Cold-Start p50 | Cold-Start p95 |"
+            "| Approach         | Ready p50 | Ready p95 |"
         )
         sep = (
-            "|------------------|------------|------------|-----------|-----------|"
-            "-----------|-----------|----------------|----------------|"
+            "|------------------|-----------|-----------|"
         )
         print(header)
         print(sep)
@@ -165,20 +163,14 @@ def print_table(summaries: list) -> None:
             if not sl:
                 continue
             approach = s.get("approach", "unknown")
-            cr = sl.get("create", {})
-            st = sl.get("start", {})
-            to = sl.get("total", {})
-            cs = sl.get("cold_start", {})
+            rt = sl.get("ready_total", {})
 
             def _fmt(v):
                 return f"{v:.0f}" if v else "-"
 
             print(
                 f"| {approach:<16} "
-                f"| {_fmt(cr.get('p50')):>10} | {_fmt(cr.get('p95')):>10} "
-                f"| {_fmt(st.get('p50')):>9} | {_fmt(st.get('p95')):>9} "
-                f"| {_fmt(to.get('p50')):>9} | {_fmt(to.get('p95')):>9} "
-                f"| {_fmt(cs.get('p50')):>14} | {_fmt(cs.get('p95')):>14} |"
+                f"| {_fmt(rt.get('p50')):>9} | {_fmt(rt.get('p95')):>9} |"
             )
         print()
 
@@ -191,8 +183,13 @@ def print_table(summaries: list) -> None:
             if not sl:
                 continue
             approach = s.get("approach", "unknown")
-            for metric_name, metric_key in [("create", "create"), ("start", "start"),
-                                             ("total", "total"), ("cold_start", "cold_start")]:
+            for metric_name, metric_key in [
+                ("create", "create"),
+                ("start", "start"),
+                ("spawn_total", "total"),
+                ("post_start_checkin", "cold_start"),
+                ("ready_total", "ready_total"),
+            ]:
                 data = sl.get(metric_key, {})
                 if not data:
                     continue
