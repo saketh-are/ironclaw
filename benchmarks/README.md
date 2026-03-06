@@ -35,9 +35,7 @@ GCP `n2-standard-16`.
 | `vm-qemu` | 17544 | 17578 | 17566 | 3509 | 115 | 19.3 | 114/115 |
 
 Notes:
-- All rows above were regenerated on March 5, 2026 after fixing `summary.json` to exclude teardown samples past the benchmark window. Historical README numbers are stale.
 - `container-gvisor-dind`: Fewer workers spawned because inner `container.create()` still takes about `3.3s-3.7s`, which materially eats into the `5s` mean spawn interval.
-- `Checkins OK` is computed from raw `worker_start` and `checkin` events in the agent logs, not from the last periodic `checkin_summary`.
 - `vm-qemu`: One worker started right as shutdown began and never emitted a `checkin`, so the corrected ratio is `114/115`.
 
 Spawn latency (ms):
