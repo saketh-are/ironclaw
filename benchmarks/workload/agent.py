@@ -39,6 +39,7 @@ Environment variables:
 """
 
 import hashlib
+import heapq
 import http.client
 import json
 import mmap
@@ -106,6 +107,7 @@ STATUS_INTERVAL_S = 5  # How often to emit status events
 FC_KERNEL_PATH = os.environ.get("FC_KERNEL_PATH", "/opt/vmlinux")
 FC_ROOTFS_PATH = os.environ.get("FC_ROOTFS_PATH", "/opt/worker-rootfs.ext4")
 FC_VM_DIR = "/tmp/fc-vms"
+FC_MAX_NETWORK_SLOTS = 16384  # /30 subnets available inside 10.0.0.0/16
 
 
 # ---------------------------------------------------------------------------
@@ -280,15 +282,60 @@ def check_worker_reply(local_path: str, token: str) -> bool:
 # Firecracker: TAP device and ext4 workspace helpers
 # ---------------------------------------------------------------------------
 
-def _setup_tap_device(counter: int):
+_fc_network_lock = threading.Lock()
+_fc_free_network_slots = list(range(1, FC_MAX_NETWORK_SLOTS + 1))
+heapq.heapify(_fc_free_network_slots)
+_fc_network_slots_in_use = set()
+
+
+def _allocate_fc_network_slot() -> int:
+    with _fc_network_lock:
+        if not _fc_free_network_slots:
+            raise RuntimeError("No Firecracker network slots available")
+        slot = heapq.heappop(_fc_free_network_slots)
+        _fc_network_slots_in_use.add(slot)
+        return slot
+
+
+def _release_fc_network_slot(slot: int | None) -> None:
+    if slot is None:
+        return
+    with _fc_network_lock:
+        if slot in _fc_network_slots_in_use:
+            _fc_network_slots_in_use.remove(slot)
+            heapq.heappush(_fc_free_network_slots, slot)
+
+
+def _fc_network_config(slot: int):
+    """Map a slot to a unique /30 subnet inside 10.0.0.0/16."""
+    subnet_index = slot - 1
+    third_octet = subnet_index // 64
+    fourth_octet = (subnet_index % 64) * 4
+    tap_name = f"tap{slot}"
+    host_ip = f"10.0.{third_octet}.{fourth_octet + 1}"
+    guest_ip = f"10.0.{third_octet}.{fourth_octet + 2}"
+    return tap_name, host_ip, guest_ip
+
+
+def _fc_guest_mac(slot: int, counter: int) -> str:
+    octets = (
+        0x02,
+        0xFC,
+        (slot >> 8) & 0xFF,
+        slot & 0xFF,
+        (counter >> 8) & 0xFF,
+        counter & 0xFF,
+    )
+    return ":".join(f"{octet:02x}" for octet in octets)
+
+
+def _setup_tap_device(slot: int):
     """Create a TAP device for a Firecracker VM and assign IPs.
 
-    Uses a /30 subnet per VM: 10.0.{counter}.1 (host), 10.0.{counter}.2 (guest).
+    Uses a /30 subnet per VM inside 10.0.0.0/16.
     Returns (tap_name, host_ip, guest_ip) or raises on failure.
     """
-    tap_name = f"tap{counter}"
-    host_ip = f"10.0.{counter}.1"
-    guest_ip = f"10.0.{counter}.2"
+    tap_name, host_ip, guest_ip = _fc_network_config(slot)
 
     subprocess.run(
         ["ip", "tuntap", "add", tap_name, "mode", "tap"],
@@ -679,11 +726,14 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
     tap_name = None
     host_ip = None
     guest_ip = None
+    net_slot = None
     if ORCHESTRATOR_PORT:
         try:
-            tap_name, host_ip, guest_ip = _setup_tap_device(counter)
+            net_slot = _allocate_fc_network_slot()
+            tap_name, host_ip, guest_ip = _setup_tap_device(net_slot)
         except Exception as e:
             log(f"Failed to set up TAP device for {worker_name}: {e}")
+            _release_fc_network_slot(net_slot)
             try:
                 import shutil
                 shutil.rmtree(vm_dir, ignore_errors=True)
@@ -703,6 +753,7 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
             log(f"Failed to create workspace ext4 for {worker_name}: {e}")
             if tap_name:
                 _cleanup_tap_device(tap_name)
+            _release_fc_network_slot(net_slot)
             try:
                 import shutil
                 shutil.rmtree(vm_dir, ignore_errors=True)
@@ -722,6 +773,7 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
         log(f"Failed to launch firecracker for {worker_name}: {e}")
         if tap_name:
             _cleanup_tap_device(tap_name)
+        _release_fc_network_slot(net_slot)
         return False
 
     # Wait for the API socket to appear
@@ -734,6 +786,7 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
         proc.kill()
         if tap_name:
             _cleanup_tap_device(tap_name)
+        _release_fc_network_slot(net_slot)
         return False
 
     # Compute worker memory: requested + 128MB headroom for guest kernel + Python runtime
@@ -792,7 +845,7 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
             _fc_api(socket_path, "PUT", "/network-interfaces/eth0", {
                 "iface_id": "eth0",
                 "host_dev_name": tap_name,
-                "guest_mac": f"AA:FC:00:00:00:{counter:02x}",
+                "guest_mac": _fc_guest_mac(net_slot, counter),
             })
 
         # Configure machine resources
@@ -810,6 +863,7 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
         proc.kill()
         if tap_name:
             _cleanup_tap_device(tap_name)
+        _release_fc_network_slot(net_slot)
         try:
             import shutil
             shutil.rmtree(vm_dir, ignore_errors=True)
@@ -848,6 +902,7 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
         # Clean up TAP device
         if tap_name:
             _cleanup_tap_device(tap_name)
+        _release_fc_network_slot(net_slot)
 
         # Clean up VM directory
         try:

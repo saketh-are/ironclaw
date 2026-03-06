@@ -17,11 +17,33 @@ BENCH_DIR="$(dirname "$SCRIPT_DIR")"
 ROOTFS_FILE="${SCRIPT_DIR}/worker-rootfs.ext4"
 ROOTFS_SIZE_MB=128
 BUILD_TAG="fc-rootfs-builder"
+FORCE="${FORCE:-0}"
+SOURCE_FILES=(
+    "${BENCH_DIR}/workload/worker.py"
+    "${SCRIPT_DIR}/init"
+    "${SCRIPT_DIR}/build-rootfs.sh"
+)
 
 if [ -f "$ROOTFS_FILE" ]; then
-    echo "[build-rootfs] Rootfs already exists at ${ROOTFS_FILE}"
-    echo "  Delete it to rebuild: rm ${ROOTFS_FILE}"
-    exit 0
+    if [ "$FORCE" = "1" ]; then
+        echo "[build-rootfs] FORCE=1 set; rebuilding ${ROOTFS_FILE}"
+        rm -f "$ROOTFS_FILE"
+    else
+        up_to_date=1
+        for src in "${SOURCE_FILES[@]}"; do
+            if [ "$src" -nt "$ROOTFS_FILE" ]; then
+                up_to_date=0
+                break
+            fi
+        done
+        if [ "$up_to_date" -eq 1 ]; then
+            echo "[build-rootfs] Rootfs already up to date at ${ROOTFS_FILE}"
+            echo "  Set FORCE=1 to rebuild anyway."
+            exit 0
+        fi
+        echo "[build-rootfs] Rebuilding stale rootfs at ${ROOTFS_FILE}"
+        rm -f "$ROOTFS_FILE"
+    fi
 fi
 
 echo "[build-rootfs] Building minimal Alpine rootfs..."
