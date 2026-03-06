@@ -25,19 +25,21 @@ Notes:
 
 All tables below use local bare-metal runs on a 2x 36-core, 512 GiB host. The committed reference dataset lives under `results/baremetal-xeon6554s/`. A separate spot-check on GCP was directionally consistent, but only the bare-metal data is included here.
 
-| Approach | Agent Mem | Worker Mem | Loaded Spawned / Avg | Ready p50/p95 |
-|---|---:|---:|---:|---:|
-| `container-docker` | 92.7 | 18.4 | 118 / 19.1 | 836 / 940 |
-| `container-gvisor-dind` | 339.1 | 67.5 | 83 / 13.8 | 8116 / 8503 |
-| `container-sysbox-dind` | 187.2 | 17.0 | 120 / 19.4 | 1205 / 1289 |
-| `podman-rootless` | 124.4 | 11.9 | 125 / 19.2 | 751 / 784 |
-| `hybrid-firecracker` | 82.0 | 53.9 | 115 / 19.2 | 2109 / 2136 |
-| `vm-qemu` | 904.4 | 21.0* | 117 / 19.1 | 1045 / 1567 |
+| Approach | Agent Mem | Worker Mem | Agent CPU | Worker CPU | Worker Latency |
+|---|---:|---:|---:|---:|---:|
+| `container-docker` | 92.7 | 18.4 | 0.0 | 0.6 | 836 |
+| `container-gvisor-dind` | 339.1 | 67.5 | 76.0 | 246.6 | 8116 |
+| `container-sysbox-dind` | 187.2 | 17.0 | 0.0 | 0.8 | 1205 |
+| `podman-rootless` | 124.4 | 11.9 | 0.0 | 0.6 | 751 |
+| `hybrid-firecracker` | 82.0 | 53.9 | 0.0 | 0.3 | 2109 |
+| `vm-qemu` | 904.4 | 21.0* | 55.9 | 16.0 | 1045 |
 
 Notes:
 - `Agent Mem` / `Worker Mem` are memory taxes in MiB, not totals including the benchmark's intentional `500 MB` worker payload.
-- `Loaded Spawned / Avg` and `Ready p50/p95` come from the bare-metal loaded benchmark below.
-- `Ready` is launch to first worker checkin.
+- `Agent CPU` is the idle-fit CPU slope in `mCPU/agent`.
+- `Worker CPU` is the loaded benchmark's incremental CPU above that agent baseline, normalized by average active workers, in `mCPU/worker`.
+- `Worker Latency` is loaded time-to-checkin `p50` in milliseconds.
+- Very small CPU fits are rounded to `0.0`; these approaches are effectively at the noise floor in this benchmark.
 - `*` `vm-qemu` shows a small marginal worker memory tax on this host, but it is still dominated by the much larger fixed per-agent VM cost.
 
 Current takeaway: `podman-rootless` is the best pure-performance option on this host. If we want nested Docker semantics with a cleaner isolation story than the shared host `docker.sock` model, and without the Podman-specific proxy/shared-network caveat, `container-sysbox-dind` is the best compromise.
