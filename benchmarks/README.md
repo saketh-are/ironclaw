@@ -335,7 +335,7 @@ Decomposition results (March 6, 2026, `n2-standard-16`):
 | `container-docker` | 87.0 | 20.9 | 501.2 | 522.1 | 521.1 |
 | `container-gvisor-dind` | 313.6 | 70.0 | 492.5 | 562.5 | 584.9 |
 | `container-sysbox-dind` | 174.6 | 20.4 | 500.0 | 520.4 | 485.8 |
-| `podman-rootless` | 118.7 | 13.8 | 588.1 | 602.0 | 498.1 |
+| `podman-rootless` | 118.7 | 15.1 | 501.1 | 516.2 | 491.2 |
 | `hybrid-firecracker` | 79.2 | 54.9 | 512.9 | 567.8 | 573.4 |
 | `vm-qemu` | 1018.8 | ~0* | 528.5 | 528.5 | 349.2 |
 

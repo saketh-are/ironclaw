@@ -2,24 +2,24 @@
   "approach": "podman-rootless",
   "mode": "plateau",
   "num_agents": 5,
-  "run_id": "f4f5df504b80",
+  "run_id": "a58c0351aba4",
   "rng_seed": 42,
-  "baseline_mib": 3514.2166015625,
-  "steady_state_mean_mib": 820.7464666193182,
-  "peak_mib": 1099.9083984375002,
-  "p50_mib": 791.2208984375002,
-  "p95_mib": 1029.4630859375002,
-  "p99_mib": 1099.6349609375002,
-  "avg_workers": 7.340909090909091,
-  "per_agent_mean_mib": 164.14929332386365,
-  "drift_kb_per_s": 1359.39,
-  "total_samples": 90,
-  "steady_state_samples": 44,
+  "baseline_mib": 3567.4748046875,
+  "steady_state_mean_mib": 912.026475090337,
+  "peak_mib": 1113.2205078124998,
+  "p50_mib": 921.2283203124998,
+  "p95_mib": 1093.7986328124998,
+  "p99_mib": 1107.3416015624998,
+  "avg_workers": 12.505353319057816,
+  "per_agent_mean_mib": 182.40529501806742,
+  "drift_kb_per_s": 1029.34,
+  "total_samples": 751,
+  "steady_state_samples": 467,
   "daemon_overhead": {},
   "total_workers_spawned": 25,
   "max_concurrent_workers": 5,
-  "host_cpu_pct": 11.9,
-  "per_agent_cpu_s": 0.2,
+  "host_cpu_pct": 12.4,
+  "per_agent_cpu_s": 0.5,
   "swap": {
     "pswpin_delta": 0,
     "pswpout_delta": 0,
@@ -77,39 +77,39 @@
   "spawn_latency": {
     "total": {
       "count": 25,
-      "min": 111.4,
-      "mean": 150.0,
-      "p50": 121.7,
-      "p95": 250.0,
-      "p99": 253.2,
-      "max": 291.0
+      "min": 111.5,
+      "mean": 130.5,
+      "p50": 122.0,
+      "p95": 173.1,
+      "p99": 174.5,
+      "max": 177.2
     },
     "create": {
       "count": 25,
-      "min": 24.6,
-      "mean": 59.4,
-      "p50": 28.8,
-      "p95": 154.9,
-      "p99": 162.1,
-      "max": 206.7
+      "min": 27.0,
+      "mean": 43.5,
+      "p50": 30.9,
+      "p95": 92.8,
+      "p99": 95.4,
+      "max": 95.5
     },
     "start": {
       "count": 25,
-      "min": 76.8,
-      "mean": 90.6,
-      "p50": 86.9,
-      "p95": 98.4,
-      "p99": 98.4,
-      "max": 186.6
+      "min": 79.0,
+      "mean": 87.0,
+      "p50": 87.3,
+      "p95": 93.8,
+      "p99": 94.4,
+      "max": 94.8
     },
     "cold_start": {
       "count": 25,
-      "min": 219.3,
-      "mean": 233.2,
-      "p50": 232.8,
-      "p95": 249.1,
-      "p99": 249.4,
-      "max": 249.5
+      "min": 219.7,
+      "mean": 241.1,
+      "p50": 242.9,
+      "p95": 254.6,
+      "p99": 257.6,
+      "max": 260.8
     }
   },
   "plateau": {
@@ -126,69 +126,69 @@
     "points": [
       {
         "workers_per_agent": 0,
-        "samples": 26,
-        "steady_samples": 17,
-        "mean_net_mib": 696.819,
-        "peak_net_mib": 752.158,
+        "samples": 117,
+        "steady_samples": 78,
+        "mean_net_mib": 796.059,
+        "peak_net_mib": 1110.217,
         "mean_active_workers": 0.0,
         "delta_active_workers": 0.0,
         "delta_net_mib": 0.0
       },
       {
         "workers_per_agent": 1,
-        "samples": 17,
-        "steady_samples": 11,
-        "mean_net_mib": 794.187,
-        "peak_net_mib": 807.022,
-        "mean_active_workers": 5.182,
-        "delta_active_workers": 5.182,
-        "delta_net_mib": 97.368
+        "samples": 117,
+        "steady_samples": 78,
+        "mean_net_mib": 786.478,
+        "peak_net_mib": 833.701,
+        "mean_active_workers": 5.0,
+        "delta_active_workers": 5.0,
+        "delta_net_mib": -9.581
       },
       {
         "workers_per_agent": 2,
-        "samples": 8,
-        "steady_samples": 5,
-        "mean_net_mib": 874.07,
-        "peak_net_mib": 901.252,
+        "samples": 116,
+        "steady_samples": 77,
+        "mean_net_mib": 860.583,
+        "peak_net_mib": 881.826,
         "mean_active_workers": 10.0,
         "delta_active_workers": 10.0,
-        "delta_net_mib": 177.251
+        "delta_net_mib": 64.524
       },
       {
         "workers_per_agent": 3,
-        "samples": 7,
-        "steady_samples": 5,
-        "mean_net_mib": 971.696,
-        "peak_net_mib": 1000.834,
-        "mean_active_workers": 15.8,
-        "delta_active_workers": 15.8,
-        "delta_net_mib": 274.877
+        "samples": 117,
+        "steady_samples": 78,
+        "mean_net_mib": 934.84,
+        "peak_net_mib": 964.428,
+        "mean_active_workers": 15.0,
+        "delta_active_workers": 15.0,
+        "delta_net_mib": 138.781
       },
       {
         "workers_per_agent": 4,
-        "samples": 5,
-        "steady_samples": 3,
-        "mean_net_mib": 1009.743,
-        "peak_net_mib": 1029.463,
-        "mean_active_workers": 20.667,
-        "delta_active_workers": 20.667,
-        "delta_net_mib": 312.924
+        "samples": 116,
+        "steady_samples": 78,
+        "mean_net_mib": 1005.004,
+        "peak_net_mib": 1040.556,
+        "mean_active_workers": 20.0,
+        "delta_active_workers": 20.0,
+        "delta_net_mib": 208.945
       },
       {
         "workers_per_agent": 5,
-        "samples": 4,
-        "steady_samples": 3,
-        "mean_net_mib": 1090.933,
-        "peak_net_mib": 1099.908,
+        "samples": 117,
+        "steady_samples": 78,
+        "mean_net_mib": 1088.535,
+        "peak_net_mib": 1113.221,
         "mean_active_workers": 25.0,
         "delta_active_workers": 25.0,
-        "delta_net_mib": 394.114
+        "delta_net_mib": 292.476
       }
     ],
-    "zero_point_per_agent_mib": 139.364,
-    "first_worker_tax_mib": 18.79,
-    "steady_worker_mib": 13.814,
-    "worker_fit_r2": 0.9804,
-    "steady_samples": 44
+    "zero_point_per_agent_mib": 159.212,
+    "first_worker_tax_mib": -1.916,
+    "steady_worker_mib": 15.08,
+    "worker_fit_r2": 0.9987,
+    "steady_samples": 467
   }
 }

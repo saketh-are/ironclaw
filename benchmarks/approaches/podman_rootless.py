@@ -12,6 +12,7 @@ No persistent daemon runs. Podman's API is socket-activated (transient
 
 import subprocess
 import time
+import json
 import urllib.request
 from pathlib import Path
 from typing import Dict, List
@@ -168,6 +169,8 @@ class PodmanRootlessApproach(Approach):
         self._agent_ids: List[str] = []
         self._users: List[str] = []
         self._host_ports: Dict[str, int] = {}
+        self._agent_pids: Dict[str, int] = {}
+        self._last_worker_counts: Dict[str, int] = {}
         self._agent_image = "bench-agent:latest"
         self._run_id: str = "unknown"
 
@@ -224,6 +227,8 @@ class PodmanRootlessApproach(Approach):
         self._agent_ids = []
         self._users = []
         self._host_ports = {}
+        self._agent_pids = {}
+        self._last_worker_counts = {}
 
         images_to_load = [self._agent_image, config.worker_image]
 
@@ -386,6 +391,9 @@ class PodmanRootlessApproach(Approach):
                     )
                     if resp.status == 200:
                         ready.add(agent_id)
+                        pid = self._inspect_agent_pid(agent_id)
+                        if pid is not None:
+                            self._agent_pids[agent_id] = pid
                         print(f"[{self.name}] {agent_id} healthy")
                 except Exception:
                     pass
@@ -405,24 +413,35 @@ class PodmanRootlessApproach(Approach):
     # monitoring
     # ------------------------------------------------------------------
 
+    def _inspect_agent_pid(self, agent_id: str) -> int | None:
+        try:
+            index = self._agent_ids.index(agent_id)
+        except ValueError:
+            return None
+
+        user = self._users[index]
+        container_name = f"bench-agent-{index}"
+        try:
+            r = _run_as_user(
+                user,
+                ["podman", "inspect", "--format", "{{.State.Pid}}", container_name],
+            )
+            if r.returncode != 0:
+                return None
+            pid = int((r.stdout or "").strip())
+            return pid if pid > 0 else None
+        except (ValueError, subprocess.SubprocessError):
+            return None
+
     def get_agent_pids(self) -> Dict[str, int]:
-        pids = {}
-        for i, (agent_id, user) in enumerate(
-            zip(self._agent_ids, self._users)
-        ):
-            container_name = f"bench-agent-{i}"
-            try:
-                r = _run_as_user(user, [
-                    "podman", "inspect", "--format",
-                    "{{.State.Pid}}", container_name,
-                ])
-                if r.returncode == 0:
-                    pid = int(r.stdout.strip())
-                    if pid > 0:
-                        pids[agent_id] = pid
-            except (ValueError, subprocess.SubprocessError):
-                pass
-        return pids
+        if len(self._agent_pids) != len(self._agent_ids):
+            for agent_id in self._agent_ids:
+                if agent_id in self._agent_pids:
+                    continue
+                pid = self._inspect_agent_pid(agent_id)
+                if pid is not None:
+                    self._agent_pids[agent_id] = pid
+        return dict(self._agent_pids)
 
     def get_daemon_pids(self) -> Dict[str, int]:
         # No persistent daemon — this is the point of rootless Podman.
@@ -430,16 +449,21 @@ class PodmanRootlessApproach(Approach):
 
     def count_active_workers(self) -> int:
         total = 0
-        for user in self._users:
+        for agent_id, port in self._host_ports.items():
             try:
-                r = _run_as_user(user, [
-                    "podman", "ps", "-q",
-                    "--filter", "label=bench_role=worker",
-                ])
-                if r.returncode == 0 and r.stdout.strip():
-                    total += len(r.stdout.strip().split("\n"))
-            except subprocess.SubprocessError:
+                with urllib.request.urlopen(
+                    f"http://127.0.0.1:{port}/status",
+                    timeout=0.2,
+                ) as resp:
+                    if resp.status == 200:
+                        data = json.loads(resp.read().decode() or "{}")
+                        count = int(data.get("active_workers", 0))
+                        self._last_worker_counts[agent_id] = count
+                        total += count
+                        continue
+            except Exception:
                 pass
+            total += self._last_worker_counts.get(agent_id, 0)
         return total
 
     def start_benchmark(self) -> None:
@@ -524,6 +548,8 @@ class PodmanRootlessApproach(Approach):
             ])
         self._agent_ids = []
         self._host_ports = {}
+        self._agent_pids = {}
+        self._last_worker_counts = {}
         print(f"[{self.name}] All containers removed.")
 
     def cleanup(self) -> None:
@@ -548,5 +574,7 @@ class PodmanRootlessApproach(Approach):
 
         self._users = []
         self._host_ports = {}
+        self._agent_pids = {}
+        self._last_worker_counts = {}
 
         print(f"[{self.name}] Cleanup complete (users removed).")
