@@ -19,6 +19,26 @@ Notes:
 
 **Daemon model:** `container-docker` = shared host `dockerd`; `container-gvisor-dind` / `container-sysbox-dind` / `vm-qemu` = per-agent inner `dockerd`; `podman-rootless` = per-user socket-activated Podman service; `hybrid-firecracker` = no worker container daemon (agents spawn Firecracker VMs directly).
 
+## Decision Summary
+
+Key decision factors on GCP `n2-standard-16`:
+
+| Approach | Agent Mem | Worker Mem | Agent CPU | Worker CPU | Spawn p50/p95 | Ready p50/p95 |
+|---|---:|---:|---:|---:|---:|---:|
+| `container-docker` | 87.0 | 20.9 | 5.8 | 0.1 | 138 / 177 | 528 / 569 |
+| `container-gvisor-dind` | 313.6 | 70.0 | 11.6 | 0.9 | 3503 / 3883 | 4120 / 4538 |
+| `container-sysbox-dind` | 174.6 | 20.4 | 5.8 | 0.1 | 318 / 377 | 709 / 767 |
+| `podman-rootless` | 118.7 | 15.1 | 7.8 | 20.5* | 113 / 168 | 541 / 600 |
+| `hybrid-firecracker` | 79.2 | 54.9 | 12.0 | 0.4 | 112 / 116 | 4817 / 4923 |
+| `vm-qemu` | 1018.8 | ~0** | 12.4 | ~0** | 397 / 824 | 804 / 3997 |
+
+Notes:
+- `Agent Mem` / `Worker Mem` are memory taxes in MiB, not totals including the benchmark's intentional `500 MB` worker payload.
+- `Agent CPU` / `Worker CPU` are approximate steady-state host CPU slopes in `mCPU` on a `16 vCPU` host (`1000 mCPU = 1 vCPU`).
+- `Ready` is launch -> first worker checkin.
+- `*` `podman-rootless` has a large first-worker CPU activation jump; the table shows the steady marginal worker CPU slope after that jump.
+- `**` `vm-qemu` worker tax fits are effectively unresolved around zero for this method; interpret them as noise, not literal zero cost.
+
 ## Results (loaded mode, 5 agents)
 
 Test parameters: `SPAWN_INTERVAL_MEAN_S=5`, `WORKER_DURATION=30s`,
