@@ -1,0 +1,29 @@
+{"t": 1772759564.947306, "event": "agent_start", "agent_id": "agent-0", "benchmark_mode": "idle", "baseline_mb": 50, "spawn_interval_mean_s": 30.0, "max_concurrent_workers": 0, "duration_s": 60, "rng_seed": 2890853269, "worker_runtime": "default", "worker_backend": "docker", "worker_lifetime_mode": "timed", "plateau_workers_per_agent": [0, 1, 2, 3, 4, 5], "plateau_hold_s": 60, "plateau_settle_s": 20, "orchestrator_port": "8080", "orchestrator_url": "http://127.0.0.1:8080"}
+{"t": 1772759564.9473636, "event": "log", "agent_id": "agent-0", "message": "Allocating 50 MB baseline memory..."}
+{"t": 1772759564.965862, "event": "log", "agent_id": "agent-0", "message": "Baseline memory allocated."}
+{"t": 1772759565.2340155, "event": "log", "agent_id": "agent-0", "message": "Orchestrator HTTP server listening on 0.0.0.0:8080"}
+{"t": 1772759565.2342849, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772759565.2343583, "event": "log", "agent_id": "agent-0", "message": "Entering stochastic spawn loop."}
+{"t": 1772759570.2345726, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772759575.2348168, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772759580.2350602, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772759585.2353096, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772759590.235573, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772759595.2357957, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772759600.2360563, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772759602.9302378, "event": "log", "agent_id": "agent-0", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772759603.6880329, "event": "log", "agent_id": "agent-0", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772759605.236301, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772759610.2365885, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772759615.2368183, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772759620.2370448, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772759625.237291, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772759630.2375574, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772759635.237777, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772759640.2380147, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772759644.0190659, "event": "log", "agent_id": "agent-0", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772759644.0191379, "event": "log", "agent_id": "agent-0", "message": "Benchmark duration reached (79s). Stopping."}
+{"t": 1772759644.0191705, "event": "checkin_summary", "agent_id": "agent-0", "workers_spawned": 0, "checkins_received": 0, "checkins_ok": true}
+{"t": 1772759644.0191848, "event": "log", "agent_id": "agent-0", "message": "Cleaning up workers..."}
+{"t": 1772759644.0789726, "event": "agent_stop", "agent_id": "agent-0", "total_workers_spawned": 0}
+{"t": 1772759644.0790117, "event": "log", "agent_id": "agent-0", "message": "Agent stopped."}

@@ -1,0 +1,87 @@
+{
+  "approach": "container-gvisor-dind",
+  "mode": "idle",
+  "num_agents": 5,
+  "run_id": "bdb0f8e91eef",
+  "rng_seed": 42,
+  "baseline_mib": 3678.028988486842,
+  "steady_state_mean_mib": 1723.259496953499,
+  "peak_mib": 2016.580386513158,
+  "p50_mib": 1658.400699013158,
+  "p95_mib": 1986.369449013158,
+  "p99_mib": 2007.494449013158,
+  "avg_workers": 0.0,
+  "per_agent_mean_mib": 344.6518993906998,
+  "drift_kb_per_s": -8703.16,
+  "total_samples": 128,
+  "steady_state_samples": 88,
+  "daemon_overhead": {
+    "dockerd": {
+      "mean_rss_mib": 100.79274680397727,
+      "mean_pss_mib": 97.98279918323864,
+      "baseline_rss_mib": 99.125,
+      "baseline_pss_mib": 96.322265625,
+      "delta_rss_mib": 1.6677468039772663,
+      "delta_pss_mib": 1.6605335582386402
+    },
+    "containerd": {
+      "mean_rss_mib": 59.681640625,
+      "mean_pss_mib": 58.25355113636363,
+      "baseline_rss_mib": 58.15625,
+      "baseline_pss_mib": 56.7353515625,
+      "delta_rss_mib": 1.525390625,
+      "delta_pss_mib": 1.5181995738636331
+    }
+  },
+  "total_workers_spawned": 0,
+  "max_concurrent_workers": 0,
+  "host_cpu_pct": 0.7,
+  "per_agent_cpu_s": 1.8,
+  "daemon_cpu": {
+    "containerd": {
+      "cpu_s": 0.1
+    },
+    "dockerd": {
+      "cpu_s": 0.5
+    }
+  },
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 5,
+    "agents_missing_summary": 0,
+    "total_spawned": 0,
+    "total_checkins": 0,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-1": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-2": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-3": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-4": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      }
+    },
+    "all_ok": true
+  }
+}

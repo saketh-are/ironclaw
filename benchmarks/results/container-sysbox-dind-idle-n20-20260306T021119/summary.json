@@ -1,0 +1,184 @@
+{
+  "approach": "container-sysbox-dind",
+  "mode": "idle",
+  "num_agents": 20,
+  "run_id": "f8009e468f27",
+  "rng_seed": 42,
+  "baseline_mib": 3897.681640625,
+  "steady_state_mean_mib": 3530.24775094697,
+  "peak_mib": 4383.451171875,
+  "p50_mib": 3429.603515625,
+  "p95_mib": 4320.470703125,
+  "p99_mib": 4372.310546875,
+  "avg_workers": 0.0,
+  "per_agent_mean_mib": 176.5123875473485,
+  "drift_kb_per_s": -22089.51,
+  "total_samples": 116,
+  "steady_state_samples": 66,
+  "daemon_overhead": {
+    "dockerd": {
+      "mean_rss_mib": 106.26538825757575,
+      "mean_pss_mib": 103.44507575757575,
+      "baseline_rss_mib": 100.41796875,
+      "baseline_pss_mib": 97.6162109375,
+      "delta_rss_mib": 5.847419507575751,
+      "delta_pss_mib": 5.828864820075751
+    },
+    "containerd": {
+      "mean_rss_mib": 64.35558712121212,
+      "mean_pss_mib": 62.91709576231061,
+      "baseline_rss_mib": 63.4453125,
+      "baseline_pss_mib": 62.0244140625,
+      "delta_rss_mib": 0.9102746212121247,
+      "delta_pss_mib": 0.8926816998106091
+    },
+    "sysbox-fs": {
+      "mean_rss_mib": 35.625,
+      "mean_pss_mib": 35.62109375,
+      "baseline_rss_mib": 28.93359375,
+      "baseline_pss_mib": 28.9296875,
+      "delta_rss_mib": 6.69140625,
+      "delta_pss_mib": 6.69140625
+    },
+    "sysbox-mgr": {
+      "mean_rss_mib": 22.34765625,
+      "mean_pss_mib": 22.34375,
+      "baseline_rss_mib": 22.08203125,
+      "baseline_pss_mib": 22.078125,
+      "delta_rss_mib": 0.265625,
+      "delta_pss_mib": 0.265625
+    }
+  },
+  "total_workers_spawned": 0,
+  "max_concurrent_workers": 0,
+  "host_cpu_pct": 1.0,
+  "per_agent_cpu_s": 0.0,
+  "daemon_cpu": {
+    "containerd": {
+      "cpu_s": 0.1
+    },
+    "dockerd": {
+      "cpu_s": 1.4
+    },
+    "sysbox-fs": {
+      "cpu_s": 0.0
+    },
+    "sysbox-mgr": {
+      "cpu_s": 0.0
+    }
+  },
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 20,
+    "agents_missing_summary": 0,
+    "total_spawned": 0,
+    "total_checkins": 0,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-1": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-10": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-11": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-12": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-13": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-14": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-15": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-16": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-17": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-18": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-19": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-2": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-3": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-4": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-5": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-6": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-7": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-8": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-9": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      }
+    },
+    "all_ok": true
+  }
+}

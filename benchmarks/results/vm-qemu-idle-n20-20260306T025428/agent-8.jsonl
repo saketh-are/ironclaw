@@ -1,0 +1,23 @@
+{"t": 1772765720.360131, "event": "agent_start", "agent_id": "agent-8", "benchmark_mode": "idle", "baseline_mb": 50, "spawn_interval_mean_s": 30.0, "max_concurrent_workers": 0, "duration_s": 60, "rng_seed": 987473471, "worker_runtime": "default", "worker_backend": "docker", "worker_lifetime_mode": "timed", "plateau_workers_per_agent": [0, 1, 2, 3, 4, 5], "plateau_hold_s": 60, "plateau_settle_s": 20, "orchestrator_port": "8080", "orchestrator_url": "http://172.17.0.1:8080"}
+{"t": 1772765720.3605218, "event": "log", "agent_id": "agent-8", "message": "Allocating 50 MB baseline memory..."}
+{"t": 1772765720.406145, "event": "log", "agent_id": "agent-8", "message": "Baseline memory allocated."}
+{"t": 1772765725.43247, "event": "log", "agent_id": "agent-8", "message": "Orchestrator HTTP server listening on 0.0.0.0:8080"}
+{"t": 1772765725.4332638, "event": "status", "agent_id": "agent-8", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765725.4333808, "event": "log", "agent_id": "agent-8", "message": "Idle mode armed. Waiting for orchestrator start signal."}
+{"t": 1772765727.8231835, "event": "benchmark_start_signal", "agent_id": "agent-8"}
+{"t": 1772765727.8233118, "event": "log", "agent_id": "agent-8", "message": "Entering stochastic spawn loop."}
+{"t": 1772765730.4348779, "event": "status", "agent_id": "agent-8", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765735.435463, "event": "status", "agent_id": "agent-8", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765740.436209, "event": "status", "agent_id": "agent-8", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765743.5523198, "event": "log", "agent_id": "agent-8", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772765745.4369645, "event": "status", "agent_id": "agent-8", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765750.4377012, "event": "status", "agent_id": "agent-8", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765755.438516, "event": "status", "agent_id": "agent-8", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765760.4391925, "event": "status", "agent_id": "agent-8", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765765.4397955, "event": "status", "agent_id": "agent-8", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765770.4403582, "event": "status", "agent_id": "agent-8", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765775.44106, "event": "status", "agent_id": "agent-8", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765780.4417465, "event": "status", "agent_id": "agent-8", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765785.4423995, "event": "status", "agent_id": "agent-8", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765790.4430537, "event": "status", "agent_id": "agent-8", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765795.4437501, "event": "status", "agent_id": "agent-8", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}

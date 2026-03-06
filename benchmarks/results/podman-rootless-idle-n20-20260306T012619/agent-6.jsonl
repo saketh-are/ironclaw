@@ -1,0 +1,45 @@
+{"t": 1772760432.658009, "event": "agent_start", "agent_id": "agent-6", "benchmark_mode": "idle", "baseline_mb": 50, "spawn_interval_mean_s": 30.0, "max_concurrent_workers": 0, "duration_s": 60, "rng_seed": 4279226676, "worker_runtime": "default", "worker_backend": "docker", "worker_lifetime_mode": "timed", "plateau_workers_per_agent": [0, 1, 2, 3, 4, 5], "plateau_hold_s": 60, "plateau_settle_s": 20, "orchestrator_port": "8080", "orchestrator_url": "http://127.0.0.1:8080"}
+{"t": 1772760432.6580682, "event": "log", "agent_id": "agent-6", "message": "Allocating 50 MB baseline memory..."}
+{"t": 1772760432.678195, "event": "log", "agent_id": "agent-6", "message": "Baseline memory allocated."}
+{"t": 1772760432.9679708, "event": "log", "agent_id": "agent-6", "message": "Orchestrator HTTP server listening on 0.0.0.0:8080"}
+{"t": 1772760432.9682045, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760432.9682488, "event": "log", "agent_id": "agent-6", "message": "Idle mode armed. Waiting for orchestrator start signal."}
+{"t": 1772760437.9684503, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760442.9687288, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760447.969, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760452.9692543, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760457.9695241, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760462.969803, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760467.9700208, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760472.9702327, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760477.9704523, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760482.9707255, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760487.9709713, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760492.9712129, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760497.9714432, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760502.9717035, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760507.971922, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760512.9721785, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760513.3230944, "event": "benchmark_start_signal", "agent_id": "agent-6"}
+{"t": 1772760513.3232424, "event": "log", "agent_id": "agent-6", "message": "Entering stochastic spawn loop."}
+{"t": 1772760517.9724216, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760522.9726982, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760523.5990858, "event": "log", "agent_id": "agent-6", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772760527.9729483, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760532.9731848, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760537.9734385, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760542.9737227, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760547.9740064, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760549.149943, "event": "log", "agent_id": "agent-6", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772760552.9742393, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760557.9744794, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760562.974736, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760567.974968, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760572.1681807, "event": "log", "agent_id": "agent-6", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772760572.8228536, "event": "log", "agent_id": "agent-6", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772760572.9752233, "event": "status", "agent_id": "agent-6", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760577.8518605, "event": "log", "agent_id": "agent-6", "message": "Received signal 15, shutting down..."}
+{"t": 1772760577.851986, "event": "checkin_summary", "agent_id": "agent-6", "workers_spawned": 0, "checkins_received": 0, "checkins_ok": true}
+{"t": 1772760577.85201, "event": "log", "agent_id": "agent-6", "message": "Cleaning up workers..."}
+{"t": 1772760577.915077, "event": "agent_stop", "agent_id": "agent-6", "total_workers_spawned": 0}
+{"t": 1772760577.9151325, "event": "log", "agent_id": "agent-6", "message": "Agent stopped."}

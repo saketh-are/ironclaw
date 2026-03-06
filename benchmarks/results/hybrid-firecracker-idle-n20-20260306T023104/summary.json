@@ -1,0 +1,162 @@
+{
+  "approach": "hybrid-firecracker",
+  "mode": "idle",
+  "num_agents": 20,
+  "run_id": "06ccc50fc34f",
+  "rng_seed": 42,
+  "baseline_mib": 3729.58984375,
+  "steady_state_mean_mib": 1728.1205897177415,
+  "peak_mib": 1805.03515625,
+  "p50_mib": 1727.53515625,
+  "p95_mib": 1790.91015625,
+  "p99_mib": 1799.62109375,
+  "avg_workers": 0.0,
+  "per_agent_mean_mib": 86.40602948588707,
+  "drift_kb_per_s": -1314.21,
+  "total_samples": 71,
+  "steady_state_samples": 31,
+  "daemon_overhead": {
+    "dockerd": {
+      "mean_rss_mib": 119.89201108870968,
+      "mean_pss_mib": 117.07116305443549,
+      "baseline_rss_mib": 113.59765625,
+      "baseline_pss_mib": 110.794921875,
+      "delta_rss_mib": 6.29435483870968,
+      "delta_pss_mib": 6.2762411794354875
+    },
+    "containerd": {
+      "mean_rss_mib": 66.3859627016129,
+      "mean_pss_mib": 64.94717111895162,
+      "baseline_rss_mib": 64.12109375,
+      "baseline_pss_mib": 62.7001953125,
+      "delta_rss_mib": 2.264868951612897,
+      "delta_pss_mib": 2.2469758064516157
+    }
+  },
+  "total_workers_spawned": 0,
+  "max_concurrent_workers": 0,
+  "host_cpu_pct": 1.9,
+  "per_agent_cpu_s": 0.0,
+  "daemon_cpu": {
+    "containerd": {
+      "cpu_s": 3.4
+    },
+    "dockerd": {
+      "cpu_s": 5.0
+    }
+  },
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 20,
+    "agents_missing_summary": 0,
+    "total_spawned": 0,
+    "total_checkins": 0,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-1": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-10": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-11": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-12": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-13": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-14": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-15": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-16": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-17": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-18": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-19": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-2": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-3": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-4": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-5": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-6": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-7": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-8": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-9": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      }
+    },
+    "all_ok": true
+  }
+}

@@ -1,0 +1,33 @@
+{"t": 1772764277.4890995, "event": "agent_start", "agent_id": "agent-17", "benchmark_mode": "idle", "baseline_mb": 50, "spawn_interval_mean_s": 30.0, "max_concurrent_workers": 0, "duration_s": 60, "rng_seed": 1738968120, "worker_runtime": "default", "worker_backend": "firecracker", "worker_lifetime_mode": "timed", "plateau_workers_per_agent": [0, 1, 2, 3, 4, 5], "plateau_hold_s": 60, "plateau_settle_s": 20, "orchestrator_port": "50117", "orchestrator_url": "http://172.20.0.1:50117"}
+{"t": 1772764277.489152, "event": "log", "agent_id": "agent-17", "message": "Allocating 50 MB baseline memory..."}
+{"t": 1772764277.5074117, "event": "log", "agent_id": "agent-17", "message": "Baseline memory allocated."}
+{"t": 1772764277.5085678, "event": "log", "agent_id": "agent-17", "message": "Firecracker backend: kernel=/opt/vmlinux, rootfs=/opt/worker-rootfs.ext4"}
+{"t": 1772764277.51362, "event": "log", "agent_id": "agent-17", "message": "Orchestrator HTTP server listening on 0.0.0.0:50117"}
+{"t": 1772764277.513817, "event": "status", "agent_id": "agent-17", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764277.5138624, "event": "log", "agent_id": "agent-17", "message": "Idle mode armed. Waiting for orchestrator start signal."}
+{"t": 1772764279.6249006, "event": "benchmark_start_signal", "agent_id": "agent-17"}
+{"t": 1772764279.6250176, "event": "log", "agent_id": "agent-17", "message": "Entering stochastic spawn loop."}
+{"t": 1772764282.5140438, "event": "status", "agent_id": "agent-17", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764287.5142682, "event": "status", "agent_id": "agent-17", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764292.514446, "event": "status", "agent_id": "agent-17", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764297.0311627, "event": "log", "agent_id": "agent-17", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772764297.5146353, "event": "status", "agent_id": "agent-17", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764302.514803, "event": "status", "agent_id": "agent-17", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764305.4992447, "event": "log", "agent_id": "agent-17", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772764307.5149796, "event": "status", "agent_id": "agent-17", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764310.7487855, "event": "log", "agent_id": "agent-17", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772764312.5151892, "event": "status", "agent_id": "agent-17", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764313.6128592, "event": "log", "agent_id": "agent-17", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772764317.51536, "event": "status", "agent_id": "agent-17", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764322.5155625, "event": "status", "agent_id": "agent-17", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764324.4737756, "event": "log", "agent_id": "agent-17", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772764327.515755, "event": "status", "agent_id": "agent-17", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764330.2748024, "event": "log", "agent_id": "agent-17", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772764332.5159483, "event": "status", "agent_id": "agent-17", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764337.5161576, "event": "status", "agent_id": "agent-17", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764342.5163376, "event": "status", "agent_id": "agent-17", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764344.066592, "event": "log", "agent_id": "agent-17", "message": "Received signal 15, shutting down..."}
+{"t": 1772764344.0666785, "event": "checkin_summary", "agent_id": "agent-17", "workers_spawned": 0, "checkins_received": 0, "checkins_ok": true}
+{"t": 1772764344.0667002, "event": "log", "agent_id": "agent-17", "message": "Cleaning up Firecracker VMs..."}
+{"t": 1772764344.0689523, "event": "agent_stop", "agent_id": "agent-17", "total_workers_spawned": 0}
+{"t": 1772764344.068981, "event": "log", "agent_id": "agent-17", "message": "Agent stopped."}

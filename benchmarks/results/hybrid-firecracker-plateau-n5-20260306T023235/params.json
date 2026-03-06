@@ -1,0 +1,33 @@
+{
+  "approach": "hybrid-firecracker",
+  "mode": "plateau",
+  "num_agents": 5,
+  "config": {
+    "benchmark_mode": "plateau",
+    "agent_memory_mb": 4096,
+    "agent_baseline_mb": 50,
+    "max_concurrent_workers": 5,
+    "spawn_interval_mean_s": 30,
+    "benchmark_duration_s": 360,
+    "worker_image": "bench-worker:latest",
+    "worker_memory_limit_mb": 2048,
+    "worker_memory_mb": 500,
+    "worker_duration_min_s": 30,
+    "worker_duration_max_s": 120,
+    "worker_lifetime_mode": "hold",
+    "plateau_workers_per_agent": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "plateau_hold_s": 60,
+    "plateau_settle_s": 20
+  },
+  "run_id": "59aacfc182c7",
+  "rng_seed": 42,
+  "sample_interval_ms": 500,
+  "timestamp": "20260306T023235"
+}

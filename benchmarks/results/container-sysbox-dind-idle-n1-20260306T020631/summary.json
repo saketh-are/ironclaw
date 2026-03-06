@@ -1,0 +1,89 @@
+{
+  "approach": "container-sysbox-dind",
+  "mode": "idle",
+  "num_agents": 1,
+  "run_id": "27f22ae56c5c",
+  "rng_seed": 42,
+  "baseline_mib": 3649.7129934210525,
+  "steady_state_mean_mib": 152.07149318609027,
+  "peak_mib": 310.8065378289475,
+  "p50_mib": 121.78700657894751,
+  "p95_mib": 278.6385690789475,
+  "p99_mib": 299.6151315789475,
+  "avg_workers": 0.0,
+  "per_agent_mean_mib": 152.07149318609027,
+  "drift_kb_per_s": -3866.8,
+  "total_samples": 143,
+  "steady_state_samples": 105,
+  "daemon_overhead": {
+    "dockerd": {
+      "mean_rss_mib": 101.19520089285714,
+      "mean_pss_mib": 98.39046688988095,
+      "baseline_rss_mib": 99.48828125,
+      "baseline_pss_mib": 96.685546875,
+      "delta_rss_mib": 1.7069196428571445,
+      "delta_pss_mib": 1.7049200148809547
+    },
+    "containerd": {
+      "mean_rss_mib": 60.0859375,
+      "mean_pss_mib": 58.66303943452381,
+      "baseline_rss_mib": 59.75390625,
+      "baseline_pss_mib": 58.3330078125,
+      "delta_rss_mib": 0.33203125,
+      "delta_pss_mib": 0.3300316220238102
+    },
+    "sysbox-fs": {
+      "mean_rss_mib": 24.25390625,
+      "mean_pss_mib": 24.25,
+      "baseline_rss_mib": 20.5625,
+      "baseline_pss_mib": 20.55859375,
+      "delta_rss_mib": 3.69140625,
+      "delta_pss_mib": 3.69140625
+    },
+    "sysbox-mgr": {
+      "mean_rss_mib": 19.761979166666666,
+      "mean_pss_mib": 19.758072916666666,
+      "baseline_rss_mib": 19.015625,
+      "baseline_pss_mib": 19.01171875,
+      "delta_rss_mib": 0.7463541666666664,
+      "delta_pss_mib": 0.7463541666666664
+    }
+  },
+  "total_workers_spawned": 0,
+  "max_concurrent_workers": 0,
+  "host_cpu_pct": 0.3,
+  "per_agent_cpu_s": 0.1,
+  "daemon_cpu": {
+    "containerd": {
+      "cpu_s": 0.1
+    },
+    "dockerd": {
+      "cpu_s": 0.1
+    },
+    "sysbox-fs": {
+      "cpu_s": 0.0
+    },
+    "sysbox-mgr": {
+      "cpu_s": 0.0
+    }
+  },
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 1,
+    "agents_missing_summary": 0,
+    "total_spawned": 0,
+    "total_checkins": 0,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      }
+    },
+    "all_ok": true
+  }
+}

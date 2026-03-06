@@ -1,0 +1,112 @@
+{
+  "approach": "container-gvisor-dind",
+  "mode": "idle",
+  "num_agents": 10,
+  "run_id": "d5ba69b4ae32",
+  "rng_seed": 42,
+  "baseline_mib": 3746.00390625,
+  "steady_state_mean_mib": 3195.8506651182433,
+  "peak_mib": 3410.71484375,
+  "p50_mib": 3129.62109375,
+  "p95_mib": 3400.9609375,
+  "p99_mib": 3409.6171875,
+  "avg_workers": 0.0,
+  "per_agent_mean_mib": 319.5850665118243,
+  "drift_kb_per_s": -6665.11,
+  "total_samples": 118,
+  "steady_state_samples": 74,
+  "daemon_overhead": {
+    "dockerd": {
+      "mean_rss_mib": 102.33810177364865,
+      "mean_pss_mib": 99.52364864864865,
+      "baseline_rss_mib": 99.69921875,
+      "baseline_pss_mib": 96.8974609375,
+      "delta_rss_mib": 2.6388830236486456,
+      "delta_pss_mib": 2.6261877111486456
+    },
+    "containerd": {
+      "mean_rss_mib": 63.16506545608108,
+      "mean_pss_mib": 61.73244826858108,
+      "baseline_rss_mib": 59.96875,
+      "baseline_pss_mib": 58.5478515625,
+      "delta_rss_mib": 3.1963154560810807,
+      "delta_pss_mib": 3.1845967060810807
+    }
+  },
+  "total_workers_spawned": 0,
+  "max_concurrent_workers": 0,
+  "host_cpu_pct": 1.1,
+  "per_agent_cpu_s": 1.7,
+  "daemon_cpu": {
+    "containerd": {
+      "cpu_s": 0.0
+    },
+    "dockerd": {
+      "cpu_s": 0.7
+    }
+  },
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 10,
+    "agents_missing_summary": 0,
+    "total_spawned": 0,
+    "total_checkins": 0,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-1": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-2": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-3": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-4": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-5": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-6": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-7": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-8": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-9": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      }
+    },
+    "all_ok": true
+  }
+}

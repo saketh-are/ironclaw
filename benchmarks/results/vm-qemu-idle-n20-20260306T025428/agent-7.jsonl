@@ -1,0 +1,30 @@
+{"t": 1772765720.994713, "event": "agent_start", "agent_id": "agent-7", "benchmark_mode": "idle", "baseline_mb": 50, "spawn_interval_mean_s": 30.0, "max_concurrent_workers": 0, "duration_s": 60, "rng_seed": 1706814223, "worker_runtime": "default", "worker_backend": "docker", "worker_lifetime_mode": "timed", "plateau_workers_per_agent": [0, 1, 2, 3, 4, 5], "plateau_hold_s": 60, "plateau_settle_s": 20, "orchestrator_port": "8080", "orchestrator_url": "http://172.17.0.1:8080"}
+{"t": 1772765720.9950457, "event": "log", "agent_id": "agent-7", "message": "Allocating 50 MB baseline memory..."}
+{"t": 1772765721.1711507, "event": "log", "agent_id": "agent-7", "message": "Baseline memory allocated."}
+{"t": 1772765726.2429771, "event": "log", "agent_id": "agent-7", "message": "Orchestrator HTTP server listening on 0.0.0.0:8080"}
+{"t": 1772765726.243719, "event": "status", "agent_id": "agent-7", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765726.2438042, "event": "log", "agent_id": "agent-7", "message": "Idle mode armed. Waiting for orchestrator start signal."}
+{"t": 1772765727.9356067, "event": "benchmark_start_signal", "agent_id": "agent-7"}
+{"t": 1772765727.9365356, "event": "log", "agent_id": "agent-7", "message": "Entering stochastic spawn loop."}
+{"t": 1772765731.244175, "event": "status", "agent_id": "agent-7", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765736.2446394, "event": "status", "agent_id": "agent-7", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765741.2453196, "event": "status", "agent_id": "agent-7", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765746.246001, "event": "status", "agent_id": "agent-7", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765751.2466648, "event": "status", "agent_id": "agent-7", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765753.7818542, "event": "log", "agent_id": "agent-7", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772765756.2474167, "event": "status", "agent_id": "agent-7", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765758.349501, "event": "log", "agent_id": "agent-7", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772765761.2481432, "event": "status", "agent_id": "agent-7", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765766.248918, "event": "status", "agent_id": "agent-7", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765771.2495167, "event": "status", "agent_id": "agent-7", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765776.2500598, "event": "status", "agent_id": "agent-7", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765778.3149285, "event": "log", "agent_id": "agent-7", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772765780.8087187, "event": "log", "agent_id": "agent-7", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772765781.250506, "event": "status", "agent_id": "agent-7", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765786.2510836, "event": "status", "agent_id": "agent-7", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765791.098495, "event": "log", "agent_id": "agent-7", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772765791.0989702, "event": "log", "agent_id": "agent-7", "message": "Benchmark duration reached (63s). Stopping."}
+{"t": 1772765791.099206, "event": "checkin_summary", "agent_id": "agent-7", "workers_spawned": 0, "checkins_received": 0, "checkins_ok": true}
+{"t": 1772765791.099347, "event": "log", "agent_id": "agent-7", "message": "Cleaning up workers..."}
+{"t": 1772765791.103954, "event": "agent_stop", "agent_id": "agent-7", "total_workers_spawned": 0}
+{"t": 1772765791.1041274, "event": "log", "agent_id": "agent-7", "message": "Agent stopped."}

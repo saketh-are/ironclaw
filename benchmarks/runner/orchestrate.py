@@ -195,6 +195,7 @@ def validate_checkins(run_dir: Path) -> dict:
         started_workers = set()
         checked_in_workers = set()
         last_summary = None
+        agent_start = None
         try:
             with open(log_file) as f:
                 for line in f:
@@ -211,6 +212,8 @@ def validate_checkins(run_dir: Path) -> dict:
                         checked_in_workers.add(event["worker_id"])
                     elif event.get("event") == "checkin_summary":
                         last_summary = event
+                    elif event.get("event") == "agent_start":
+                        agent_start = event
         except Exception:
             pass
 
@@ -254,6 +257,13 @@ def validate_checkins(run_dir: Path) -> dict:
             }
             if not ok:
                 results["all_ok"] = False
+        elif agent_start and agent_start.get("benchmark_mode") == "idle":
+            results["agents_checked"] += 1
+            results["per_agent"][agent_id] = {
+                "spawned": 0,
+                "checkins": 0,
+                "ok": True,
+            }
         else:
             results["agents_missing_summary"] += 1
             results["per_agent"][agent_id] = {"error": "no checkin_summary event"}

@@ -1,0 +1,137 @@
+{
+  "approach": "vm-qemu",
+  "mode": "idle",
+  "num_agents": 20,
+  "run_id": "d917255dff1a",
+  "rng_seed": 42,
+  "baseline_mib": 3620.7876953125,
+  "steady_state_mean_mib": 20370.69142645474,
+  "peak_mib": 20690.5052734375,
+  "p50_mib": 20302.5013671875,
+  "p95_mib": 20678.9857421875,
+  "p99_mib": 20684.5716796875,
+  "avg_workers": 0.0,
+  "per_agent_mean_mib": 1018.5345713227371,
+  "drift_kb_per_s": -7418.69,
+  "total_samples": 142,
+  "steady_state_samples": 87,
+  "daemon_overhead": {},
+  "total_workers_spawned": 0,
+  "max_concurrent_workers": 0,
+  "host_cpu_pct": 1.7,
+  "per_agent_cpu_s": 2.2,
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 20,
+    "agents_missing_summary": 0,
+    "total_spawned": 0,
+    "total_checkins": 0,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-1": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-10": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-11": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-12": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-13": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-14": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-15": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-16": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-17": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-18": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-19": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-2": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-3": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-4": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-5": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-6": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-7": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-8": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-9": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      }
+    },
+    "all_ok": true
+  }
+}

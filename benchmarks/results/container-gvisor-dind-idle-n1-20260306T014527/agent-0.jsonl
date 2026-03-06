@@ -1,0 +1,35 @@
+[dind-entrypoint] Starting dockerd...
+[dind-entrypoint] Waiting for dockerd to be ready...
+[dind-entrypoint] dockerd ready after 1s.
+[dind-entrypoint] Loading worker image from /opt/.worker-image.tar...
+Loaded image: bench-worker:latest
+[dind-entrypoint] Worker image loaded.
+[dind-entrypoint] Inner docker0 bridge IP: 172.17.0.1
+[dind-entrypoint] Starting agent...
+{"t": 1772761550.3188539, "event": "agent_start", "agent_id": "agent-0", "benchmark_mode": "idle", "baseline_mb": 50, "spawn_interval_mean_s": 30.0, "max_concurrent_workers": 0, "duration_s": 60, "rng_seed": 2890853269, "worker_runtime": "default", "worker_backend": "docker", "worker_lifetime_mode": "timed", "plateau_workers_per_agent": [0, 1, 2, 3, 4, 5], "plateau_hold_s": 60, "plateau_settle_s": 20, "orchestrator_port": "8080", "orchestrator_url": "http://172.17.0.1:8080"}
+{"t": 1772761550.3190007, "event": "log", "agent_id": "agent-0", "message": "Allocating 50 MB baseline memory..."}
+{"t": 1772761550.3466282, "event": "log", "agent_id": "agent-0", "message": "Baseline memory allocated."}
+{"t": 1772761550.3661718, "event": "log", "agent_id": "agent-0", "message": "Orchestrator HTTP server listening on 0.0.0.0:8080"}
+{"t": 1772761550.366569, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772761550.3666296, "event": "log", "agent_id": "agent-0", "message": "Idle mode armed. Waiting for orchestrator start signal."}
+{"t": 1772761551.5492783, "event": "benchmark_start_signal", "agent_id": "agent-0"}
+{"t": 1772761551.549347, "event": "log", "agent_id": "agent-0", "message": "Entering stochastic spawn loop."}
+{"t": 1772761555.3678324, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772761560.3682616, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772761565.3694243, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772761570.3703146, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772761575.3709278, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772761580.3713048, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772761585.3726578, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772761589.2457342, "event": "log", "agent_id": "agent-0", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772761590.003913, "event": "log", "agent_id": "agent-0", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772761590.373632, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772761595.374933, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772761600.375823, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772761605.3768065, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772761610.3779778, "event": "status", "agent_id": "agent-0", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772761611.6688318, "event": "log", "agent_id": "agent-0", "message": "Received signal 15, shutting down..."}
+{"t": 1772761611.668961, "event": "checkin_summary", "agent_id": "agent-0", "workers_spawned": 0, "checkins_received": 0, "checkins_ok": true}
+{"t": 1772761611.6691625, "event": "log", "agent_id": "agent-0", "message": "Cleaning up workers..."}
+{"t": 1772761611.671883, "event": "agent_stop", "agent_id": "agent-0", "total_workers_spawned": 0}
+{"t": 1772761611.671931, "event": "log", "agent_id": "agent-0", "message": "Agent stopped."}

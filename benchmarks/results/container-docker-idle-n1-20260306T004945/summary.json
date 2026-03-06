@@ -1,0 +1,67 @@
+{
+  "approach": "container-docker",
+  "mode": "idle",
+  "num_agents": 1,
+  "run_id": "bcbc9d1ab275",
+  "rng_seed": 42,
+  "baseline_mib": 3209.3369654605262,
+  "steady_state_mean_mib": 159.84133477311843,
+  "peak_mib": 251.11615953947376,
+  "p50_mib": 157.64350328947376,
+  "p95_mib": 196.08490953947376,
+  "p99_mib": 210.20990953947376,
+  "avg_workers": 0.0,
+  "per_agent_mean_mib": 159.84133477311843,
+  "drift_kb_per_s": -953.04,
+  "total_samples": 145,
+  "steady_state_samples": 107,
+  "daemon_overhead": {
+    "dockerd": {
+      "mean_rss_mib": 99.2191515771028,
+      "mean_pss_mib": 96.41491128796729,
+      "baseline_rss_mib": 100.40625,
+      "baseline_pss_mib": 97.60423519736842,
+      "delta_rss_mib": -1.1870984228971935,
+      "delta_pss_mib": -1.1893239094011392
+    },
+    "containerd": {
+      "mean_rss_mib": 58.2109375,
+      "mean_pss_mib": 56.78774824766355,
+      "baseline_rss_mib": 58.15625,
+      "baseline_pss_mib": 56.73514597039474,
+      "delta_rss_mib": 0.0546875,
+      "delta_pss_mib": 0.05260227726881084
+    }
+  },
+  "total_workers_spawned": 0,
+  "max_concurrent_workers": 0,
+  "host_cpu_pct": 0.3,
+  "per_agent_cpu_s": 0.0,
+  "daemon_cpu": {
+    "containerd": {
+      "cpu_s": 0.1
+    },
+    "dockerd": {
+      "cpu_s": 0.2
+    }
+  },
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 1,
+    "agents_missing_summary": 0,
+    "total_spawned": 0,
+    "total_checkins": 0,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      }
+    },
+    "all_ok": true
+  }
+}

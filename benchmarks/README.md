@@ -330,12 +330,28 @@ make run-plateau APPROACH=container-docker AGENTS=5 \
 make decompose
 ```
 
+Decomposition results (March 6, 2026, `n2-standard-16`):
+
+| Approach | Agent Fixed MiB | Worker Runtime Tax MiB | Worker Payload Tax MiB | Worker Total MiB | First Worker MiB |
+|----------|----------------:|-----------------------:|-----------------------:|-----------------:|-----------------:|
+| `container-docker` | 87.0 | 20.9 | 501.2 | 522.1 | 521.1 |
+| `container-gvisor-dind` | 313.6 | 70.0 | 492.5 | 562.5 | 584.9 |
+| `container-sysbox-dind` | 174.6 | 20.4 | 500.0 | 520.4 | 485.8 |
+| `podman-rootless` | 118.7 | 13.8 | 588.1 | 602.0 | 498.1 |
+| `hybrid-firecracker` | 79.2 | 54.9 | 512.9 | 567.8 | 573.4 |
+| `vm-qemu` | 1018.8 | ~0* | 528.5 | 528.5 | 349.2 |
+
 Notes:
 
 - `plateau` schedules must start at `0` and be non-decreasing.
 - `plateau` forces `WORKER_LIFETIME_MODE=hold` so workers stay alive for the full stage.
 - The orchestrator releases all agents into plateau mode through the agent HTTP control endpoint after collection starts, so the stages align across backends.
 - `loaded` remains the realism benchmark. Use `plateau` for decomposition, not for headline density numbers.
+- The table above uses an `idle` sweep at `N=1,5,10,20` (`BENCHMARK_DURATION_S=60`) plus paired `plateau` runs at `5` agents with schedule `0,1,2,3,4,5`, `PLATEAU_HOLD_S=60`, `PLATEAU_SETTLE_S=20`, and `WORKER_MEMORY_MB=500` / `0`.
+- `Agent Fixed MiB` comes from the idle-fit slope, not from a single run.
+- `Worker Runtime Tax MiB` comes from the `WORKER_MEMORY_MB=0` plateau slope; `Worker Payload Tax MiB` is the remainder to reach the `500 MB` plateau slope.
+- `First Worker MiB` is the observed `0 -> 1 worker/agent` jump in the `500 MB` plateau run and captures one-time warm/cache effects that the steady slope smooths out.
+- `*` `vm-qemu`'s zero-payload worker slope fit was `-4.9 MiB/worker`; interpret that as measurement noise around zero, not a real negative memory cost.
 
 ## Worker Lifecycle
 

@@ -63,16 +63,14 @@ fi
 
 echo "Customizing image with virt-customize..."
 
-# Build the worker image tarball to bake into the VM
+# Build the worker image tarball to bake into the VM. Always refresh it so the
+# guest cannot silently run a stale worker image after host-side code changes.
 WORKER_TAR="${SCRIPT_DIR}/.worker-image.tar"
-if [ ! -f "$WORKER_TAR" ]; then
-    echo "Saving worker Docker image to tarball..."
-    docker save bench-worker:latest -o "$WORKER_TAR" 2>/dev/null || {
-        echo "WARNING: bench-worker:latest not found. Run 'make images' first."
-        echo "The VM image will be built without the pre-loaded worker image."
-        WORKER_TAR=""
-    }
-fi
+echo "Saving worker Docker image to tarball..."
+docker save bench-worker:latest -o "$WORKER_TAR" 2>/dev/null || {
+    echo "ERROR: bench-worker:latest not found. Run 'make images' first."
+    exit 1
+}
 
 # Create the bench-agent OpenRC init script (starts after docker, reads config from cidata)
 AGENT_INITD=$(mktemp)

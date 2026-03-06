@@ -1,0 +1,38 @@
+[sysbox-entrypoint] Starting dockerd...
+[sysbox-entrypoint] Waiting for dockerd to be ready...
+[sysbox-entrypoint] dockerd ready after 1s.
+[sysbox-entrypoint] Loading worker image from /opt/.worker-image.tar...
+Loaded image: bench-worker:latest
+[sysbox-entrypoint] Worker image loaded.
+[sysbox-entrypoint] Inner docker0 bridge IP: 172.17.0.1
+[sysbox-entrypoint] Starting agent...
+{"t": 1772763101.2835815, "event": "agent_start", "agent_id": "agent-5", "benchmark_mode": "idle", "baseline_mb": 50, "spawn_interval_mean_s": 30.0, "max_concurrent_workers": 0, "duration_s": 60, "rng_seed": 1158089932, "worker_runtime": "default", "worker_backend": "docker", "worker_lifetime_mode": "timed", "plateau_workers_per_agent": [0, 1, 2, 3, 4, 5], "plateau_hold_s": 60, "plateau_settle_s": 20, "orchestrator_port": "8080", "orchestrator_url": "http://172.17.0.1:8080"}
+{"t": 1772763101.2836368, "event": "log", "agent_id": "agent-5", "message": "Allocating 50 MB baseline memory..."}
+{"t": 1772763101.3030252, "event": "log", "agent_id": "agent-5", "message": "Baseline memory allocated."}
+{"t": 1772763101.311484, "event": "log", "agent_id": "agent-5", "message": "Orchestrator HTTP server listening on 0.0.0.0:8080"}
+{"t": 1772763101.3116953, "event": "status", "agent_id": "agent-5", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772763101.311734, "event": "log", "agent_id": "agent-5", "message": "Idle mode armed. Waiting for orchestrator start signal."}
+{"t": 1772763106.3118837, "event": "status", "agent_id": "agent-5", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772763111.3120906, "event": "status", "agent_id": "agent-5", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772763112.6467583, "event": "benchmark_start_signal", "agent_id": "agent-5"}
+{"t": 1772763112.6468956, "event": "log", "agent_id": "agent-5", "message": "Entering stochastic spawn loop."}
+{"t": 1772763116.3122582, "event": "status", "agent_id": "agent-5", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772763121.312433, "event": "status", "agent_id": "agent-5", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772763123.8842988, "event": "log", "agent_id": "agent-5", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772763126.3126342, "event": "status", "agent_id": "agent-5", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772763131.3128533, "event": "status", "agent_id": "agent-5", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772763136.3130774, "event": "status", "agent_id": "agent-5", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772763141.31326, "event": "status", "agent_id": "agent-5", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772763146.3134649, "event": "status", "agent_id": "agent-5", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772763151.3137233, "event": "status", "agent_id": "agent-5", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772763156.3139408, "event": "status", "agent_id": "agent-5", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772763161.3141558, "event": "status", "agent_id": "agent-5", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772763164.9742308, "event": "log", "agent_id": "agent-5", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772763166.3143556, "event": "status", "agent_id": "agent-5", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772763171.3145502, "event": "status", "agent_id": "agent-5", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772763176.314771, "event": "status", "agent_id": "agent-5", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772763179.0609064, "event": "log", "agent_id": "agent-5", "message": "Received signal 15, shutting down..."}
+{"t": 1772763179.0609932, "event": "checkin_summary", "agent_id": "agent-5", "workers_spawned": 0, "checkins_received": 0, "checkins_ok": true}
+{"t": 1772763179.0610814, "event": "log", "agent_id": "agent-5", "message": "Cleaning up workers..."}
+{"t": 1772763179.0630088, "event": "agent_stop", "agent_id": "agent-5", "total_workers_spawned": 0}
+{"t": 1772763179.0630336, "event": "log", "agent_id": "agent-5", "message": "Agent stopped."}

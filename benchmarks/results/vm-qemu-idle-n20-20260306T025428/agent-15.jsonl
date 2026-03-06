@@ -1,0 +1,21 @@
+{"t": 1772765720.7763062, "event": "agent_start", "agent_id": "agent-15", "benchmark_mode": "idle", "baseline_mb": 50, "spawn_interval_mean_s": 30.0, "max_concurrent_workers": 0, "duration_s": 60, "rng_seed": 554141583, "worker_runtime": "default", "worker_backend": "docker", "worker_lifetime_mode": "timed", "plateau_workers_per_agent": [0, 1, 2, 3, 4, 5], "plateau_hold_s": 60, "plateau_settle_s": 20, "orchestrator_port": "8080", "orchestrator_url": "http://172.17.0.1:8080"}
+{"t": 1772765720.776548, "event": "log", "agent_id": "agent-15", "message": "Allocating 50 MB baseline memory..."}
+{"t": 1772765720.9372272, "event": "log", "agent_id": "agent-15", "message": "Baseline memory allocated."}
+{"t": 1772765726.0024807, "event": "log", "agent_id": "agent-15", "message": "Orchestrator HTTP server listening on 0.0.0.0:8080"}
+{"t": 1772765726.0031216, "event": "status", "agent_id": "agent-15", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765726.0032015, "event": "log", "agent_id": "agent-15", "message": "Idle mode armed. Waiting for orchestrator start signal."}
+{"t": 1772765727.3289282, "event": "benchmark_start_signal", "agent_id": "agent-15"}
+{"t": 1772765727.329023, "event": "log", "agent_id": "agent-15", "message": "Entering stochastic spawn loop."}
+{"t": 1772765731.0035932, "event": "status", "agent_id": "agent-15", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765736.0042696, "event": "status", "agent_id": "agent-15", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765741.004995, "event": "status", "agent_id": "agent-15", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765746.0058842, "event": "status", "agent_id": "agent-15", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765751.0126605, "event": "status", "agent_id": "agent-15", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765756.0135918, "event": "status", "agent_id": "agent-15", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765761.0156229, "event": "status", "agent_id": "agent-15", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765766.0163221, "event": "status", "agent_id": "agent-15", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765771.0170245, "event": "status", "agent_id": "agent-15", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765776.0178359, "event": "status", "agent_id": "agent-15", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765781.0187252, "event": "status", "agent_id": "agent-15", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765786.0193365, "event": "status", "agent_id": "agent-15", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772765791.0199926, "event": "status", "agent_id": "agent-15", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}

@@ -1,0 +1,162 @@
+{
+  "approach": "container-docker",
+  "mode": "idle",
+  "num_agents": 20,
+  "run_id": "233c6e6ab49b",
+  "rng_seed": 42,
+  "baseline_mib": 3275.6599506578946,
+  "steady_state_mean_mib": 1828.6621475563911,
+  "peak_mib": 1915.6720805921054,
+  "p50_mib": 1830.1017680921054,
+  "p95_mib": 1882.0861430921054,
+  "p99_mib": 1911.2814555921054,
+  "avg_workers": 0.0,
+  "per_agent_mean_mib": 91.43310737781955,
+  "drift_kb_per_s": -1538.14,
+  "total_samples": 111,
+  "steady_state_samples": 70,
+  "daemon_overhead": {
+    "dockerd": {
+      "mean_rss_mib": 104.64229910714286,
+      "mean_pss_mib": 101.82165178571428,
+      "baseline_rss_mib": 101.79296875,
+      "baseline_pss_mib": 98.990234375,
+      "delta_rss_mib": 2.849330357142861,
+      "delta_pss_mib": 2.8314174107142804
+    },
+    "containerd": {
+      "mean_rss_mib": 63.41015625,
+      "mean_pss_mib": 61.971484375,
+      "baseline_rss_mib": 62.4765625,
+      "baseline_pss_mib": 61.0556640625,
+      "delta_rss_mib": 0.93359375,
+      "delta_pss_mib": 0.9158203125000028
+    }
+  },
+  "total_workers_spawned": 0,
+  "max_concurrent_workers": 0,
+  "host_cpu_pct": 1.0,
+  "per_agent_cpu_s": 0.0,
+  "daemon_cpu": {
+    "containerd": {
+      "cpu_s": 0.1
+    },
+    "dockerd": {
+      "cpu_s": 1.5
+    }
+  },
+  "swap": {
+    "pswpin_delta": 0,
+    "pswpout_delta": 0,
+    "swap_occurred": false
+  },
+  "checkin_validation": {
+    "agents_checked": 20,
+    "agents_missing_summary": 0,
+    "total_spawned": 0,
+    "total_checkins": 0,
+    "per_agent": {
+      "agent-0": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-1": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-10": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-11": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-12": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-13": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-14": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-15": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-16": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-17": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-18": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-19": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-2": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-3": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-4": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-5": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-6": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-7": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-8": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      },
+      "agent-9": {
+        "spawned": 0,
+        "checkins": 0,
+        "ok": true
+      }
+    },
+    "all_ok": true
+  }
+}

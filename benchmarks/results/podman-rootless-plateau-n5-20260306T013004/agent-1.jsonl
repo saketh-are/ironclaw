@@ -1,0 +1,372 @@
+{"t": 1772760627.5172288, "event": "agent_start", "agent_id": "agent-1", "benchmark_mode": "plateau", "baseline_mb": 50, "spawn_interval_mean_s": 30.0, "max_concurrent_workers": 5, "duration_s": 360, "rng_seed": 3925878728, "worker_runtime": "default", "worker_backend": "docker", "worker_lifetime_mode": "hold", "plateau_workers_per_agent": [0, 1, 2, 3, 4, 5], "plateau_hold_s": 60, "plateau_settle_s": 20, "orchestrator_port": "8080", "orchestrator_url": "http://127.0.0.1:8080"}
+{"t": 1772760627.5172853, "event": "log", "agent_id": "agent-1", "message": "Allocating 50 MB baseline memory..."}
+{"t": 1772760627.5363693, "event": "log", "agent_id": "agent-1", "message": "Baseline memory allocated."}
+{"t": 1772760627.8125637, "event": "log", "agent_id": "agent-1", "message": "Orchestrator HTTP server listening on 0.0.0.0:8080"}
+{"t": 1772760627.8127823, "event": "status", "agent_id": "agent-1", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760627.8128235, "event": "log", "agent_id": "agent-1", "message": "Plateau mode armed. Waiting for orchestrator start signal."}
+{"t": 1772760632.8129902, "event": "status", "agent_id": "agent-1", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760637.8132114, "event": "status", "agent_id": "agent-1", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760642.8134112, "event": "status", "agent_id": "agent-1", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772760647.4631293, "event": "benchmark_start_signal", "agent_id": "agent-1"}
+{"t": 1772760647.4632561, "event": "log", "agent_id": "agent-1", "message": "Entering plateau loop: targets=[0, 1, 2, 3, 4, 5] hold_s=60 settle_s=20"}
+{"t": 1772760647.4633043, "event": "plateau_stage_start", "agent_id": "agent-1", "plateau_index": 0, "target_workers": 0, "hold_s": 60, "settle_s": 20}
+{"t": 1772760647.813616, "event": "status", "agent_id": "agent-1", "active_workers": 0, "plateau_index": 0, "plateau_target_workers": 0}
+{"t": 1772760652.8138535, "event": "status", "agent_id": "agent-1", "active_workers": 0, "plateau_index": 0, "plateau_target_workers": 0}
+{"t": 1772760657.8141012, "event": "status", "agent_id": "agent-1", "active_workers": 0, "plateau_index": 0, "plateau_target_workers": 0}
+{"t": 1772760662.8143485, "event": "status", "agent_id": "agent-1", "active_workers": 0, "plateau_index": 0, "plateau_target_workers": 0}
+{"t": 1772760667.814564, "event": "status", "agent_id": "agent-1", "active_workers": 0, "plateau_index": 0, "plateau_target_workers": 0}
+{"t": 1772760672.814792, "event": "status", "agent_id": "agent-1", "active_workers": 0, "plateau_index": 0, "plateau_target_workers": 0}
+{"t": 1772760677.814986, "event": "status", "agent_id": "agent-1", "active_workers": 0, "plateau_index": 0, "plateau_target_workers": 0}
+{"t": 1772760682.815208, "event": "status", "agent_id": "agent-1", "active_workers": 0, "plateau_index": 0, "plateau_target_workers": 0}
+{"t": 1772760687.8154235, "event": "status", "agent_id": "agent-1", "active_workers": 0, "plateau_index": 0, "plateau_target_workers": 0}
+{"t": 1772760692.8156385, "event": "status", "agent_id": "agent-1", "active_workers": 0, "plateau_index": 0, "plateau_target_workers": 0}
+{"t": 1772760697.8158498, "event": "status", "agent_id": "agent-1", "active_workers": 0, "plateau_index": 0, "plateau_target_workers": 0}
+{"t": 1772760702.8160584, "event": "status", "agent_id": "agent-1", "active_workers": 0, "plateau_index": 0, "plateau_target_workers": 0}
+{"t": 1772760707.4634633, "event": "plateau_stage_end", "agent_id": "agent-1", "plateau_index": 0, "target_workers": 0, "active_workers": 0}
+{"t": 1772760707.4635522, "event": "plateau_stage_start", "agent_id": "agent-1", "plateau_index": 1, "target_workers": 1, "hold_s": 60, "settle_s": 20}
+{"t": 1772760707.4635673, "event": "log", "agent_id": "agent-1", "message": "Plateau 1: filling to target (0/1)"}
+{"t": 1772760707.6320262, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "create_ms": 93.2, "start_ms": 75.2, "total_ms": 168.4}
+{"t": 1772760707.632084, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "active_workers": 1}
+{"t": 1772760707.816278, "event": "status", "agent_id": "agent-1", "active_workers": 1, "plateau_index": 1, "plateau_target_workers": 1}
+{"t": 1772760707.816363, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 1, "checkins_received": 0, "checkins_ok": false}
+{"t": 1772760707.9479475, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 25312}
+{"t": 1772760708.0452445, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "total_checkins": 1, "cold_start_ms": 413.1}
+{"t": 1772760712.8165212, "event": "status", "agent_id": "agent-1", "active_workers": 1, "plateau_index": 1, "plateau_target_workers": 1}
+{"t": 1772760712.8165898, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 1, "checkins_received": 1, "checkins_ok": true}
+{"t": 1772760712.959297, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760717.8167279, "event": "status", "agent_id": "agent-1", "active_workers": 1, "plateau_index": 1, "plateau_target_workers": 1}
+{"t": 1772760717.816796, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 1, "checkins_received": 1, "checkins_ok": true}
+{"t": 1772760717.960611, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760722.8169315, "event": "status", "agent_id": "agent-1", "active_workers": 1, "plateau_index": 1, "plateau_target_workers": 1}
+{"t": 1772760722.816994, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 1, "checkins_received": 1, "checkins_ok": true}
+{"t": 1772760722.9618118, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760727.8171327, "event": "status", "agent_id": "agent-1", "active_workers": 1, "plateau_index": 1, "plateau_target_workers": 1}
+{"t": 1772760727.8172088, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 1, "checkins_received": 1, "checkins_ok": true}
+{"t": 1772760727.9629622, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760732.8173442, "event": "status", "agent_id": "agent-1", "active_workers": 1, "plateau_index": 1, "plateau_target_workers": 1}
+{"t": 1772760732.8174064, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 1, "checkins_received": 1, "checkins_ok": true}
+{"t": 1772760732.964199, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760737.8175485, "event": "status", "agent_id": "agent-1", "active_workers": 1, "plateau_index": 1, "plateau_target_workers": 1}
+{"t": 1772760737.8176134, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 1, "checkins_received": 1, "checkins_ok": true}
+{"t": 1772760737.9654336, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760742.8177667, "event": "status", "agent_id": "agent-1", "active_workers": 1, "plateau_index": 1, "plateau_target_workers": 1}
+{"t": 1772760742.817849, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 1, "checkins_received": 1, "checkins_ok": true}
+{"t": 1772760742.9665751, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760747.8179944, "event": "status", "agent_id": "agent-1", "active_workers": 1, "plateau_index": 1, "plateau_target_workers": 1}
+{"t": 1772760747.818058, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 1, "checkins_received": 1, "checkins_ok": true}
+{"t": 1772760747.9677048, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760752.818195, "event": "status", "agent_id": "agent-1", "active_workers": 1, "plateau_index": 1, "plateau_target_workers": 1}
+{"t": 1772760752.818259, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 1, "checkins_received": 1, "checkins_ok": true}
+{"t": 1772760752.9690762, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760757.8183873, "event": "status", "agent_id": "agent-1", "active_workers": 1, "plateau_index": 1, "plateau_target_workers": 1}
+{"t": 1772760757.81845, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 1, "checkins_received": 1, "checkins_ok": true}
+{"t": 1772760757.9702222, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760762.8185868, "event": "status", "agent_id": "agent-1", "active_workers": 1, "plateau_index": 1, "plateau_target_workers": 1}
+{"t": 1772760762.818651, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 1, "checkins_received": 1, "checkins_ok": true}
+{"t": 1772760762.9712982, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760767.4636986, "event": "plateau_stage_end", "agent_id": "agent-1", "plateau_index": 1, "target_workers": 1, "active_workers": 1}
+{"t": 1772760767.4637709, "event": "plateau_stage_start", "agent_id": "agent-1", "plateau_index": 2, "target_workers": 2, "hold_s": 60, "settle_s": 20}
+{"t": 1772760767.4637868, "event": "log", "agent_id": "agent-1", "message": "Plateau 2: filling to target (1/2)"}
+{"t": 1772760767.5871575, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "create_ms": 26.9, "start_ms": 96.5, "total_ms": 123.3}
+{"t": 1772760767.5872164, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "active_workers": 2}
+{"t": 1772760767.8187826, "event": "status", "agent_id": "agent-1", "active_workers": 2, "plateau_index": 2, "plateau_target_workers": 2}
+{"t": 1772760767.8188648, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 2, "checkins_received": 1, "checkins_ok": false}
+{"t": 1772760767.9449422, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 38352}
+{"t": 1772760767.9725845, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760768.0630298, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "total_checkins": 2, "cold_start_ms": 475.8}
+{"t": 1772760772.819009, "event": "status", "agent_id": "agent-1", "active_workers": 2, "plateau_index": 2, "plateau_target_workers": 2}
+{"t": 1772760772.8190734, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 2, "checkins_received": 2, "checkins_ok": true}
+{"t": 1772760772.9563274, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760772.9737067, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760777.819202, "event": "status", "agent_id": "agent-1", "active_workers": 2, "plateau_index": 2, "plateau_target_workers": 2}
+{"t": 1772760777.8192627, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 2, "checkins_received": 2, "checkins_ok": true}
+{"t": 1772760777.9575837, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760777.974899, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760782.819402, "event": "status", "agent_id": "agent-1", "active_workers": 2, "plateau_index": 2, "plateau_target_workers": 2}
+{"t": 1772760782.819482, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 2, "checkins_received": 2, "checkins_ok": true}
+{"t": 1772760782.9587052, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760782.9759278, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760787.819635, "event": "status", "agent_id": "agent-1", "active_workers": 2, "plateau_index": 2, "plateau_target_workers": 2}
+{"t": 1772760787.819697, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 2, "checkins_received": 2, "checkins_ok": true}
+{"t": 1772760787.9600694, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760787.976952, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760792.8198326, "event": "status", "agent_id": "agent-1", "active_workers": 2, "plateau_index": 2, "plateau_target_workers": 2}
+{"t": 1772760792.8198972, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 2, "checkins_received": 2, "checkins_ok": true}
+{"t": 1772760792.9613369, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760792.9779892, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760797.8200336, "event": "status", "agent_id": "agent-1", "active_workers": 2, "plateau_index": 2, "plateau_target_workers": 2}
+{"t": 1772760797.8200984, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 2, "checkins_received": 2, "checkins_ok": true}
+{"t": 1772760797.9626732, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760797.979236, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760802.8202233, "event": "status", "agent_id": "agent-1", "active_workers": 2, "plateau_index": 2, "plateau_target_workers": 2}
+{"t": 1772760802.8202858, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 2, "checkins_received": 2, "checkins_ok": true}
+{"t": 1772760802.9638226, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760802.9804296, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760807.8204117, "event": "status", "agent_id": "agent-1", "active_workers": 2, "plateau_index": 2, "plateau_target_workers": 2}
+{"t": 1772760807.8204749, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 2, "checkins_received": 2, "checkins_ok": true}
+{"t": 1772760807.964994, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760807.9816387, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760812.8206265, "event": "status", "agent_id": "agent-1", "active_workers": 2, "plateau_index": 2, "plateau_target_workers": 2}
+{"t": 1772760812.8207057, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 2, "checkins_received": 2, "checkins_ok": true}
+{"t": 1772760812.9660964, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760812.9826531, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760817.820842, "event": "status", "agent_id": "agent-1", "active_workers": 2, "plateau_index": 2, "plateau_target_workers": 2}
+{"t": 1772760817.820907, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 2, "checkins_received": 2, "checkins_ok": true}
+{"t": 1772760817.9671924, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760817.98362, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760822.8210518, "event": "status", "agent_id": "agent-1", "active_workers": 2, "plateau_index": 2, "plateau_target_workers": 2}
+{"t": 1772760822.821131, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 2, "checkins_received": 2, "checkins_ok": true}
+{"t": 1772760822.9683213, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760822.9847174, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760827.4639325, "event": "plateau_stage_end", "agent_id": "agent-1", "plateau_index": 2, "target_workers": 2, "active_workers": 2}
+{"t": 1772760827.4640384, "event": "plateau_stage_start", "agent_id": "agent-1", "plateau_index": 3, "target_workers": 3, "hold_s": 60, "settle_s": 20}
+{"t": 1772760827.4640634, "event": "log", "agent_id": "agent-1", "message": "Plateau 3: filling to target (2/3)"}
+{"t": 1772760827.6132739, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "create_ms": 25.8, "start_ms": 123.4, "total_ms": 149.2}
+{"t": 1772760827.6133425, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "active_workers": 3}
+{"t": 1772760827.821268, "event": "status", "agent_id": "agent-1", "active_workers": 3, "plateau_index": 3, "plateau_target_workers": 3}
+{"t": 1772760827.8213382, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 3, "checkins_received": 2, "checkins_ok": false}
+{"t": 1772760827.9561493, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 39700}
+{"t": 1772760827.9694567, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760827.9858503, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760828.0476573, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "total_checkins": 3, "cold_start_ms": 434.3}
+{"t": 1772760832.8214643, "event": "status", "agent_id": "agent-1", "active_workers": 3, "plateau_index": 3, "plateau_target_workers": 3}
+{"t": 1772760832.8215573, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 3, "checkins_received": 3, "checkins_ok": true}
+{"t": 1772760832.9706757, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760832.9727685, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760832.9868731, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760837.8216968, "event": "status", "agent_id": "agent-1", "active_workers": 3, "plateau_index": 3, "plateau_target_workers": 3}
+{"t": 1772760837.8217773, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 3, "checkins_received": 3, "checkins_ok": true}
+{"t": 1772760837.9717662, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760837.9740546, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760837.9878433, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760842.8219242, "event": "status", "agent_id": "agent-1", "active_workers": 3, "plateau_index": 3, "plateau_target_workers": 3}
+{"t": 1772760842.8219936, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 3, "checkins_received": 3, "checkins_ok": true}
+{"t": 1772760842.9728866, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760842.9752905, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760842.9888408, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760847.8221421, "event": "status", "agent_id": "agent-1", "active_workers": 3, "plateau_index": 3, "plateau_target_workers": 3}
+{"t": 1772760847.8222263, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 3, "checkins_received": 3, "checkins_ok": true}
+{"t": 1772760847.9740272, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760847.9764514, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760847.9899094, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760852.8223631, "event": "status", "agent_id": "agent-1", "active_workers": 3, "plateau_index": 3, "plateau_target_workers": 3}
+{"t": 1772760852.8224463, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 3, "checkins_received": 3, "checkins_ok": true}
+{"t": 1772760852.9751012, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760852.977581, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760852.9909737, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760857.8225944, "event": "status", "agent_id": "agent-1", "active_workers": 3, "plateau_index": 3, "plateau_target_workers": 3}
+{"t": 1772760857.8226745, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 3, "checkins_received": 3, "checkins_ok": true}
+{"t": 1772760857.9761724, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760857.9786859, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760857.991858, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760862.8228145, "event": "status", "agent_id": "agent-1", "active_workers": 3, "plateau_index": 3, "plateau_target_workers": 3}
+{"t": 1772760862.8228943, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 3, "checkins_received": 3, "checkins_ok": true}
+{"t": 1772760862.9772024, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760862.9796019, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760862.9927707, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760867.8230376, "event": "status", "agent_id": "agent-1", "active_workers": 3, "plateau_index": 3, "plateau_target_workers": 3}
+{"t": 1772760867.8231025, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 3, "checkins_received": 3, "checkins_ok": true}
+{"t": 1772760867.9782622, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760867.980387, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760867.993827, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760872.8232396, "event": "status", "agent_id": "agent-1", "active_workers": 3, "plateau_index": 3, "plateau_target_workers": 3}
+{"t": 1772760872.823322, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 3, "checkins_received": 3, "checkins_ok": true}
+{"t": 1772760872.9793515, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760872.9811509, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760872.9947033, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760877.8234627, "event": "status", "agent_id": "agent-1", "active_workers": 3, "plateau_index": 3, "plateau_target_workers": 3}
+{"t": 1772760877.823549, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 3, "checkins_received": 3, "checkins_ok": true}
+{"t": 1772760877.9804237, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760877.9819028, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760877.995567, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760882.8236878, "event": "status", "agent_id": "agent-1", "active_workers": 3, "plateau_index": 3, "plateau_target_workers": 3}
+{"t": 1772760882.8237567, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 3, "checkins_received": 3, "checkins_ok": true}
+{"t": 1772760882.9814765, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760882.9826574, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760882.9965322, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760887.4641964, "event": "plateau_stage_end", "agent_id": "agent-1", "plateau_index": 3, "target_workers": 3, "active_workers": 3}
+{"t": 1772760887.464275, "event": "plateau_stage_start", "agent_id": "agent-1", "plateau_index": 4, "target_workers": 4, "hold_s": 60, "settle_s": 20}
+{"t": 1772760887.4642923, "event": "log", "agent_id": "agent-1", "message": "Plateau 4: filling to target (3/4)"}
+{"t": 1772760887.5731246, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "create_ms": 24.4, "start_ms": 84.4, "total_ms": 108.8}
+{"t": 1772760887.573168, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "active_workers": 4}
+{"t": 1772760887.823881, "event": "status", "agent_id": "agent-1", "active_workers": 4, "plateau_index": 4, "plateau_target_workers": 4}
+{"t": 1772760887.8239443, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 4, "checkins_received": 3, "checkins_ok": false}
+{"t": 1772760887.893964, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 25468}
+{"t": 1772760887.9825618, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760887.9834347, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760887.9976363, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760888.003464, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "total_checkins": 4, "cold_start_ms": 430.3}
+{"t": 1772760892.8240874, "event": "status", "agent_id": "agent-1", "active_workers": 4, "plateau_index": 4, "plateau_target_workers": 4}
+{"t": 1772760892.824149, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 4, "checkins_received": 4, "checkins_ok": true}
+{"t": 1772760892.9055526, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760892.9836547, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760892.9841964, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760892.998748, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760897.8242817, "event": "status", "agent_id": "agent-1", "active_workers": 4, "plateau_index": 4, "plateau_target_workers": 4}
+{"t": 1772760897.8243613, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 4, "checkins_received": 4, "checkins_ok": true}
+{"t": 1772760897.9068184, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760897.9847486, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760897.984994, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760897.9998465, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760902.8245246, "event": "status", "agent_id": "agent-1", "active_workers": 4, "plateau_index": 4, "plateau_target_workers": 4}
+{"t": 1772760902.8245912, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 4, "checkins_received": 4, "checkins_ok": true}
+{"t": 1772760902.908243, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760902.9857917, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760902.9860375, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760903.0008624, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760907.8247223, "event": "status", "agent_id": "agent-1", "active_workers": 4, "plateau_index": 4, "plateau_target_workers": 4}
+{"t": 1772760907.8247843, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 4, "checkins_received": 4, "checkins_ok": true}
+{"t": 1772760907.9096606, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760907.9870038, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760907.9873092, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760908.001793, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760912.8249125, "event": "status", "agent_id": "agent-1", "active_workers": 4, "plateau_index": 4, "plateau_target_workers": 4}
+{"t": 1772760912.8249822, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 4, "checkins_received": 4, "checkins_ok": true}
+{"t": 1772760912.9109874, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760912.988052, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760912.9883535, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760913.0029058, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760917.8251243, "event": "status", "agent_id": "agent-1", "active_workers": 4, "plateau_index": 4, "plateau_target_workers": 4}
+{"t": 1772760917.8252075, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 4, "checkins_received": 4, "checkins_ok": true}
+{"t": 1772760917.912315, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760917.989161, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760917.9894116, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760918.0040083, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760922.8253546, "event": "status", "agent_id": "agent-1", "active_workers": 4, "plateau_index": 4, "plateau_target_workers": 4}
+{"t": 1772760922.8254158, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 4, "checkins_received": 4, "checkins_ok": true}
+{"t": 1772760922.9136992, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760922.9902291, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760922.9905307, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760923.0050142, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760927.825554, "event": "status", "agent_id": "agent-1", "active_workers": 4, "plateau_index": 4, "plateau_target_workers": 4}
+{"t": 1772760927.825619, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 4, "checkins_received": 4, "checkins_ok": true}
+{"t": 1772760927.914852, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760927.9912648, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760927.9915779, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760928.006047, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760932.8257382, "event": "status", "agent_id": "agent-1", "active_workers": 4, "plateau_index": 4, "plateau_target_workers": 4}
+{"t": 1772760932.8258026, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 4, "checkins_received": 4, "checkins_ok": true}
+{"t": 1772760932.916075, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760932.9923766, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760932.9926567, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760933.0070474, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760937.8259432, "event": "status", "agent_id": "agent-1", "active_workers": 4, "plateau_index": 4, "plateau_target_workers": 4}
+{"t": 1772760937.8260233, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 4, "checkins_received": 4, "checkins_ok": true}
+{"t": 1772760937.9173083, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760937.9935284, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760937.993782, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760938.0080724, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760942.8261657, "event": "status", "agent_id": "agent-1", "active_workers": 4, "plateau_index": 4, "plateau_target_workers": 4}
+{"t": 1772760942.8262274, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 4, "checkins_received": 4, "checkins_ok": true}
+{"t": 1772760942.9186175, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760942.9945998, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760942.9948528, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760943.0091445, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760947.4643986, "event": "plateau_stage_end", "agent_id": "agent-1", "plateau_index": 4, "target_workers": 4, "active_workers": 4}
+{"t": 1772760947.4644618, "event": "plateau_stage_start", "agent_id": "agent-1", "plateau_index": 5, "target_workers": 5, "hold_s": 60, "settle_s": 20}
+{"t": 1772760947.4644766, "event": "log", "agent_id": "agent-1", "message": "Plateau 5: filling to target (4/5)"}
+{"t": 1772760947.5810857, "event": "worker_spawn_timing", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "create_ms": 29.6, "start_ms": 87.0, "total_ms": 116.5}
+{"t": 1772760947.5811305, "event": "worker_start", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "active_workers": 5}
+{"t": 1772760947.8263464, "event": "status", "agent_id": "agent-1", "active_workers": 5, "plateau_index": 5, "plateau_target_workers": 5}
+{"t": 1772760947.8264067, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 4, "checkins_ok": false}
+{"t": 1772760947.8996959, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 25316}
+{"t": 1772760947.919804, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760947.9957957, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760947.9960728, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760948.00164, "event": "checkin", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "total_checkins": 5, "cold_start_ms": 420.5}
+{"t": 1772760948.010162, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760952.8265386, "event": "status", "agent_id": "agent-1", "active_workers": 5, "plateau_index": 5, "plateau_target_workers": 5}
+{"t": 1772760952.8266022, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772760952.911293, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 538388}
+{"t": 1772760952.9209607, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760952.9967434, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760952.9970534, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760953.0111926, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760957.826749, "event": "status", "agent_id": "agent-1", "active_workers": 5, "plateau_index": 5, "plateau_target_workers": 5}
+{"t": 1772760957.826809, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772760957.9125414, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 538388}
+{"t": 1772760957.9220982, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760957.9978075, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760957.9980562, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760958.0123754, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760962.826945, "event": "status", "agent_id": "agent-1", "active_workers": 5, "plateau_index": 5, "plateau_target_workers": 5}
+{"t": 1772760962.8270116, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772760962.913824, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 538388}
+{"t": 1772760962.9232023, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760962.998765, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760962.999023, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760963.013378, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760967.8271363, "event": "status", "agent_id": "agent-1", "active_workers": 5, "plateau_index": 5, "plateau_target_workers": 5}
+{"t": 1772760967.827197, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772760967.915054, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 538388}
+{"t": 1772760967.9242742, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760967.9996834, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760967.9999194, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760968.0143423, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760972.8273306, "event": "status", "agent_id": "agent-1", "active_workers": 5, "plateau_index": 5, "plateau_target_workers": 5}
+{"t": 1772760972.8274033, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772760972.916184, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 538388}
+{"t": 1772760972.9254613, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760973.0006797, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760973.0009198, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760973.0152986, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760977.8275442, "event": "status", "agent_id": "agent-1", "active_workers": 5, "plateau_index": 5, "plateau_target_workers": 5}
+{"t": 1772760977.827616, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772760977.917421, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 538388}
+{"t": 1772760977.9266217, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760978.0017147, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760978.0019999, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760978.0164773, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760982.8277712, "event": "status", "agent_id": "agent-1", "active_workers": 5, "plateau_index": 5, "plateau_target_workers": 5}
+{"t": 1772760982.8278341, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772760982.9185705, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 538388}
+{"t": 1772760982.927792, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760983.0027943, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760983.0030615, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760983.0175424, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760987.82797, "event": "status", "agent_id": "agent-1", "active_workers": 5, "plateau_index": 5, "plateau_target_workers": 5}
+{"t": 1772760987.8280349, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772760987.9197428, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 538388}
+{"t": 1772760987.9289253, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760988.0037868, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760988.0041015, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760988.0186253, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760992.8281548, "event": "status", "agent_id": "agent-1", "active_workers": 5, "plateau_index": 5, "plateau_target_workers": 5}
+{"t": 1772760992.8282151, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772760992.920898, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 538388}
+{"t": 1772760992.930015, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760993.0047545, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760993.0049965, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760993.0196166, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772760997.8283424, "event": "status", "agent_id": "agent-1", "active_workers": 5, "plateau_index": 5, "plateau_target_workers": 5}
+{"t": 1772760997.8284037, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772760997.922071, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 538388}
+{"t": 1772760997.9311686, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772760998.00571, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772760998.0060244, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772760998.020643, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772761002.8285432, "event": "status", "agent_id": "agent-1", "active_workers": 5, "plateau_index": 5, "plateau_target_workers": 5}
+{"t": 1772761002.8286161, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772761002.9232318, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 538388}
+{"t": 1772761002.932192, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772761003.0066733, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772761003.007017, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772761003.021629, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772761007.464559, "event": "plateau_stage_end", "agent_id": "agent-1", "plateau_index": 5, "target_workers": 5, "active_workers": 5}
+{"t": 1772761007.4646254, "event": "log", "agent_id": "agent-1", "message": "Plateau schedule complete (360s). Stopping."}
+{"t": 1772761007.4646504, "event": "log", "agent_id": "agent-1", "message": "Waiting 10s for 5 in-flight workers to check in..."}
+{"t": 1772761007.4647396, "event": "checkin_summary", "agent_id": "agent-1", "workers_spawned": 5, "checkins_received": 5, "checkins_ok": true}
+{"t": 1772761007.4647624, "event": "log", "agent_id": "agent-1", "message": "Cleaning up workers..."}
+{"t": 1772761007.9243426, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "rss_kb": 538388}
+{"t": 1772761007.9332068, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "rss_kb": 538476}
+{"t": 1772761008.007841, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "rss_kb": 538460}
+{"t": 1772761008.0080967, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "rss_kb": 538264}
+{"t": 1772761008.0225348, "event": "heartbeat", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "rss_kb": 538256}
+{"t": 1772761009.1519904, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-3", "active_workers": 4}
+{"t": 1772761009.473471, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-2", "active_workers": 3}
+{"t": 1772761009.8461642, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-5", "active_workers": 2}
+{"t": 1772761009.847819, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-1", "active_workers": 1}
+{"t": 1772761010.1024542, "event": "log", "agent_id": "agent-1", "message": "Removed 5 worker containers."}
+{"t": 1772761010.1025553, "event": "agent_stop", "agent_id": "agent-1", "total_workers_spawned": 5}
+{"t": 1772761010.1025722, "event": "log", "agent_id": "agent-1", "message": "Agent stopped."}
+{"t": 1772761010.1038663, "event": "worker_end", "agent_id": "agent-1", "worker_id": "bench-worker-agent-1-4", "active_workers": 0}

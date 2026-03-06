@@ -1,0 +1,29 @@
+{"t": 1772764276.2396946, "event": "agent_start", "agent_id": "agent-10", "benchmark_mode": "idle", "baseline_mb": 50, "spawn_interval_mean_s": 30.0, "max_concurrent_workers": 0, "duration_s": 60, "rng_seed": 1412086641, "worker_runtime": "default", "worker_backend": "firecracker", "worker_lifetime_mode": "timed", "plateau_workers_per_agent": [0, 1, 2, 3, 4, 5], "plateau_hold_s": 60, "plateau_settle_s": 20, "orchestrator_port": "50110", "orchestrator_url": "http://172.20.0.1:50110"}
+{"t": 1772764276.2397487, "event": "log", "agent_id": "agent-10", "message": "Allocating 50 MB baseline memory..."}
+{"t": 1772764276.2587655, "event": "log", "agent_id": "agent-10", "message": "Baseline memory allocated."}
+{"t": 1772764276.2600381, "event": "log", "agent_id": "agent-10", "message": "Firecracker backend: kernel=/opt/vmlinux, rootfs=/opt/worker-rootfs.ext4"}
+{"t": 1772764276.2651918, "event": "log", "agent_id": "agent-10", "message": "Orchestrator HTTP server listening on 0.0.0.0:50110"}
+{"t": 1772764276.2653792, "event": "status", "agent_id": "agent-10", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764276.2654226, "event": "log", "agent_id": "agent-10", "message": "Idle mode armed. Waiting for orchestrator start signal."}
+{"t": 1772764279.6184306, "event": "benchmark_start_signal", "agent_id": "agent-10"}
+{"t": 1772764279.618512, "event": "log", "agent_id": "agent-10", "message": "Entering stochastic spawn loop."}
+{"t": 1772764281.265601, "event": "status", "agent_id": "agent-10", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764282.847408, "event": "log", "agent_id": "agent-10", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772764286.265783, "event": "status", "agent_id": "agent-10", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764291.2660103, "event": "status", "agent_id": "agent-10", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764296.266215, "event": "status", "agent_id": "agent-10", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764297.8604016, "event": "log", "agent_id": "agent-10", "message": "At capacity (0/0). Skipping spawn."}
+{"t": 1772764301.266468, "event": "status", "agent_id": "agent-10", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764306.266683, "event": "status", "agent_id": "agent-10", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764311.266863, "event": "status", "agent_id": "agent-10", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764316.26704, "event": "status", "agent_id": "agent-10", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764321.2672286, "event": "status", "agent_id": "agent-10", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764326.2674148, "event": "status", "agent_id": "agent-10", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764331.2676177, "event": "status", "agent_id": "agent-10", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764336.2678227, "event": "status", "agent_id": "agent-10", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764341.2680435, "event": "status", "agent_id": "agent-10", "active_workers": 0, "plateau_index": -1, "plateau_target_workers": 0}
+{"t": 1772764342.740243, "event": "log", "agent_id": "agent-10", "message": "Received signal 15, shutting down..."}
+{"t": 1772764342.7403371, "event": "checkin_summary", "agent_id": "agent-10", "workers_spawned": 0, "checkins_received": 0, "checkins_ok": true}
+{"t": 1772764342.7403603, "event": "log", "agent_id": "agent-10", "message": "Cleaning up Firecracker VMs..."}
+{"t": 1772764342.7425559, "event": "agent_stop", "agent_id": "agent-10", "total_workers_spawned": 0}
+{"t": 1772764342.7425888, "event": "log", "agent_id": "agent-10", "message": "Agent stopped."}
