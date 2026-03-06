@@ -3,17 +3,17 @@
 # Build a minimal Alpine ext4 rootfs for Firecracker worker VMs.
 # Contains only Python 3, worker.py, and a custom /sbin/init.
 #
-# Output: benchmarks/firecracker/worker-rootfs.ext4
+# Output: benchmarks/approaches/hybrid_firecracker_assets/worker-rootfs.ext4
 #
 # Usage:
-#   bash firecracker/build-rootfs.sh
+#   bash approaches/hybrid_firecracker_assets/build-rootfs.sh
 #
 # Requires: Docker, root (for loopback mount)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BENCH_DIR="$(dirname "$SCRIPT_DIR")"
+BENCH_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 ROOTFS_FILE="${SCRIPT_DIR}/worker-rootfs.ext4"
 ROOTFS_SIZE_MB=128
 BUILD_TAG="fc-rootfs-builder"

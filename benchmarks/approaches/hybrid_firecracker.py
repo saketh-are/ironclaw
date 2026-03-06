@@ -31,8 +31,8 @@ from typing import Dict, List
 
 from approaches.base import Approach, BenchmarkConfig
 
-BENCH_DIR = Path(__file__).resolve().parent.parent
-FC_DIR = BENCH_DIR / "firecracker"
+APPROACH_DIR = Path(__file__).resolve().parent
+FC_DIR = APPROACH_DIR / "hybrid_firecracker_assets"
 KERNEL_FILE = FC_DIR / "vmlinux-5.10.bin"
 ROOTFS_FILE = FC_DIR / "worker-rootfs.ext4"
 

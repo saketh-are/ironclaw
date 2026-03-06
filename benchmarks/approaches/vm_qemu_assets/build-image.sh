@@ -18,7 +18,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BENCH_DIR="$(dirname "$SCRIPT_DIR")"
+BENCH_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 OUTPUT="${1:-${SCRIPT_DIR}/alpine-agent.qcow2}"
 ALPINE_VERSION="3.19"
 ALPINE_ARCH="x86_64"

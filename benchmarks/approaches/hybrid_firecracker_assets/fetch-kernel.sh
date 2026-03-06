@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
 # Download Firecracker's pre-built vmlinux kernel from GitHub releases.
-# Cached locally at benchmarks/firecracker/vmlinux-5.10.bin.
+# Cached locally at benchmarks/approaches/hybrid_firecracker_assets/vmlinux-5.10.bin.
 #
 # Usage:
-#   bash firecracker/fetch-kernel.sh
+#   bash approaches/hybrid_firecracker_assets/fetch-kernel.sh
 
 set -euo pipefail
 

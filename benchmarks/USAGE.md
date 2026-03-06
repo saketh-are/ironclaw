@@ -1,6 +1,6 @@
-# Benchmark Setup and Reference
+# Benchmark Usage
 
-This document covers setup, reproducibility, output format, and benchmark internals. For the approach summary and the current benchmark results, see [../README.md](../README.md).
+This document covers setup, reproducibility, output format, and benchmark internals. For the approach summary and the current benchmark results, see [README.md](README.md).
 
 The committed reference dataset is organized under `results/baremetal-xeon6554s/`. The analysis commands recurse through nested result folders, so `make compare` and `make decompose` work against that consolidated layout.
 

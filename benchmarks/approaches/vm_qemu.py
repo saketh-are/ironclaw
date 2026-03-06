@@ -24,8 +24,8 @@ from typing import Dict, List
 
 from approaches.base import Approach, BenchmarkConfig
 
-BENCH_DIR = Path(__file__).resolve().parent.parent
-VM_DIR = BENCH_DIR / "vm"
+APPROACH_DIR = Path(__file__).resolve().parent
+VM_DIR = APPROACH_DIR / "vm_qemu_assets"
 VM_IMAGE = VM_DIR / "alpine-agent.qcow2"
 LAUNCH_SCRIPT = VM_DIR / "launch.sh"
 

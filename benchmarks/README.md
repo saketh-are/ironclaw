@@ -2,7 +2,7 @@
 
 Synthetic benchmark for multi-agent deployments. A trivial "agent" is deployed which spawns sandboxed "workers" on a random basis. Both the agents and workers use some RAM and confirm they can write to storage. Worker checks in with the parent agent after spawn via network callback to validate that the setup will work for IronClaw.
 
-Setup, reproduction steps, and output-format details live in [reference/README.md](reference/README.md).
+Setup, reproduction steps, and output-format details live in [USAGE.md](USAGE.md).
 
 ## Approaches
 
@@ -73,7 +73,7 @@ Regenerate with `make compare`. Detailed create/start/post-start breakdown remai
 
 ## Decomposed Overhead
 
-The fixed-per-agent and marginal-per-worker figures above come from a local idle sweep (`N=1,5,10,20`, `BENCHMARK_DURATION_S=60`) paired with plateau runs at `AGENTS=5`, schedule `0,1,2,3,4,5`, `PLATEAU_HOLD_S=60`, `PLATEAU_SETTLE_S=20`, and `WORKER_MEMORY_MB=500` / `0`. Reproduction details are in [reference/README.md](reference/README.md#decomposing-agent-vs-worker-overhead).
+The fixed-per-agent and marginal-per-worker figures above come from a local idle sweep (`N=1,5,10,20`, `BENCHMARK_DURATION_S=60`) paired with plateau runs at `AGENTS=5`, schedule `0,1,2,3,4,5`, `PLATEAU_HOLD_S=60`, `PLATEAU_SETTLE_S=20`, and `WORKER_MEMORY_MB=500` / `0`. Reproduction details are in [USAGE.md](USAGE.md#decomposing-agent-vs-worker-overhead).
 
 | Approach | Agent Fixed MiB | Worker Runtime Tax MiB |
 |----------|----------------:|-----------------------:|
