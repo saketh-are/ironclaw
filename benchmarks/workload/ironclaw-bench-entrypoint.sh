@@ -29,10 +29,13 @@ if [ -n "$DOCKER_PROXY_UPSTREAM" ]; then
 fi
 
 # --- Ensure workspace exists and is writable by sandbox user (1000) ---
-mkdir -p /tmp/workspace
-chown 1000:1000 /tmp/workspace
+# WORKSPACE_DIR can be overridden for shared-daemon topologies where the
+# sandbox bind mount source path must match a real host path.
+WORKSPACE_DIR="${WORKSPACE_DIR:-/tmp/workspace}"
+mkdir -p "$WORKSPACE_DIR"
+chown 1000:1000 "$WORKSPACE_DIR"
 
 # --- Start ironclaw ---
 echo "[entrypoint] Starting ironclaw agent..."
-cd /tmp/workspace
+cd "$WORKSPACE_DIR"
 exec /usr/local/bin/ironclaw

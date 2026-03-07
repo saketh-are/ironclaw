@@ -21,6 +21,7 @@ from approaches.base import Approach, BenchmarkConfig
 from approaches._ironclaw_helpers import (
     GATEWAY_AUTH_TOKEN,
     IRONCLAW_AGENT_IMAGE,
+    IRONCLAW_SANDBOX_IMAGE,
     ironclaw_agent_env,
     wait_for_gateway,
     trigger_worker_spawn,

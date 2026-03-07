@@ -99,7 +99,7 @@ class IronclawVmQemuApproach(Approach):
                 "-enable-kvm",
                 "-m", str(vm_memory),
                 "-smp", "2",
-                "-nographic",
+                "-display", "none",
                 "-drive", f"file={overlay_path},format=qcow2,if=virtio",
                 # Port forwarding: host gateway_port → guest 3000
                 "-netdev", f"user,id=net0,hostfwd=tcp::{gateway_port}-:3000",

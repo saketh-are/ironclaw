@@ -1,3 +1,7 @@
 __pycache__/
 *.pyc
 smoke-results.json
+# VM images are too large for git (built via vm/build-vm-image.sh)
+vm/*.qcow2
+vm/*.log
+vm/*.pid

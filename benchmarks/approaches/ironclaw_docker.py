@@ -10,6 +10,7 @@ This is the simplest real-ironclaw approach: no inner daemon, no proxy needed.
 
 import json
 import subprocess
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -33,6 +34,7 @@ class IronclawDockerApproach(Approach):
         self._agent_ids: List[str] = []
         self._host_ports: Dict[str, int] = {}
         self._run_id: str = "unknown"
+        self._workspace_dirs: Dict[str, Path] = {}  # agent_id -> host temp dir
 
     @property
     def name(self) -> str:
@@ -63,6 +65,20 @@ class IronclawDockerApproach(Approach):
 
             env = ironclaw_agent_env(config, agent_id, 3000)
 
+            # In the shared-daemon topology, sandbox containers are siblings
+            # on the host daemon.  Ironclaw bind-mounts its cwd (the
+            # workspace) into sandbox containers.  For this to work, the
+            # workspace path inside the agent must also exist on the HOST
+            # so Docker can find it.  We create a unique host directory
+            # and mount it at the SAME path inside the agent container.
+            ws_host = Path(f"/tmp/ic-bench-ws-{config.run_id}-{i}")
+            ws_host.mkdir(parents=True, exist_ok=True)
+            ws_host.chmod(0o777)  # writable by sandbox user 1000
+            self._workspace_dirs[agent_id] = ws_host
+
+            # Override WORKSPACE_DIR so entrypoint.sh uses this path
+            env["WORKSPACE_DIR"] = str(ws_host)
+
             cmd = [
                 "docker", "run", "-d",
                 "--name", container_name,
@@ -70,6 +86,9 @@ class IronclawDockerApproach(Approach):
                 "-p", f"{gateway_port}:3000",
                 # Shared host Docker socket
                 "-v", "/var/run/docker.sock:/var/run/docker.sock",
+                # Workspace: same path on host and in container so that
+                # sandbox sibling containers can bind-mount the same path.
+                "-v", f"{ws_host}:{ws_host}",
                 # Labels
                 "--label", f"bench_run_id={config.run_id}",
                 "--label", "bench_role=agent",
@@ -204,6 +223,14 @@ class IronclawDockerApproach(Approach):
         if result.returncode == 0 and result.stdout.strip():
             ids = result.stdout.strip().split("\n")
             subprocess.run(["docker", "rm", "-f"] + ids, capture_output=True)
+        # Remove host workspace temp dirs
+        import shutil
+        for agent_id, ws_dir in self._workspace_dirs.items():
+            try:
+                shutil.rmtree(ws_dir, ignore_errors=True)
+            except Exception:
+                pass
         self._agent_ids = []
         self._host_ports = {}
+        self._workspace_dirs = {}
         print(f"[{self.name}] Cleanup complete.")
