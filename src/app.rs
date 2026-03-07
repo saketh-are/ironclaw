@@ -365,15 +365,26 @@ impl AppBuilder {
             None
         };
 
+        // Create a SandboxManager for the shell tool when both
+        // allow_local_tools and sandbox are enabled. This makes shell
+        // commands spawn ephemeral containers for isolation.
+        let shell_sandbox = if self.config.agent.allow_local_tools && self.config.sandbox.enabled {
+            let sandbox_config = self.config.sandbox.to_sandbox_config();
+            Some(Arc::new(crate::sandbox::SandboxManager::new(sandbox_config)))
+        } else {
+            None
+        };
+
         // Register builder tool if enabled
         if self.config.builder.enabled
             && (self.config.agent.allow_local_tools || !self.config.sandbox.enabled)
         {
             tools
-                .register_builder_tool(
+                .register_builder_tool_with_sandbox(
                     llm.clone(),
                     safety.clone(),
                     Some(self.config.builder.to_builder_config()),
+                    shell_sandbox.clone(),
                 )
                 .await;
             tracing::info!("Builder mode enabled");
@@ -632,7 +643,14 @@ impl AppBuilder {
         let builder_registered_dev_tools = self.config.builder.enabled
             && (self.config.agent.allow_local_tools || !self.config.sandbox.enabled);
         if self.config.agent.allow_local_tools && !builder_registered_dev_tools {
-            tools.register_dev_tools();
+            if self.config.sandbox.enabled {
+                let sandbox_config = self.config.sandbox.to_sandbox_config();
+                let sandbox_manager =
+                    Arc::new(crate::sandbox::SandboxManager::new(sandbox_config));
+                tools.register_dev_tools_with_sandbox(Some(sandbox_manager));
+            } else {
+                tools.register_dev_tools();
+            }
         }
 
         Ok((

@@ -262,7 +262,27 @@ impl ToolRegistry {
     /// capabilities needed for the software builder. Call this after
     /// `register_builtin_tools()` to enable code generation features.
     pub fn register_dev_tools(&self) {
-        self.register_sync(Arc::new(ShellTool::new()));
+        self.register_dev_tools_with_sandbox(None);
+    }
+
+    /// Register development tools, optionally sandboxing the shell tool.
+    ///
+    /// When a [`SandboxManager`] is provided, shell commands execute inside
+    /// ephemeral Docker containers instead of running directly on the host.
+    /// This is used when both `ALLOW_LOCAL_TOOLS` and `SANDBOX_ENABLED` are
+    /// true — the agent has shell/file tools available but shell commands
+    /// are isolated in containers.
+    pub fn register_dev_tools_with_sandbox(
+        &self,
+        sandbox: Option<Arc<crate::sandbox::SandboxManager>>,
+    ) {
+        let shell = match sandbox {
+            Some(ref sm) => ShellTool::new()
+                .with_sandbox(Arc::clone(sm))
+                .with_sandbox_policy(sm.config().policy),
+            None => ShellTool::new(),
+        };
+        self.register_sync(Arc::new(shell));
         self.register_sync(Arc::new(ReadFileTool::new()));
         self.register_sync(Arc::new(WriteFileTool::new()));
         self.register_sync(Arc::new(ListDirTool::new()));
@@ -449,8 +469,20 @@ impl ToolRegistry {
         safety: Arc<SafetyLayer>,
         config: Option<BuilderConfig>,
     ) {
+        self.register_builder_tool_with_sandbox(llm, safety, config, None)
+            .await;
+    }
+
+    /// Like [`register_builder_tool`] but optionally sandboxes the shell tool.
+    pub async fn register_builder_tool_with_sandbox(
+        self: &Arc<Self>,
+        llm: Arc<dyn LlmProvider>,
+        safety: Arc<SafetyLayer>,
+        config: Option<BuilderConfig>,
+        sandbox: Option<Arc<crate::sandbox::SandboxManager>>,
+    ) {
         // First register dev tools needed by the builder
-        self.register_dev_tools();
+        self.register_dev_tools_with_sandbox(sandbox);
 
         // Create the builder (arg order: config, llm, safety, tools)
         let builder = Arc::new(LlmSoftwareBuilder::new(

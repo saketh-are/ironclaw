@@ -61,6 +61,7 @@ pub struct ContainerRunner {
     docker: Docker,
     image: String,
     proxy_port: u16,
+    podman_compat: bool,
 }
 
 /// Append `text` into `buffer` up to `limit` bytes without breaking UTF-8.
@@ -93,7 +94,14 @@ impl ContainerRunner {
             docker,
             image,
             proxy_port,
+            podman_compat: false,
         }
+    }
+
+    /// Enable Podman compatibility mode.
+    pub fn with_podman_compat(mut self, enabled: bool) -> Self {
+        self.podman_compat = enabled;
+        self
     }
 
     /// Check if the Docker daemon is available.
@@ -286,25 +294,40 @@ impl ContainerRunner {
                 vec![format!("{}:/workspace:rw", working_dir_str)]
             }
             SandboxPolicy::FullAccess => {
-                // Full access - mount more of the host
-                vec![
-                    format!("{}:/workspace:rw", working_dir_str),
-                    "/tmp:/tmp:rw".to_string(),
-                ]
+                // Full access - writable workspace (tmpfs already provides /tmp)
+                vec![format!("{}:/workspace:rw", working_dir_str)]
             }
+        };
+
+        // Podman rootless doesn't support some Docker container options:
+        // - "no-new-privileges:true" must be "no-new-privileges"
+        // - Memory/CPU limits require cgroup delegation
+        // - AutoRemove races with the wait endpoint
+        let security_opt = if self.podman_compat {
+            vec!["no-new-privileges".to_string()]
+        } else {
+            vec!["no-new-privileges:true".to_string()]
         };
 
         let host_config = HostConfig {
             binds: Some(binds),
-            memory: Some((limits.memory_bytes) as i64),
-            cpu_shares: Some(limits.cpu_shares as i64),
-            auto_remove: Some(true),
+            memory: if self.podman_compat {
+                None
+            } else {
+                Some(limits.memory_bytes as i64)
+            },
+            cpu_shares: if self.podman_compat {
+                None
+            } else {
+                Some(limits.cpu_shares as i64)
+            },
+            auto_remove: Some(!self.podman_compat),
             network_mode: Some("bridge".to_string()),
             // Security: drop all capabilities and add back only what's needed
             cap_drop: Some(vec!["ALL".to_string()]),
             cap_add: Some(vec!["CHOWN".to_string()]),
             // Prevent privilege escalation
-            security_opt: Some(vec!["no-new-privileges:true".to_string()]),
+            security_opt: Some(security_opt),
             // Read-only root filesystem (workspace is still writable if policy allows)
             readonly_rootfs: Some(policy != SandboxPolicy::FullAccess),
             // Tmpfs mounts for /tmp and cargo cache
@@ -369,6 +392,11 @@ impl ContainerRunner {
         let exit_code = match wait_stream.next().await {
             Some(Ok(response)) => response.status_code,
             Some(Err(e)) => {
+                tracing::warn!(
+                    container_id = container_id,
+                    error_debug = ?e,
+                    "Container wait failed"
+                );
                 return Err(SandboxError::ExecutionFailed {
                     reason: format!("wait failed: {}", e),
                 });
