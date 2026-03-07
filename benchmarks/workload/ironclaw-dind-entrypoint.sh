@@ -48,8 +48,9 @@ while ! curl -sf http://127.0.0.1:11434/v1/models >/dev/null 2>&1; do
 done
 echo "[entrypoint] Mock LLM server ready on :11434"
 
-# --- Ensure workspace exists ---
+# --- Ensure workspace exists and is writable by sandbox user (1000) ---
 mkdir -p /tmp/workspace
+chown 1000:1000 /tmp/workspace
 
 # --- Start ironclaw ---
 echo "[entrypoint] Starting ironclaw agent..."

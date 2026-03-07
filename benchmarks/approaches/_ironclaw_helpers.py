@@ -53,9 +53,9 @@ def ironclaw_agent_env(config, agent_id, gateway_port):
         "SANDBOX_ENABLED": "true",
         "SANDBOX_IMAGE": IRONCLAW_SANDBOX_IMAGE,
         "SANDBOX_AUTO_PULL": "false",
-        # FullAccess policy skips the network proxy (no proxy needed
-        # inside the benchmark — keeps the sandbox path simple).
-        "SANDBOX_POLICY": "full_access",
+        # WorkspaceWrite: /workspace mounted rw, read-only rootfs.
+        # The realistic policy for sandboxed code execution.
+        "SANDBOX_POLICY": "workspace_write",
 
         # Disable features we don't need for benchmarking
         "CLI_ENABLED": "false",

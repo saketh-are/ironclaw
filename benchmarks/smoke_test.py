@@ -130,6 +130,30 @@ def check_tool_execution_in_logs(agent_index):
         return False, f"log check failed: {e}"
 
 
+def check_storage_write(agent_index):
+    """Verify that the sandbox container wrote a proof file to the workspace.
+
+    The mock LLM command writes to /workspace/bench-test/output.txt inside the
+    sandbox container.  Because /workspace is bind-mounted from the agent's
+    /tmp/workspace, we can read it via `docker exec` on the agent container.
+
+    Returns (written: bool, content: str).
+    """
+    container_name = f"bench-ic-agent-{agent_index}"
+    try:
+        result = subprocess.run(
+            ["docker", "exec", container_name,
+             "cat", "/tmp/workspace/bench-test/output.txt"],
+            capture_output=True, text=True, timeout=5,
+        )
+        content = result.stdout.strip()
+        if result.returncode == 0 and content.startswith("proof-"):
+            return True, content
+        return False, f"rc={result.returncode} content={content!r} stderr={result.stderr.strip()!r}"
+    except (subprocess.SubprocessError, subprocess.TimeoutExpired) as e:
+        return False, f"exec failed: {e}"
+
+
 # ---------------------------------------------------------------------------
 # Smoke test runner
 # ---------------------------------------------------------------------------
@@ -217,14 +241,34 @@ def run_smoke_test(approach, approach_name, num_agents=NUM_AGENTS):
 
         details["agents_executed"] = agents_executed
 
-        if agents_executed >= num_agents:
-            print(f"[smoke] PASS: {agents_executed}/{num_agents} agents "
-                  "executed shell commands")
+        if agents_executed < num_agents:
+            details["error"] = (
+                f"Only {agents_executed}/{num_agents} agents executed commands"
+            )
+            return False, details
+
+        # 7. Verify storage writes (sandbox → workspace bind mount)
+        print("[smoke] Checking storage writes from sandbox containers...")
+        agents_wrote = 0
+        for i, agent_id in enumerate(agent_ids):
+            written, write_detail = check_storage_write(i)
+            details[f"{agent_id}_storage"] = write_detail
+            if written:
+                agents_wrote += 1
+                print(f"[smoke]   {agent_id}: WRITTEN ({write_detail})")
+            else:
+                print(f"[smoke]   {agent_id}: NOT WRITTEN ({write_detail})")
+
+        details["agents_wrote_storage"] = agents_wrote
+
+        if agents_wrote >= num_agents:
+            print(f"[smoke] PASS: {agents_executed}/{num_agents} executed, "
+                  f"{agents_wrote}/{num_agents} wrote to storage")
             details["passed"] = True
             return True, details
         else:
             details["error"] = (
-                f"Only {agents_executed}/{num_agents} agents executed commands"
+                f"Only {agents_wrote}/{num_agents} agents wrote to storage"
             )
             return False, details
 

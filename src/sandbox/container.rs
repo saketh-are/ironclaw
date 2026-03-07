@@ -286,11 +286,8 @@ impl ContainerRunner {
                 vec![format!("{}:/workspace:rw", working_dir_str)]
             }
             SandboxPolicy::FullAccess => {
-                // Full access - mount more of the host
-                vec![
-                    format!("{}:/workspace:rw", working_dir_str),
-                    "/tmp:/tmp:rw".to_string(),
-                ]
+                // Full access - writable workspace (tmpfs already provides /tmp)
+                vec![format!("{}:/workspace:rw", working_dir_str)]
             }
         };
 

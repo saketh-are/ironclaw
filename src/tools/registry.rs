@@ -277,7 +277,9 @@ impl ToolRegistry {
         sandbox: Option<Arc<crate::sandbox::SandboxManager>>,
     ) {
         let shell = match sandbox {
-            Some(sm) => ShellTool::new().with_sandbox(sm),
+            Some(ref sm) => ShellTool::new()
+                .with_sandbox(Arc::clone(sm))
+                .with_sandbox_policy(sm.config().policy),
             None => ShellTool::new(),
         };
         self.register_sync(Arc::new(shell));

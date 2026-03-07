@@ -28,8 +28,9 @@ if [ -n "$DOCKER_PROXY_UPSTREAM" ]; then
     echo "[entrypoint] Docker socket proxy started"
 fi
 
-# --- Ensure workspace exists ---
+# --- Ensure workspace exists and is writable by sandbox user (1000) ---
 mkdir -p /tmp/workspace
+chown 1000:1000 /tmp/workspace
 
 # --- Start ironclaw ---
 echo "[entrypoint] Starting ironclaw agent..."

@@ -25,10 +25,11 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 MOCK_MODEL = os.environ.get("MOCK_LLM_MODEL", "mock-bench")
 # Command the mock LLM tells ironclaw to run in a sandbox container.
-# sleep keeps the container alive long enough for the smoke test to observe it.
+# Writes a proof file to the bind-mounted /workspace so the smoke test
+# can verify storage writes actually work across the container boundary.
 WORKER_COMMAND = os.environ.get(
     "MOCK_WORKER_COMMAND",
-    "echo benchmark-worker-ok",
+    "mkdir -p /workspace/bench-test && echo proof-$(hostname) > /workspace/bench-test/output.txt && cat /workspace/bench-test/output.txt",
 )
 
 
