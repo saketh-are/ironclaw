@@ -41,19 +41,24 @@ else
     echo "[sysbox-entrypoint] WARNING: ${WORKER_TAR} not found, workers may fail to start."
 fi
 
-# Detect the inner docker0 bridge gateway IP for worker->agent communication.
-BRIDGE_IP=$(python3 -c "
+# Respect an explicit gateway override from the outer benchmark harness.
+if [ -n "${DOCKER_BRIDGE_GATEWAY:-}" ]; then
+    echo "[sysbox-entrypoint] Using preset DOCKER_BRIDGE_GATEWAY=${DOCKER_BRIDGE_GATEWAY}"
+else
+    # Detect the inner docker0 bridge gateway IP for worker->agent communication.
+    BRIDGE_IP=$(python3 -c "
 import socket, struct, fcntl
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 ip = socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x8915, struct.pack('256s', b'docker0'))[20:24])
 print(ip)
 " 2>/dev/null || echo "")
 
-if [ -n "$BRIDGE_IP" ]; then
-    echo "[sysbox-entrypoint] Inner docker0 bridge IP: ${BRIDGE_IP}"
-    export DOCKER_BRIDGE_GATEWAY="$BRIDGE_IP"
-else
-    echo "[sysbox-entrypoint] WARNING: Could not detect docker0 bridge IP"
+    if [ -n "$BRIDGE_IP" ]; then
+        echo "[sysbox-entrypoint] Inner docker0 bridge IP: ${BRIDGE_IP}"
+        export DOCKER_BRIDGE_GATEWAY="$BRIDGE_IP"
+    else
+        echo "[sysbox-entrypoint] WARNING: Could not detect docker0 bridge IP"
+    fi
 fi
 
 # Hand off to agent.py as PID 1 (for clean signal handling)

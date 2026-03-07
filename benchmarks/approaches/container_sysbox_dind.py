@@ -155,9 +155,13 @@ class ContainerSysboxDindApproach(Approach):
                 "-e", f"RNG_SEED={config.rng_seed}",
                 "-e", f"BENCH_RUN_ID={config.run_id}",
                 "-e", f"BENCH_APPROACH={self.name}",
-                # Orchestrator networking: workers reach agent via inner bridge
+                # Orchestrator networking: inner workers share the agent
+                # container's network namespace and reach the HTTP server on
+                # localhost, avoiding the inner docker0 bridge path.
+                "-e", "DOCKER_BRIDGE_GATEWAY=127.0.0.1",
                 "-e", "ORCHESTRATOR_PORT=8080",
-                # No ORCHESTRATOR_HOST_PORT — workers use inner bridge gateway
+                "-e", "WORKER_NETWORK_MODE=host",
+                # No ORCHESTRATOR_HOST_PORT — workers do not need host ports
                 # No Docker socket mount — each agent has its own daemon
             ]
             if host_log_file is not None:
@@ -176,6 +180,10 @@ class ContainerSysboxDindApproach(Approach):
                 cmd += ["-e", f"SPAWN_RAMP_BATCH_SIZE={os.environ['SPAWN_RAMP_BATCH_SIZE']}"]
             if os.environ.get("SPAWN_RAMP_INTERVAL_S"):
                 cmd += ["-e", f"SPAWN_RAMP_INTERVAL_S={os.environ['SPAWN_RAMP_INTERVAL_S']}"]
+            if os.environ.get("EVENT_LOG_STDOUT"):
+                cmd += ["-e", f"EVENT_LOG_STDOUT={os.environ['EVENT_LOG_STDOUT']}"]
+            if os.environ.get("CAPTURE_WORKER_LOGS"):
+                cmd += ["-e", f"CAPTURE_WORKER_LOGS={os.environ['CAPTURE_WORKER_LOGS']}"]
 
             # Storage validation: inner dockerd resolves paths locally, no host-path indirection
             if config.storage_validation:
