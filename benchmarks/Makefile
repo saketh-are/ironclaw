@@ -1,5 +1,6 @@
 .PHONY: images worker-image agent-image agent-dind-image agent-sysbox-image vm-image fc-kernel fc-rootfs fc-image fc-setup podman-setup run run-idle run-plateau run-sweep plot compare decompose clean help \
-       ironclaw-binary ironclaw-sandbox-image ironclaw-agent-image ironclaw-agent-dind-image ironclaw-images smoke-test
+       ironclaw-binary ironclaw-sandbox-image ironclaw-agent-image ironclaw-agent-dind-image ironclaw-images smoke-test \
+       bench bench-list
 
 -include config.env
 .EXPORT_ALL_VARIABLES:
@@ -86,9 +87,29 @@ podman-setup: images ## Install podman + deps for podman-rootless approach
 	@command -v machinectl >/dev/null || (echo "Install systemd-container: sudo apt install systemd-container"; exit 1)
 	@echo "Podman ready. User setup happens automatically during benchmark run."
 
-# --- Run benchmarks ---
+# --- Unified CLI ---
 
-run: images ## Run benchmark: make run APPROACH=container-docker AGENTS=5 [MODE=loaded|idle|plateau]
+bench-list: ## List all approaches: make bench-list [SUITE=synthetic|ironclaw]
+	@python3 bench.py list $(if $(SUITE),--suite $(SUITE),)
+
+bench: ## Unified entry: make bench SUITE=synthetic APPROACH=container-docker AGENTS=5 [MODE=loaded]
+	@if [ "$(SUITE)" = "ironclaw" ]; then \
+		python3 bench.py ironclaw $(if $(APPROACH),--approach $(APPROACH),) $(if $(AGENTS),--agents $(AGENTS),); \
+	elif [ "$(SUITE)" = "synthetic" ]; then \
+		python3 bench.py synthetic --approach $(APPROACH) --agents $(AGENTS) $(if $(MODE),--mode $(MODE),); \
+	else \
+		echo "Usage: make bench SUITE=synthetic|ironclaw APPROACH=<name> AGENTS=<n>"; \
+		echo "  make bench SUITE=ironclaw                              # all ironclaw approaches"; \
+		echo "  make bench SUITE=ironclaw APPROACH=ironclaw-docker     # single ironclaw approach"; \
+		echo "  make bench SUITE=synthetic APPROACH=container-docker AGENTS=5"; \
+		echo ""; \
+		echo "Available approaches:"; \
+		python3 bench.py list; \
+	fi
+
+# --- Run benchmarks (legacy, still works) ---
+
+run: images ## Run synthetic benchmark: make run APPROACH=container-docker AGENTS=5 [MODE=loaded|idle|plateau]
 	python3 -m runner.orchestrate --approach $(APPROACH) --agents $(AGENTS) --mode $(MODE)
 
 run-idle: images ## Run idle benchmark (no workers): make run-idle APPROACH=container-docker AGENTS=50

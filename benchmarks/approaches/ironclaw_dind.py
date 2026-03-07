@@ -36,6 +36,10 @@ class _IronclawDindBase(Approach):
     _extra_docker_args: List[str] = []
     _dockerd_extra_args: str = ""
 
+    @property
+    def suite(self) -> str:
+        return "ironclaw"
+
     def __init__(self):
         self._agent_ids: List[str] = []
         self._host_ports: Dict[str, int] = {}

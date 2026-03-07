@@ -37,6 +37,10 @@ class IronclawDockerApproach(Approach):
         self._workspace_dirs: Dict[str, Path] = {}  # agent_id -> host temp dir
 
     @property
+    def suite(self) -> str:
+        return "ironclaw"
+
+    @property
     def name(self) -> str:
         return "ironclaw-docker"
 

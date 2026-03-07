@@ -17,7 +17,6 @@ Exit code:
 """
 
 import argparse
-import importlib
 import json
 import subprocess
 import sys
@@ -28,7 +27,7 @@ from pathlib import Path
 BENCH_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BENCH_DIR))
 
-from approaches.base import Approach, BenchmarkConfig
+from approaches.base import BenchmarkConfig, discover_approaches
 from approaches._ironclaw_helpers import (
     GATEWAY_AUTH_TOKEN,
     trigger_worker_spawn,
@@ -39,34 +38,6 @@ from approaches._ironclaw_helpers import (
 NUM_AGENTS = 2
 COMMAND_WAIT_S = 15        # Time to wait for shell commands to execute
 TOTAL_TIMEOUT_S = 300      # Max total time per approach
-
-# ---------------------------------------------------------------------------
-# Approach discovery (same as runner/orchestrate.py)
-# ---------------------------------------------------------------------------
-
-def discover_ironclaw_approaches():
-    """Find all ironclaw-* approaches."""
-    approaches = {}
-    approaches_dir = BENCH_DIR / "approaches"
-    for py_file in approaches_dir.glob("ironclaw_*.py"):
-        if py_file.name.startswith("_"):
-            continue
-        module_name = f"approaches.{py_file.stem}"
-        try:
-            mod = importlib.import_module(module_name)
-            for attr_name in dir(mod):
-                attr = getattr(mod, attr_name)
-                if (
-                    isinstance(attr, type)
-                    and issubclass(attr, Approach)
-                    and attr is not Approach
-                    and not attr_name.startswith("_")
-                ):
-                    instance = attr()
-                    approaches[instance.name] = instance
-        except Exception as e:
-            print(f"Warning: could not load {py_file.name}: {e}")
-    return approaches
 
 
 # ---------------------------------------------------------------------------
@@ -374,7 +345,7 @@ def main():
                         help="Output file for results")
     args = parser.parse_args()
 
-    approaches = discover_ironclaw_approaches()
+    approaches = discover_approaches(suite="ironclaw")
 
     if args.list:
         for name in sorted(approaches):

@@ -45,6 +45,10 @@ class IronclawVmQemuApproach(Approach):
         self._config: BenchmarkConfig = None
 
     @property
+    def suite(self) -> str:
+        return "ironclaw"
+
+    @property
     def name(self) -> str:
         return "ironclaw-vm-qemu"
 

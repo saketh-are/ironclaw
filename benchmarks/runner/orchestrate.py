@@ -19,7 +19,6 @@ Results are saved to results/<approach>-<mode>-<agents>-<timestamp>/.
 """
 
 import argparse
-import importlib
 import json
 import os
 import sys
@@ -31,39 +30,16 @@ from pathlib import Path
 BENCH_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BENCH_DIR))
 
-from approaches.base import Approach, BenchmarkConfig
+from approaches.base import Approach, BenchmarkConfig, discover_approaches as _discover_approaches
 from runner.collect import Collector, read_meminfo, read_vmstat_swap, HOST_CPU_FIELDS
 
 # Registry of available approaches
 APPROACHES = {}
 
 
-def register_approach(cls: type) -> None:
-    """Register an approach class."""
-    instance = cls()
-    APPROACHES[instance.name] = instance
-
-
 def discover_approaches() -> None:
-    """Auto-discover approach modules in approaches/."""
-    approaches_dir = BENCH_DIR / "approaches"
-    for py_file in approaches_dir.glob("*.py"):
-        if py_file.name.startswith("_") or py_file.name == "base.py":
-            continue
-        module_name = f"approaches.{py_file.stem}"
-        try:
-            mod = importlib.import_module(module_name)
-            # Find Approach subclasses in the module
-            for attr_name in dir(mod):
-                attr = getattr(mod, attr_name)
-                if (
-                    isinstance(attr, type)
-                    and issubclass(attr, Approach)
-                    and attr is not Approach
-                ):
-                    register_approach(attr)
-        except Exception as e:
-            print(f"Warning: could not load approach from {py_file.name}: {e}")
+    """Auto-discover synthetic approach modules in approaches/."""
+    APPROACHES.update(_discover_approaches(suite="synthetic"))
 
 
 def load_config_env() -> dict:

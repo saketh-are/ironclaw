@@ -9,11 +9,17 @@ To add a new approach (e.g., Podman rootless, Firecracker):
   1. Create a new file in approaches/ (e.g., podman_rootless.py)
   2. Implement a class that extends Approach
   3. Register it in approaches/__init__.py
+
+Each approach belongs to a *suite*:
+  - "synthetic" (default) — memory-pressure workloads driven by agent.py/worker.py
+  - "ironclaw" — real IronClaw binary with mock LLM, sandbox containers
 """
 
+import importlib
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, List, Optional
 
 
@@ -102,6 +108,11 @@ class Approach(ABC):
         """Short identifier, e.g. 'vm-qemu', 'container-docker'."""
         ...
 
+    @property
+    def suite(self) -> str:
+        """Suite this approach belongs to: 'synthetic' or 'ironclaw'."""
+        return "synthetic"
+
     @abstractmethod
     def setup(self, config: BenchmarkConfig) -> None:
         """One-time setup: build images, VM disks, etc."""
@@ -160,3 +171,37 @@ class Approach(ABC):
     def cleanup(self) -> None:
         """Optional: remove build artifacts (images, VM disks, etc.)."""
         pass
+
+
+def discover_approaches(suite: Optional[str] = None) -> Dict[str, "Approach"]:
+    """Auto-discover all approach modules in approaches/.
+
+    Args:
+        suite: If given, only return approaches matching this suite
+               ("synthetic" or "ironclaw"). None returns all.
+
+    Returns:
+        Dict mapping approach name to instance.
+    """
+    approaches_dir = Path(__file__).resolve().parent
+    approaches = {}
+    for py_file in approaches_dir.glob("*.py"):
+        if py_file.name.startswith("_") or py_file.name == "base.py":
+            continue
+        module_name = f"approaches.{py_file.stem}"
+        try:
+            mod = importlib.import_module(module_name)
+            for attr_name in dir(mod):
+                attr = getattr(mod, attr_name)
+                if (
+                    isinstance(attr, type)
+                    and issubclass(attr, Approach)
+                    and attr is not Approach
+                    and not attr_name.startswith("_")
+                ):
+                    instance = attr()
+                    if suite is None or instance.suite == suite:
+                        approaches[instance.name] = instance
+        except Exception as e:
+            print(f"Warning: could not load {py_file.name}: {e}")
+    return approaches

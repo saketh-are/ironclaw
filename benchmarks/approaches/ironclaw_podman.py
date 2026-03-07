@@ -70,6 +70,10 @@ class IronclawPodmanApproach(Approach):
         self._run_id: str = "unknown"
 
     @property
+    def suite(self) -> str:
+        return "ironclaw"
+
+    @property
     def name(self) -> str:
         return "ironclaw-podman"
 
