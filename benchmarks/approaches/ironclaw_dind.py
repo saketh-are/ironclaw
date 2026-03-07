@@ -193,9 +193,13 @@ class _IronclawDindBase(Approach):
 
     def count_active_workers(self) -> int:
         """Query each agent's inner Docker daemon for sandbox containers."""
-        total = 0
-        for i in range(len(self._agent_ids)):
+        return sum(self.count_active_workers_per_agent().values())
+
+    def count_active_workers_per_agent(self) -> Dict[str, int]:
+        counts = {}
+        for i, agent_id in enumerate(self._agent_ids):
             container_name = f"bench-ic-agent-{i}"
+            count = 0
             try:
                 result = subprocess.run(
                     ["docker", "exec", container_name,
@@ -203,10 +207,14 @@ class _IronclawDindBase(Approach):
                     capture_output=True, text=True, timeout=5,
                 )
                 if result.returncode == 0 and result.stdout.strip():
-                    total += len(result.stdout.strip().split("\n"))
+                    count = len(result.stdout.strip().split("\n"))
             except (subprocess.SubprocessError, subprocess.TimeoutExpired):
                 pass
-        return total
+            counts[agent_id] = count
+        return counts
+
+    def get_agent_gateways(self) -> Dict[str, int]:
+        return dict(self._host_ports)
 
     def collect_agent_logs(self, agent_ids: List[str], output_dir) -> None:
         output_dir = Path(output_dir)

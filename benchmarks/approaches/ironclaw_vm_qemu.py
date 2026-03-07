@@ -24,6 +24,7 @@ from typing import Dict, List
 from approaches.base import Approach, BenchmarkConfig
 from approaches._ironclaw_helpers import (
     GATEWAY_AUTH_TOKEN,
+    count_active_jobs,
     ironclaw_agent_env,
     wait_for_gateway,
     trigger_worker_spawn,
@@ -158,23 +159,21 @@ class IronclawVmQemuApproach(Approach):
         return {}
 
     def count_active_workers(self) -> int:
-        # Cannot directly query inner Docker from host.
-        # Approximate by querying each agent's gateway API.
-        total = 0
+        return sum(self.count_active_workers_per_agent().values())
+
+    def count_active_workers_per_agent(self) -> Dict[str, int]:
+        counts = {}
         for agent_id, port in self._host_ports.items():
             try:
-                req = urllib.request.Request(
-                    f"http://127.0.0.1:{port}/api/jobs",
-                    headers={"Authorization": f"Bearer {GATEWAY_AUTH_TOKEN}"},
+                counts[agent_id] = count_active_jobs(
+                    port, auth_token=GATEWAY_AUTH_TOKEN, timeout=5
                 )
-                resp = urllib.request.urlopen(req, timeout=5)
-                data = json.loads(resp.read())
-                if isinstance(data, list):
-                    total += len([j for j in data
-                                  if j.get("status") == "in_progress"])
             except Exception:
-                pass
-        return total
+                counts[agent_id] = 0
+        return counts
+
+    def get_agent_gateways(self) -> Dict[str, int]:
+        return dict(self._host_ports)
 
     def collect_agent_logs(self, agent_ids: List[str], output_dir) -> None:
         output_dir = Path(output_dir)

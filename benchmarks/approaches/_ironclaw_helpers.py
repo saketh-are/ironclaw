@@ -95,7 +95,34 @@ def wait_for_gateway(port, timeout_s=120, label="agent"):
     return False
 
 
-def trigger_worker_spawn(port, auth_token=GATEWAY_AUTH_TOKEN):
+def gateway_get_json(path, port, auth_token=GATEWAY_AUTH_TOKEN, timeout=10):
+    """Fetch JSON from the web gateway."""
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        headers={"Authorization": f"Bearer {auth_token}"},
+        method="GET",
+    )
+    resp = urllib.request.urlopen(req, timeout=timeout)
+    return json.loads(resp.read())
+
+
+def list_jobs(port, auth_token=GATEWAY_AUTH_TOKEN, timeout=10):
+    """Return the jobs list from a benchmark agent's gateway."""
+    data = gateway_get_json("/api/jobs", port, auth_token=auth_token, timeout=timeout)
+    if isinstance(data, dict) and isinstance(data.get("jobs"), list):
+        return data["jobs"]
+    if isinstance(data, list):
+        return data
+    return []
+
+
+def count_active_jobs(port, auth_token=GATEWAY_AUTH_TOKEN, timeout=10):
+    """Count jobs that are still pending or in progress."""
+    jobs = list_jobs(port, auth_token=auth_token, timeout=timeout)
+    return sum(1 for job in jobs if job.get("state") in ("pending", "in_progress"))
+
+
+def trigger_worker_spawn(port, command=None, auth_token=GATEWAY_AUTH_TOKEN):
     """Send a message to ironclaw's gateway that triggers a shell tool call.
 
     The mock LLM will respond with a `shell` tool call, causing ironclaw
@@ -104,8 +131,13 @@ def trigger_worker_spawn(port, auth_token=GATEWAY_AUTH_TOKEN):
     Returns True if the message was accepted (200/202).
     """
     url = f"http://127.0.0.1:{port}/api/chat/send"
+    content = (
+        f"Please run: {command}"
+        if command
+        else "Please run: echo benchmark-worker-ok"
+    )
     payload = json.dumps({
-        "content": "Please run: echo benchmark-worker-ok",
+        "content": content,
     }).encode()
 
     req = urllib.request.Request(

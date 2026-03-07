@@ -9,13 +9,13 @@ Usage:
     python3 bench.py list --suite ironclaw             # List ironclaw approaches only
     python3 bench.py synthetic --approach container-docker --agents 5
     python3 bench.py ironclaw --approach ironclaw-docker --agents 2
-    python3 bench.py ironclaw-benchmark --approach ironclaw-sysbox-dind --agents 50
+    python3 bench.py ironclaw-benchmark --approach ironclaw-sysbox-dind --agents 50 -- --mode loaded
     python3 bench.py ironclaw                          # All ironclaw approaches
 
 The 'synthetic' subcommand runs the memory-density orchestrator (runner/orchestrate.py).
 The 'ironclaw' subcommand runs the real-agent smoke tests (smoke_test.py).
-The 'ironclaw-benchmark' subcommand runs staggered real-agent load tests
-with time-series memory sampling (ironclaw_benchmark.py).
+The 'ironclaw-benchmark' subcommand runs host-driven real-agent benchmarks
+with idle/loaded/plateau modes and injected jobs (ironclaw_benchmark.py).
 """
 
 import subprocess
@@ -73,7 +73,7 @@ def cmd_ironclaw(args):
 
 
 def cmd_ironclaw_benchmark(args):
-    """Run real IronClaw benchmark via ironclaw_benchmark.py."""
+    """Run host-driven real IronClaw benchmark via ironclaw_benchmark.py."""
     cmd = [sys.executable, str(BENCH_DIR / "ironclaw_benchmark.py")]
     cmd += ["--approach", args.approach]
     if args.agents is not None:
@@ -129,7 +129,7 @@ def main():
     # --- ironclaw-benchmark ---
     p_ic_bench = sub.add_parser(
         "ironclaw-benchmark",
-        help="Run real IronClaw staggered benchmark",
+        help="Run host-driven real IronClaw benchmark",
     )
     p_ic_bench.add_argument("--approach", required=True,
                             help="Run this ironclaw approach")

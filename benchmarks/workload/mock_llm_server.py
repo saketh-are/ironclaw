@@ -33,6 +33,48 @@ WORKER_COMMAND = os.environ.get(
 )
 
 
+def normalize_message_content(content):
+    """Flatten OpenAI-style message content into plain text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, dict):
+        text = content.get("text") or content.get("content")
+        return text if isinstance(text, str) else ""
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+                continue
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") == "text" and isinstance(item.get("text"), str):
+                parts.append(item["text"])
+                continue
+            text = item.get("content")
+            if isinstance(text, str):
+                parts.append(text)
+        return "\n".join(part for part in parts if part)
+    return ""
+
+
+def extract_requested_command(messages):
+    """Extract an explicit shell command from the last user message if present."""
+    for message in reversed(messages):
+        if message.get("role") != "user":
+            continue
+        content = normalize_message_content(message.get("content"))
+        prefix = "Please run: "
+        if content.startswith(prefix):
+            return content[len(prefix) :].strip()
+        for line in content.splitlines():
+            line = line.strip()
+            if line.startswith(prefix):
+                return line[len(prefix) :].strip()
+        break
+    return None
+
+
 def _make_id():
     return f"chatcmpl-{uuid.uuid4().hex[:12]}"
 
@@ -158,6 +200,7 @@ def _sse_chunk(chat_id, created, model, delta, finish_reason):
 def generate_response(messages, tools):
     """Decide what the mock LLM should return based on conversation state."""
     has_tool_results = any(m.get("role") == "tool" for m in messages)
+    requested_command = extract_requested_command(messages) or WORKER_COMMAND
 
     if has_tool_results:
         return "text", "The command executed successfully. The benchmark worker ran as expected."
@@ -170,13 +213,13 @@ def generate_response(messages, tools):
 
     # Prefer shell tool (direct execution, always available with ALLOW_LOCAL_TOOLS)
     if "shell" in tool_names:
-        return "tool_call", ("shell", json.dumps({"command": WORKER_COMMAND}))
+        return "tool_call", ("shell", json.dumps({"command": requested_command}))
 
     # Fallback to create_job for sandbox-enabled configurations
     if "create_job" in tool_names:
         return "tool_call", ("create_job", json.dumps({
             "title": "Run benchmark worker command",
-            "description": f"Execute this shell command and report the output: {WORKER_COMMAND}",
+            "description": f"Execute this shell command and report the output: {requested_command}",
             "wait": False,
         }))
 

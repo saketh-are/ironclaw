@@ -151,6 +151,14 @@ class Approach(ABC):
         """Count the total number of active worker containers across all agents."""
         ...
 
+    def count_active_workers_per_agent(self) -> Dict[str, int]:
+        """Count active worker containers per agent when the approach can expose it."""
+        return {}
+
+    def get_agent_gateways(self) -> Dict[str, int]:
+        """Return agent_id -> host gateway port for host-side control."""
+        return {}
+
     def collect_agent_logs(self, agent_ids: List[str], output_dir) -> None:
         """
         Collect agent stdout logs (JSONL events) after benchmark completes.

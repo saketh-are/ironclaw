@@ -12,6 +12,7 @@ FC_ASSETS_DIR := approaches/hybrid_firecracker_assets
 APPROACH ?= container-docker
 AGENTS ?= 5
 MODE ?= loaded
+EXTRA_ARGS ?=
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -88,8 +89,8 @@ smoke-test: ironclaw-images ## Run ironclaw smoke tests (2 agents, verifies work
 smoke-test-docker: ironclaw-images ## Smoke test: ironclaw-docker only
 	python3 smoke_test.py --approach ironclaw-docker
 
-ironclaw-benchmark: ironclaw-images ## Run real IronClaw staggered benchmark
-	python3 ironclaw_benchmark.py --approach $(APPROACH) --agents $(AGENTS)
+ironclaw-benchmark: ironclaw-images ## Run host-driven real IronClaw benchmark (use EXTRA_ARGS for mode/jobs)
+	python3 ironclaw_benchmark.py --approach $(APPROACH) --agents $(AGENTS) $(EXTRA_ARGS)
 
 # --- Podman rootless ---
 

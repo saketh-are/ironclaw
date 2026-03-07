@@ -167,16 +167,43 @@ class IronclawDockerApproach(Approach):
 
     def count_active_workers(self) -> int:
         """Count sandbox containers on the shared Docker daemon."""
+        return sum(self.count_active_workers_per_agent().values())
+
+    def count_active_workers_per_agent(self) -> Dict[str, int]:
+        counts = {agent_id: 0 for agent_id in self._agent_ids}
         try:
             result = subprocess.run(
                 ["docker", "ps", "-q", "--filter", "name=sandbox-"],
                 capture_output=True, text=True,
             )
-            if result.returncode == 0 and result.stdout.strip():
-                return len(result.stdout.strip().split("\n"))
+            if result.returncode != 0 or not result.stdout.strip():
+                return counts
+            ids = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+            if not ids:
+                return counts
+            inspect = subprocess.run(
+                ["docker", "inspect"] + ids,
+                capture_output=True, text=True,
+            )
+            if inspect.returncode != 0:
+                return counts
+            containers = json.loads(inspect.stdout)
+            workspace_to_agent = {
+                str(path): agent_id for agent_id, path in self._workspace_dirs.items()
+            }
+            for container in containers:
+                for mount in container.get("Mounts", []):
+                    source = mount.get("Source")
+                    agent_id = workspace_to_agent.get(source)
+                    if agent_id:
+                        counts[agent_id] += 1
+                        break
         except subprocess.SubprocessError:
             pass
-        return 0
+        return counts
+
+    def get_agent_gateways(self) -> Dict[str, int]:
+        return dict(self._host_ports)
 
     def collect_agent_logs(self, agent_ids: List[str], output_dir) -> None:
         output_dir = Path(output_dir)

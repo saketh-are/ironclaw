@@ -263,17 +263,25 @@ class IronclawPodmanApproach(Approach):
         return pids
 
     def count_active_workers(self) -> int:
-        total = 0
+        return sum(self.count_active_workers_per_agent().values())
+
+    def count_active_workers_per_agent(self) -> Dict[str, int]:
+        counts = {}
         for agent_id, username in self._users.items():
+            count = 0
             try:
                 result = _run_as_user(username, [
                     "podman", "ps", "-q", "--filter", "name=sandbox-",
                 ])
                 if result.returncode == 0 and result.stdout.strip():
-                    total += len(result.stdout.strip().split("\n"))
+                    count = len(result.stdout.strip().split("\n"))
             except subprocess.SubprocessError:
                 pass
-        return total
+            counts[agent_id] = count
+        return counts
+
+    def get_agent_gateways(self) -> Dict[str, int]:
+        return dict(self._host_ports)
 
     def collect_agent_logs(self, agent_ids: List[str], output_dir) -> None:
         output_dir = Path(output_dir)
