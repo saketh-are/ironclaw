@@ -31,18 +31,50 @@ import threading
 
 BUFFER_SIZE = 65536
 CONTAINER_CREATE_RE = re.compile(
-    rb"^(POST\s+(?:/v[\d.]+/)?containers/create\s)",
+    rb"^POST\s+/(?:v[\d.]+/)?containers/create[\s?]",
     re.IGNORECASE,
 )
 
 
-def forward(src, dst):
+def _decode_chunked(data):
+    """Decode HTTP chunked transfer encoding. Returns decoded bytes or None."""
+    result = b""
+    pos = 0
+    while pos < len(data):
+        # Find the chunk size line
+        crlf = data.find(b"\r\n", pos)
+        if crlf < 0:
+            break
+        size_str = data[pos:crlf].strip()
+        try:
+            chunk_size = int(size_str, 16)
+        except ValueError:
+            return None
+        if chunk_size == 0:
+            break
+        start = crlf + 2
+        end = start + chunk_size
+        if end > len(data):
+            # Incomplete chunk — return what we have
+            result += data[start:]
+            break
+        result += data[start:end]
+        pos = end + 2  # skip trailing \r\n
+    return result
+
+
+def forward(src, dst, label=None):
     """Forward data from src to dst until EOF."""
+    first = True
     try:
         while True:
             data = src.recv(BUFFER_SIZE)
             if not data:
                 break
+            if first and label:
+                preview = data[:200].decode("latin-1", errors="replace").replace("\r\n", " | ")
+                print(f"[docker-proxy] {label}: {preview[:120]}", flush=True)
+                first = False
             dst.sendall(data)
     except (BrokenPipeError, ConnectionResetError, OSError):
         pass
@@ -53,44 +85,162 @@ def forward(src, dst):
             pass
 
 
-def rewrite_image_in_body(raw_request):
-    """If the request is a container-create, add localhost/ prefix to the Image field.
+def rewrite_container_create(header_bytes, body_bytes):
+    """Rewrite container-create requests for Podman compatibility.
 
-    Returns the (possibly modified) raw bytes.
+    Applies the following transformations:
+      1. Add ``localhost/`` prefix to the Image field (Podman requires it
+         for locally-loaded images).
+      2. Fix SecurityOpt entries: Podman doesn't accept ``no-new-privileges:true``,
+         only ``no-new-privileges``.
+
+    Returns (possibly modified header_bytes, possibly modified body_bytes).
     """
-    # Split headers from body
-    sep = raw_request.find(b"\r\n\r\n")
-    if sep < 0:
-        return raw_request
-
-    header_bytes = raw_request[:sep + 4]
-    body_bytes = raw_request[sep + 4:]
-
     if not CONTAINER_CREATE_RE.match(header_bytes):
-        return raw_request
+        return header_bytes, body_bytes
 
     if not body_bytes:
-        return raw_request
+        return header_bytes, body_bytes
+
+    # Handle chunked Transfer-Encoding: decode chunks first
+    chunked = b"transfer-encoding" in header_bytes.lower() and b"chunked" in header_bytes.lower()
+    raw_body = body_bytes
+    if chunked:
+        raw_body = _decode_chunked(body_bytes)
+        if raw_body is None:
+            print(f"[docker-proxy] WARNING: failed to decode chunked body", flush=True)
+            return header_bytes, body_bytes
 
     try:
-        body = json.loads(body_bytes)
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return raw_request
+        body = json.loads(raw_body)
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        print(f"[docker-proxy] WARNING: JSON parse failed: {e}", flush=True)
+        print(f"[docker-proxy]   body preview: {raw_body[:200]!r}", flush=True)
+        return header_bytes, body_bytes
 
+    modified = False
+
+    # 1. Rewrite image name
     image = body.get("Image", "")
     if image and not image.startswith("localhost/") and "/" not in image.split(":")[0]:
         body["Image"] = f"localhost/{image}"
+        modified = True
+
+    # 2. Fix SecurityOpt for Podman
+    host_config = body.get("HostConfig", {})
+    sec_opts = host_config.get("SecurityOpt", [])
+    if sec_opts:
+        new_opts = []
+        for opt in sec_opts:
+            # Podman rejects "no-new-privileges:true", wants "no-new-privileges"
+            if opt == "no-new-privileges:true":
+                new_opts.append("no-new-privileges")
+                modified = True
+            elif opt == "no-new-privileges:false":
+                # Just drop it — Podman default is to allow privilege escalation
+                modified = True
+            else:
+                new_opts.append(opt)
+        host_config["SecurityOpt"] = new_opts
+
+    # 3. Remove resource limits that Podman rootless can't set (cgroup delegation)
+    for field in ("Memory", "MemorySwap", "CpuShares", "CpuPeriod", "CpuQuota",
+                  "NanoCpus", "CpusetCpus", "CpusetMems",
+                  "BlkioWeight", "PidsLimit"):
+        if field in host_config:
+            del host_config[field]
+            modified = True
+
+    # 4. Disable AutoRemove — Podman's wait endpoint races with auto-removal,
+    #    causing bollard to get an error. Ironclaw cleans up via DELETE anyway.
+    if host_config.get("AutoRemove"):
+        host_config["AutoRemove"] = False
+        modified = True
+
+    if modified:
         new_body = json.dumps(body).encode()
-        # Update Content-Length header
+        print(f"[docker-proxy] Rewrote container-create: Image={body.get('Image')}, "
+              f"SecurityOpt={host_config.get('SecurityOpt')}", flush=True)
+        # Replace Transfer-Encoding: chunked with Content-Length
         header_str = header_bytes.decode("latin-1")
+        header_str = re.sub(r"(?i)transfer-encoding:[^\r]*\r\n", "", header_str)
         header_str = re.sub(
             r"(?i)content-length:\s*\d+",
             f"Content-Length: {len(new_body)}",
             header_str,
         )
-        return header_str.encode("latin-1") + new_body
+        if "content-length" not in header_str.lower():
+            # Insert Content-Length before the final \r\n\r\n
+            header_str = header_str[:-2] + f"Content-Length: {len(new_body)}\r\n\r\n"
+        return header_str.encode("latin-1"), new_body
 
-    return raw_request
+    return header_bytes, body_bytes
+
+
+def read_http_request(sock):
+    """Read a complete HTTP request (headers + body) from a socket.
+
+    Returns (raw_header_bytes, body_bytes) or (b"", b"") on EOF/error.
+    Handles both Content-Length and Transfer-Encoding: chunked bodies.
+    """
+    buf = b""
+    while b"\r\n\r\n" not in buf:
+        chunk = sock.recv(BUFFER_SIZE)
+        if not chunk:
+            return b"", b""
+        buf += chunk
+
+    header_end = buf.index(b"\r\n\r\n") + 4
+    header_bytes = buf[:header_end]
+    body = buf[header_end:]
+
+    # Check for Transfer-Encoding: chunked
+    is_chunked = False
+    content_length = 0
+    for line in header_bytes.split(b"\r\n"):
+        lower = line.lower()
+        if lower.startswith(b"transfer-encoding:") and b"chunked" in lower:
+            is_chunked = True
+        if lower.startswith(b"content-length:"):
+            try:
+                content_length = int(line.split(b":", 1)[1].strip())
+            except ValueError:
+                pass
+
+    if is_chunked:
+        # Read until we see the chunk terminator: 0\r\n\r\n
+        while b"0\r\n\r\n" not in body and b"0\r\n" not in body.rstrip():
+            chunk = sock.recv(BUFFER_SIZE)
+            if not chunk:
+                break
+            body += chunk
+    else:
+        while len(body) < content_length:
+            chunk = sock.recv(min(BUFFER_SIZE, content_length - len(body)))
+            if not chunk:
+                break
+            body += chunk
+
+    return header_bytes, body
+
+
+def force_connection_close(header_bytes):
+    """Inject or replace Connection: close in raw HTTP headers.
+
+    Forces one-request-per-connection so every request gets inspected.
+    """
+    header_str = header_bytes.decode("latin-1")
+    if re.search(r"(?i)^connection:", header_str, re.MULTILINE):
+        header_str = re.sub(
+            r"(?i)^connection:.*$",
+            "Connection: close",
+            header_str,
+            flags=re.MULTILINE,
+        )
+    else:
+        # Insert before the final \r\n\r\n
+        header_str = header_str[:-2] + "Connection: close\r\n\r\n"
+    return header_str.encode("latin-1")
 
 
 def handle_connection(client_sock, upstream_path, rewrite_images):
@@ -119,16 +269,37 @@ def handle_connection(client_sock, upstream_path, rewrite_images):
         t1.join()
         t2.join()
     else:
-        # Read the first request from the client, rewrite if needed, then
-        # fall back to raw forwarding for the rest of the connection.
-        first_chunk = client_sock.recv(BUFFER_SIZE)
-        if first_chunk:
-            modified = rewrite_image_in_body(first_chunk)
-            upstream.sendall(modified)
+        # Peek at the first bytes to check if this is a container-create.
+        # Only container-create requests need rewriting; everything else
+        # is forwarded as raw bytes to preserve exact HTTP semantics
+        # (important for long-poll endpoints like /wait).
+        try:
+            peeked = client_sock.recv(BUFFER_SIZE, socket.MSG_PEEK)
+        except OSError:
+            peeked = b""
+        if not peeked:
+            client_sock.close()
+            upstream.close()
+            return
 
-        # Bidirectional forwarding for the rest
-        t1 = threading.Thread(target=forward, args=(client_sock, upstream), daemon=True)
-        t2 = threading.Thread(target=forward, args=(upstream, client_sock), daemon=True)
+        if CONTAINER_CREATE_RE.match(peeked):
+            # Parse the complete request, rewrite, and forward
+            header_bytes, body_bytes = read_http_request(client_sock)
+            request_line = header_bytes.split(b"\r\n", 1)[0].decode("latin-1", errors="replace")
+            print(f"[docker-proxy] REQ: {request_line} body={len(body_bytes)}b", flush=True)
+            header_bytes, body_bytes = rewrite_container_create(header_bytes, body_bytes)
+            header_bytes = force_connection_close(header_bytes)
+            upstream.sendall(header_bytes + body_bytes)
+        else:
+            # Forward raw — no parsing, no modification
+            first = client_sock.recv(BUFFER_SIZE)
+            req_line = first.split(b"\r\n", 1)[0].decode("latin-1", errors="replace")
+            print(f"[docker-proxy] RAW: {req_line}", flush=True)
+            upstream.sendall(first)
+
+        # Bidirectional forwarding for the rest of the connection
+        t1 = threading.Thread(target=forward, args=(client_sock, upstream, "c->u"), daemon=True)
+        t2 = threading.Thread(target=forward, args=(upstream, client_sock, "u->c"), daemon=True)
         t1.start()
         t2.start()
         t1.join()

@@ -282,9 +282,8 @@ def run_smoke_test(approach, approach_name, num_agents=NUM_AGENTS):
         time.sleep(COMMAND_WAIT_S)
 
         # 6. Verify execution via logs (or API for VM approaches)
-        use_api = hasattr(approach, '_config') and not hasattr(approach, '_agent_ids')
-        # Heuristic: VM approaches don't use docker containers
-        use_api = approach.name.startswith("ironclaw-vm")
+        # Use API check when docker logs aren't available (VM, Podman approaches)
+        use_api = approach.name.startswith("ironclaw-vm") or approach.name.startswith("ironclaw-podman")
         print(f"[smoke] Checking tool execution ({'API' if use_api else 'logs'})...")
         agents_executed = 0
         for i, agent_id in enumerate(agent_ids):

@@ -233,7 +233,8 @@ impl SandboxManager {
                 .ok_or_else(|| SandboxError::DockerNotAvailable {
                     reason: "Docker connection not initialized".to_string(),
                 })?;
-        let runner = ContainerRunner::new(docker, self.config.image.clone(), proxy_port);
+        let runner = ContainerRunner::new(docker, self.config.image.clone(), proxy_port)
+            .with_podman_compat(self.config.podman_compat);
 
         let limits = ResourceLimits {
             memory_bytes: self.config.memory_limit_mb * 1024 * 1024,

@@ -18,6 +18,8 @@ pub struct SandboxModeConfig {
     pub image: String,
     /// Whether to auto-pull the image if not found.
     pub auto_pull_image: bool,
+    /// Podman compatibility mode.
+    pub podman_compat: bool,
     /// Additional domains to allow through the network proxy.
     pub extra_allowed_domains: Vec<String>,
 }
@@ -32,6 +34,7 @@ impl Default for SandboxModeConfig {
             cpu_shares: 1024,
             image: "ironclaw-worker:latest".to_string(),
             auto_pull_image: true,
+            podman_compat: false,
             extra_allowed_domains: Vec::new(),
         }
     }
@@ -51,6 +54,7 @@ impl SandboxModeConfig {
             cpu_shares: parse_optional_env("SANDBOX_CPU_SHARES", 1024)?,
             image: parse_string_env("SANDBOX_IMAGE", "ironclaw-worker:latest")?,
             auto_pull_image: parse_bool_env("SANDBOX_AUTO_PULL", true)?,
+            podman_compat: parse_bool_env("SANDBOX_PODMAN_COMPAT", false)?,
             extra_allowed_domains: extra_domains,
         })
     }
@@ -75,6 +79,7 @@ impl SandboxModeConfig {
             image: self.image.clone(),
             auto_pull_image: self.auto_pull_image,
             proxy_port: 0, // Auto-assign
+            podman_compat: self.podman_compat,
         }
     }
 }

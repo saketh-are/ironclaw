@@ -1,12 +1,17 @@
 """
 Approach: Real IronClaw on Podman rootless.
 
-Each agent gets its own unprivileged host user with a Podman socket. A thin
-Docker-API socket proxy translates from ironclaw's expected Docker socket path
-to the user's Podman Docker-compat API socket, with image-name rewriting
-(Podman requires ``localhost/`` prefix for locally-loaded images).
+Each agent gets its own unprivileged host user with a Podman socket.
+The Podman Docker-compat API socket is mounted directly into the agent
+container. Ironclaw's native ``SANDBOX_PODMAN_COMPAT`` mode handles
+Podman-specific container config differences (SecurityOpt format,
+no cgroup resource limits, no AutoRemove). Images use the ``localhost/``
+prefix required by Podman for locally-loaded images.
 
-Ironclaw's SandboxManager creates sandbox containers via the proxied socket.
+The workspace is at a host-visible path (``/home/{user}/workspace``)
+shared between the agent container and sandbox containers so that
+bind mounts work correctly from Podman's host-side perspective.
+
 Each user's Podman namespace is isolated — agents cannot see each other's
 containers.
 """
@@ -30,7 +35,6 @@ from approaches._ironclaw_helpers import (
 USER_PREFIX = "bench-ic-pm-"
 BASE_UID = 5000
 SOCKET_TEMPLATE = "/run/user/{uid}/podman/podman.sock"
-PROXY_SCRIPT = Path(__file__).resolve().parent.parent / "workload" / "docker_socket_proxy.py"
 
 
 def _run_as_user(user, cmd, capture=True, stdin=None):
@@ -75,7 +79,7 @@ class IronclawPodmanApproach(Approach):
         # Verify ironclaw agent image exists (in host Docker, for export)
         for image in [IRONCLAW_AGENT_IMAGE, IRONCLAW_SANDBOX_IMAGE]:
             result = subprocess.run(
-                ["docker", "image", "inspect", image],
+                ["sudo", "docker", "image", "inspect", image],
                 capture_output=True,
             )
             if result.returncode != 0:
@@ -126,7 +130,7 @@ class IronclawPodmanApproach(Approach):
     def _load_image_to_user(self, user, image):
         """Export a Docker image and load it into the user's Podman store."""
         save_proc = subprocess.Popen(
-            ["docker", "save", image],
+            ["sudo", "docker", "save", image],
             stdout=subprocess.PIPE,
         )
         load_result = _run_as_user(
@@ -141,10 +145,23 @@ class IronclawPodmanApproach(Approach):
                   f"{load_result.stderr.strip()}")
             return
 
-        # Tag with localhost/ prefix for Podman resolution
-        _run_as_user(user, [
-            "podman", "tag", image, f"localhost/{image}",
-        ])
+        # Podman 3.x loads images as "localhost/latest:latest" instead of
+        # preserving the original Docker tag. Parse the loaded name from
+        # stdout and re-tag to the expected name.
+        loaded_name = None
+        for line in (load_result.stdout + load_result.stderr).splitlines():
+            if "Loaded image" in line:
+                # Format: "Loaded image(s): localhost/latest:latest"
+                parts = line.split(":", 1)
+                if len(parts) == 2:
+                    loaded_name = parts[1].strip()
+                    break
+
+        # Tag to the Docker image name so ironclaw can find it
+        src = loaded_name or "localhost/latest:latest"
+        _run_as_user(user, ["podman", "tag", src, image])
+        _run_as_user(user, ["podman", "tag", src, f"localhost/{image}"])
+        print(f"[{self.name}]   Loaded {image} as {src} for {user}")
 
     def start_agents(self, n: int, config: BenchmarkConfig) -> List[str]:
         self._agent_ids = []
@@ -173,12 +190,19 @@ class IronclawPodmanApproach(Approach):
 
             gateway_port = config.orchestrator_base_port + i
             podman_socket = SOCKET_TEMPLATE.format(uid=uid)
-            proxy_socket = f"/home/{username}/.docker-proxy.sock"
+            workspace_host = f"/home/{username}/workspace"
+
+            # Create workspace dir on host, writable by container uid 1000
+            _run_as_user(username, ["mkdir", "-p", workspace_host])
+            _run_as_user(username, ["chmod", "1777", workspace_host])
 
             env = ironclaw_agent_env(config, agent_id, 3000)
-            # Tell entrypoint to start Docker socket proxy
-            env["DOCKER_PROXY_UPSTREAM"] = podman_socket
-            env["DOCKER_PROXY_REWRITE_IMAGES"] = "1"
+            # Workspace at host path so sandbox bind mounts work
+            env["WORKSPACE_DIR"] = workspace_host
+            # Native Podman compat (SecurityOpt, no mem limits, no AutoRemove)
+            env["SANDBOX_PODMAN_COMPAT"] = "true"
+            # Image with localhost/ prefix required by Podman for local images
+            env["SANDBOX_IMAGE"] = f"localhost/{IRONCLAW_SANDBOX_IMAGE}"
 
             # Run agent container under user's Podman
             env_args = []
@@ -188,10 +212,12 @@ class IronclawPodmanApproach(Approach):
             _fire_as_user(username, [
                 "podman", "run", "-d",
                 "--name", f"bench-ic-agent-{i}",
-                "--memory", f"{config.agent_memory_mb}m",
                 "-p", f"{gateway_port}:3000",
-                # Mount the Podman socket so the proxy can reach it
-                "-v", f"{podman_socket}:{podman_socket}",
+                # Mount Podman socket directly (no proxy needed with
+                # SANDBOX_PODMAN_COMPAT + localhost/ image prefix)
+                "-v", f"{podman_socket}:/var/run/docker.sock",
+                # Shared workspace: same path on host and in container
+                "-v", f"{workspace_host}:{workspace_host}:rw",
             ] + env_args + [
                 f"localhost/{IRONCLAW_AGENT_IMAGE}",
             ])
