@@ -7,6 +7,7 @@ execution via the web gateway API.
 """
 
 import json
+import os
 import time
 import urllib.request
 
@@ -22,7 +23,7 @@ SANDBOX_WORKER_TAR_PATH = "/tmp/ironclaw-bench-sandbox.tar"
 
 def ironclaw_agent_env(config, agent_id, gateway_port):
     """Build the environment dict for an ironclaw benchmark container."""
-    return {
+    env = {
         # Skip first-run onboarding wizard
         "ONBOARD_COMPLETED": "true",
 
@@ -71,6 +72,11 @@ def ironclaw_agent_env(config, agent_id, gateway_port):
         # Logging — debug level needed to see tool call events in logs
         "RUST_LOG": "ironclaw=debug",
     }
+
+    if os.environ.get("MOCK_WORKER_COMMAND"):
+        env["MOCK_WORKER_COMMAND"] = os.environ["MOCK_WORKER_COMMAND"]
+
+    return env
 
 
 def wait_for_gateway(port, timeout_s=120, label="agent"):

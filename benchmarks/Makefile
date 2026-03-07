@@ -1,6 +1,6 @@
 .PHONY: images worker-image agent-image agent-dind-image agent-sysbox-image vm-image fc-kernel fc-rootfs fc-image fc-setup podman-setup run run-idle run-plateau run-sweep plot compare decompose clean help \
        ironclaw-binary ironclaw-sandbox-image ironclaw-agent-image ironclaw-agent-dind-image ironclaw-images smoke-test \
-       bench bench-list
+       bench bench-list ironclaw-benchmark
 
 -include config.env
 .EXPORT_ALL_VARIABLES:
@@ -57,9 +57,17 @@ fc-setup: fc-kernel fc-rootfs fc-image ## Full Firecracker setup (kernel + rootf
 # --- Real IronClaw benchmark images ---
 
 ironclaw-binary: ## Build ironclaw binary for benchmarks (libsql backend)
-	cd $(PROJECT_ROOT) && cargo build --release --no-default-features --features libsql
-	cp $(PROJECT_ROOT)/target/release/ironclaw $(BENCH_DIR)/workload/.ironclaw-bin
-	@echo "IronClaw binary copied to workload/.ironclaw-bin"
+	@if command -v cargo >/dev/null 2>&1; then \
+		cd $(PROJECT_ROOT) && cargo build --release --no-default-features --features libsql; \
+		cp $(PROJECT_ROOT)/target/release/ironclaw $(BENCH_DIR)/workload/.ironclaw-bin; \
+		echo "IronClaw binary copied to workload/.ironclaw-bin"; \
+	elif [ -x "$(BENCH_DIR)/workload/.ironclaw-bin" ]; then \
+		echo "Using existing benchmark binary at workload/.ironclaw-bin"; \
+	else \
+		echo "Missing Rust toolchain and workload/.ironclaw-bin"; \
+		echo "Build one with cargo or place a prebuilt binary at benchmarks/workload/.ironclaw-bin"; \
+		exit 1; \
+	fi
 
 ironclaw-sandbox-image: workload/Dockerfile.ironclaw-sandbox ## Build minimal sandbox worker image
 	docker build -t ironclaw-bench-sandbox:latest -f workload/Dockerfile.ironclaw-sandbox workload/
@@ -80,6 +88,9 @@ smoke-test: ironclaw-images ## Run ironclaw smoke tests (2 agents, verifies work
 smoke-test-docker: ironclaw-images ## Smoke test: ironclaw-docker only
 	python3 smoke_test.py --approach ironclaw-docker
 
+ironclaw-benchmark: ironclaw-images ## Run real IronClaw staggered benchmark
+	python3 ironclaw_benchmark.py --approach $(APPROACH) --agents $(AGENTS)
+
 # --- Podman rootless ---
 
 podman-setup: images ## Install podman + deps for podman-rootless approach
@@ -95,12 +106,15 @@ bench-list: ## List all approaches: make bench-list [SUITE=synthetic|ironclaw]
 bench: ## Unified entry: make bench SUITE=synthetic APPROACH=container-docker AGENTS=5 [MODE=loaded]
 	@if [ "$(SUITE)" = "ironclaw" ]; then \
 		python3 bench.py ironclaw $(if $(APPROACH),--approach $(APPROACH),) $(if $(AGENTS),--agents $(AGENTS),); \
+	elif [ "$(SUITE)" = "ironclaw-benchmark" ]; then \
+		python3 bench.py ironclaw-benchmark --approach $(APPROACH) $(if $(AGENTS),--agents $(AGENTS),); \
 	elif [ "$(SUITE)" = "synthetic" ]; then \
 		python3 bench.py synthetic --approach $(APPROACH) --agents $(AGENTS) $(if $(MODE),--mode $(MODE),); \
 	else \
-		echo "Usage: make bench SUITE=synthetic|ironclaw APPROACH=<name> AGENTS=<n>"; \
+		echo "Usage: make bench SUITE=synthetic|ironclaw|ironclaw-benchmark APPROACH=<name> AGENTS=<n>"; \
 		echo "  make bench SUITE=ironclaw                              # all ironclaw approaches"; \
 		echo "  make bench SUITE=ironclaw APPROACH=ironclaw-docker     # single ironclaw approach"; \
+		echo "  make bench SUITE=ironclaw-benchmark APPROACH=ironclaw-sysbox-dind AGENTS=50"; \
 		echo "  make bench SUITE=synthetic APPROACH=container-docker AGENTS=5"; \
 		echo ""; \
 		echo "Available approaches:"; \

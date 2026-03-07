@@ -9,10 +9,13 @@ Usage:
     python3 bench.py list --suite ironclaw             # List ironclaw approaches only
     python3 bench.py synthetic --approach container-docker --agents 5
     python3 bench.py ironclaw --approach ironclaw-docker --agents 2
+    python3 bench.py ironclaw-benchmark --approach ironclaw-sysbox-dind --agents 50
     python3 bench.py ironclaw                          # All ironclaw approaches
 
 The 'synthetic' subcommand runs the memory-density orchestrator (runner/orchestrate.py).
 The 'ironclaw' subcommand runs the real-agent smoke tests (smoke_test.py).
+The 'ironclaw-benchmark' subcommand runs staggered real-agent load tests
+with time-series memory sampling (ironclaw_benchmark.py).
 """
 
 import subprocess
@@ -69,6 +72,16 @@ def cmd_ironclaw(args):
     sys.exit(subprocess.call(cmd, cwd=str(BENCH_DIR)))
 
 
+def cmd_ironclaw_benchmark(args):
+    """Run real IronClaw benchmark via ironclaw_benchmark.py."""
+    cmd = [sys.executable, str(BENCH_DIR / "ironclaw_benchmark.py")]
+    cmd += ["--approach", args.approach]
+    if args.agents is not None:
+        cmd += ["--agents", str(args.agents)]
+    cmd += args.extra
+    sys.exit(subprocess.call(cmd, cwd=str(BENCH_DIR)))
+
+
 def main():
     import argparse
 
@@ -112,6 +125,19 @@ def main():
     p_ic.add_argument("extra", nargs=argparse.REMAINDER,
                       help="Extra args passed to smoke_test.py")
     p_ic.set_defaults(func=cmd_ironclaw)
+
+    # --- ironclaw-benchmark ---
+    p_ic_bench = sub.add_parser(
+        "ironclaw-benchmark",
+        help="Run real IronClaw staggered benchmark",
+    )
+    p_ic_bench.add_argument("--approach", required=True,
+                            help="Run this ironclaw approach")
+    p_ic_bench.add_argument("--agents", type=int, default=None,
+                            help="Number of agents")
+    p_ic_bench.add_argument("extra", nargs=argparse.REMAINDER,
+                            help="Extra args passed to ironclaw_benchmark.py")
+    p_ic_bench.set_defaults(func=cmd_ironclaw_benchmark)
 
     args = parser.parse_args()
     if not args.command:
