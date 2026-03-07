@@ -610,6 +610,7 @@ def run_benchmark(
     timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     run_dir = output_dir / f"{approach.name}-{mode}-n{num_agents}-{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
+    config.run_output_dir = str(run_dir)
 
     # Save parameters
     params = {
@@ -692,9 +693,8 @@ def run_benchmark(
             count_workers=approach.count_active_workers,
         )
 
-        if mode in ("idle", "plateau"):
-            print(f"Releasing {mode} benchmark start barrier...")
-            approach.start_benchmark()
+        print(f"Releasing {mode} benchmark start barrier...")
+        approach.start_benchmark()
 
         # Phase 3: Run for benchmark duration
         duration = config.benchmark_duration_s

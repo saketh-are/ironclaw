@@ -19,7 +19,11 @@ Environment variables:
   BENCHMARK_MODE          Benchmark mode: loaded, idle, or plateau
   AGENT_BASELINE_MB       Agent process memory footprint (default: 50)
   SPAWN_INTERVAL_MEAN_S   Mean time between spawns, exponential dist (default: 30)
+  SPAWN_RAMP_BATCH_SIZE   Loaded-mode agents released per ramp cohort (default: 0 = off)
+  SPAWN_RAMP_INTERVAL_S   Delay between loaded-mode ramp cohorts in seconds (default: 0)
   MAX_CONCURRENT_WORKERS  Max workers running at once per agent (default: 5)
+  CHECKIN_GRACE_S         Shutdown grace for in-flight worker checkins (default: 10)
+  EVENT_LOG_PATH          Optional host-mounted JSONL path for direct event logging
   BENCHMARK_DURATION_S    Total benchmark duration (default: 300)
   WORKER_IMAGE            Worker container image (default: bench-worker:latest)
   WORKER_MEMORY_LIMIT_MB  Worker container memory limit (default: 2048)
@@ -67,7 +71,11 @@ AGENT_ID = os.environ.get("AGENT_ID", "agent-0")
 BENCHMARK_MODE = os.environ.get("BENCHMARK_MODE", "loaded")
 AGENT_BASELINE_MB = int(os.environ.get("AGENT_BASELINE_MB", "50"))
 SPAWN_INTERVAL_MEAN_S = float(os.environ.get("SPAWN_INTERVAL_MEAN_S", "30"))
+SPAWN_RAMP_BATCH_SIZE = int(os.environ.get("SPAWN_RAMP_BATCH_SIZE", "0"))
+SPAWN_RAMP_INTERVAL_S = float(os.environ.get("SPAWN_RAMP_INTERVAL_S", "0"))
 MAX_CONCURRENT_WORKERS = int(os.environ.get("MAX_CONCURRENT_WORKERS", "5"))
+CHECKIN_GRACE_S = float(os.environ.get("CHECKIN_GRACE_S", "10"))
+EVENT_LOG_PATH = os.environ.get("EVENT_LOG_PATH", "")
 BENCHMARK_DURATION_S = int(os.environ.get("BENCHMARK_DURATION_S", "300"))
 WORKER_IMAGE = os.environ.get("WORKER_IMAGE", "bench-worker:latest")
 WORKER_MEMORY_LIMIT_MB = int(os.environ.get("WORKER_MEMORY_LIMIT_MB", "2048"))
@@ -118,15 +126,46 @@ _log_lock = threading.Lock()
 _benchmark_start = threading.Event()
 _current_plateau_index = -1
 _current_plateau_target = 0
+_event_log_fp = None
+_event_log_path_error = False
+
+if EVENT_LOG_PATH:
+    try:
+        _event_log_fp = open(EVENT_LOG_PATH, "a", encoding="utf-8", buffering=1)
+    except OSError as exc:
+        _event_log_path_error = True
+        print(
+            f"WARNING: failed to open EVENT_LOG_PATH={EVENT_LOG_PATH}: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
 
 
 def emit_event(event: str, **kwargs):
-    """Emit a structured JSONL event to stdout."""
+    """Emit a structured JSONL event to stdout and an optional host log."""
     record = {"t": time.time(), "event": event, "agent_id": AGENT_ID}
     record.update(kwargs)
     line = json.dumps(record)
+    global _event_log_fp, _event_log_path_error
     with _log_lock:
         print(line, flush=True)
+        if _event_log_fp is not None:
+            try:
+                _event_log_fp.write(line + "\n")
+                _event_log_fp.flush()
+            except OSError as exc:
+                if not _event_log_path_error:
+                    print(
+                        f"WARNING: failed to write EVENT_LOG_PATH={EVENT_LOG_PATH}: {exc}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    _event_log_path_error = True
+                try:
+                    _event_log_fp.close()
+                except OSError:
+                    pass
+                _event_log_fp = None
 
 
 def log(msg: str):
@@ -145,6 +184,23 @@ def get_plateau_state() -> dict:
         "plateau_index": _current_plateau_index,
         "plateau_target_workers": _current_plateau_target,
     }
+
+
+def _agent_ordinal() -> int:
+    """Best-effort stable ordinal for per-agent launch staggering."""
+    try:
+        return int(AGENT_ID.rsplit("-", 1)[-1])
+    except (IndexError, ValueError):
+        return AGENT_SEED
+
+
+def loaded_spawn_ramp_delay_s() -> float:
+    """Return the opt-in loaded-mode ramp delay for this agent."""
+    if BENCHMARK_MODE != "loaded":
+        return 0.0
+    if SPAWN_RAMP_BATCH_SIZE <= 0 or SPAWN_RAMP_INTERVAL_S <= 0:
+        return 0.0
+    return (_agent_ordinal() // SPAWN_RAMP_BATCH_SIZE) * SPAWN_RAMP_INTERVAL_S
 
 
 # ---------------------------------------------------------------------------
@@ -1006,6 +1062,18 @@ def validate_config() -> None:
     if BENCHMARK_MODE not in ("loaded", "idle", "plateau"):
         log(f"Unknown BENCHMARK_MODE={BENCHMARK_MODE}, exiting.")
         sys.exit(1)
+    if SPAWN_RAMP_BATCH_SIZE < 0:
+        log("SPAWN_RAMP_BATCH_SIZE must be >= 0.")
+        sys.exit(1)
+    if SPAWN_RAMP_INTERVAL_S < 0:
+        log("SPAWN_RAMP_INTERVAL_S must be >= 0.")
+        sys.exit(1)
+    if (SPAWN_RAMP_BATCH_SIZE == 0) != (SPAWN_RAMP_INTERVAL_S == 0):
+        log("SPAWN_RAMP_BATCH_SIZE and SPAWN_RAMP_INTERVAL_S must be set together.")
+        sys.exit(1)
+    if CHECKIN_GRACE_S < 0:
+        log("CHECKIN_GRACE_S must be >= 0.")
+        sys.exit(1)
     if WORKER_LIFETIME_MODE not in ("timed", "hold"):
         log(f"Unknown WORKER_LIFETIME_MODE={WORKER_LIFETIME_MODE}, exiting.")
         sys.exit(1)
@@ -1062,6 +1130,22 @@ def wait_for_benchmark_start(stop: threading.Event) -> bool:
 
 def run_loaded_loop(stop: threading.Event, client, rng: random.Random) -> None:
     start_time = time.monotonic()
+    ramp_delay_s = loaded_spawn_ramp_delay_s()
+    if ramp_delay_s > 0:
+        emit_event(
+            "spawn_ramp_delay",
+            ramp_delay_s=round(ramp_delay_s, 3),
+            ramp_batch_size=SPAWN_RAMP_BATCH_SIZE,
+            ramp_interval_s=SPAWN_RAMP_INTERVAL_S,
+            agent_ordinal=_agent_ordinal(),
+        )
+        log(
+            "Applying loaded-mode spawn ramp delay "
+            f"({ramp_delay_s:.1f}s, batch={SPAWN_RAMP_BATCH_SIZE}, "
+            f"interval={SPAWN_RAMP_INTERVAL_S}s)."
+        )
+        if stop.wait(timeout=ramp_delay_s):
+            return
     log("Entering stochastic spawn loop.")
 
     while not stop.is_set():
@@ -1218,9 +1302,9 @@ def main():
     # Grace period: let in-flight workers finish their checkin before killing them.
     # Workers allocate memory (~1-2s) then immediately POST /checkin.
     if ORCHESTRATOR_PORT and get_active_workers() > 0:
-        grace_s = 10
+        grace_s = int(CHECKIN_GRACE_S) if CHECKIN_GRACE_S.is_integer() else CHECKIN_GRACE_S
         log(f"Waiting {grace_s}s for {get_active_workers()} in-flight workers to check in...")
-        deadline = time.monotonic() + grace_s
+        deadline = time.monotonic() + CHECKIN_GRACE_S
         while time.monotonic() < deadline and get_checkin_count() < _worker_counter:
             time.sleep(0.5)
 

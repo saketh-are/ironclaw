@@ -48,6 +48,7 @@ class ContainerSysboxDindApproach(Approach):
         self._agent_ips: Dict[str, str] = {}  # agent_id → outer container IP
         self._agent_image = "bench-agent-sysbox:latest"
         self._run_id: str = "unknown"
+        self._host_log_dir: Optional[Path] = None
 
     @property
     def name(self) -> str:
@@ -110,10 +111,17 @@ class ContainerSysboxDindApproach(Approach):
         """Start N Sysbox DinD agent containers, each with its own Docker daemon."""
         self._agent_ids = []
         self._agent_ips = {}
+        run_output_dir = getattr(config, "run_output_dir", "")
+        self._host_log_dir = Path(run_output_dir) if run_output_dir else None
 
         for i in range(n):
             agent_id = f"agent-{i}"
             container_name = f"bench-agent-{i}"
+            host_log_file = None
+            if self._host_log_dir is not None:
+                host_log_file = self._host_log_dir / f"{agent_id}.jsonl"
+                host_log_file.touch()
+                host_log_file.chmod(0o666)
 
             cmd = [
                 "docker", "run", "-d",
@@ -152,11 +160,22 @@ class ContainerSysboxDindApproach(Approach):
                 # No ORCHESTRATOR_HOST_PORT — workers use inner bridge gateway
                 # No Docker socket mount — each agent has its own daemon
             ]
+            if host_log_file is not None:
+                cmd += [
+                    "-v", f"{self._host_log_dir}:/bench-output",
+                    "-e", f"EVENT_LOG_PATH=/bench-output/{agent_id}.jsonl",
+                ]
 
             if os.environ.get("DOCKERD_DEBUG"):
                 cmd += ["-e", f"DOCKERD_DEBUG={os.environ['DOCKERD_DEBUG']}"]
             if os.environ.get("DOCKERD_EXTRA_ARGS"):
                 cmd += ["-e", f"DOCKERD_EXTRA_ARGS={os.environ['DOCKERD_EXTRA_ARGS']}"]
+            if os.environ.get("CHECKIN_GRACE_S"):
+                cmd += ["-e", f"CHECKIN_GRACE_S={os.environ['CHECKIN_GRACE_S']}"]
+            if os.environ.get("SPAWN_RAMP_BATCH_SIZE"):
+                cmd += ["-e", f"SPAWN_RAMP_BATCH_SIZE={os.environ['SPAWN_RAMP_BATCH_SIZE']}"]
+            if os.environ.get("SPAWN_RAMP_INTERVAL_S"):
+                cmd += ["-e", f"SPAWN_RAMP_INTERVAL_S={os.environ['SPAWN_RAMP_INTERVAL_S']}"]
 
             # Storage validation: inner dockerd resolves paths locally, no host-path indirection
             if config.storage_validation:
@@ -288,6 +307,9 @@ class ContainerSysboxDindApproach(Approach):
         for i, agent_id in enumerate(agent_ids):
             container_name = f"bench-agent-{i}"
             log_file = output_dir / f"{agent_id}.jsonl"
+            if log_file.exists() and log_file.stat().st_size > 0:
+                print(f"[{self.name}] Reusing direct host log for {agent_id}")
+                continue
             try:
                 result = subprocess.run(
                     ["docker", "logs", container_name],
