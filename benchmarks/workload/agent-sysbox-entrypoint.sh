@@ -5,9 +5,16 @@ set -e
 # Sysbox provides full Linux namespace isolation with user-ns remapping,
 # so iptables and overlay2 work natively — no workarounds needed.
 echo "[sysbox-entrypoint] Starting dockerd..."
-dockerd \
-    --storage-driver=overlay2 \
-    >/var/log/dockerd.log 2>&1 &
+DOCKERD_ARGS="--storage-driver=overlay2"
+if [ "${DOCKERD_DEBUG:-0}" = "1" ]; then
+    DOCKERD_ARGS="$DOCKERD_ARGS --debug"
+fi
+if [ -n "${DOCKERD_EXTRA_ARGS:-}" ]; then
+    DOCKERD_ARGS="$DOCKERD_ARGS ${DOCKERD_EXTRA_ARGS}"
+fi
+
+# shellcheck disable=SC2086
+dockerd $DOCKERD_ARGS >/var/log/dockerd.log 2>&1 &
 
 # Wait for dockerd to be ready (up to 120 seconds)
 echo "[sysbox-entrypoint] Waiting for dockerd to be ready..."

@@ -28,6 +28,7 @@ Requires sysbox-runc installed and registered as a Docker runtime in
 """
 
 import json
+import os
 import subprocess
 import time
 import urllib.request
@@ -151,6 +152,11 @@ class ContainerSysboxDindApproach(Approach):
                 # No ORCHESTRATOR_HOST_PORT — workers use inner bridge gateway
                 # No Docker socket mount — each agent has its own daemon
             ]
+
+            if os.environ.get("DOCKERD_DEBUG"):
+                cmd += ["-e", f"DOCKERD_DEBUG={os.environ['DOCKERD_DEBUG']}"]
+            if os.environ.get("DOCKERD_EXTRA_ARGS"):
+                cmd += ["-e", f"DOCKERD_EXTRA_ARGS={os.environ['DOCKERD_EXTRA_ARGS']}"]
 
             # Storage validation: inner dockerd resolves paths locally, no host-path indirection
             if config.storage_validation:

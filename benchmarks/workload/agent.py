@@ -51,7 +51,7 @@ import subprocess
 import sys
 import threading
 import time
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 WORKER_BACKEND = os.environ.get("WORKER_BACKEND", "docker")
 
@@ -483,9 +483,14 @@ class OrchestratorHandler(BaseHTTPRequestHandler):
         pass
 
 
-def start_orchestrator_server(port: int) -> HTTPServer:
+class BenchmarkHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+    request_queue_size = 128
+
+
+def start_orchestrator_server(port: int) -> ThreadingHTTPServer:
     """Start the orchestrator HTTP server in a background thread."""
-    server = HTTPServer(("0.0.0.0", port), OrchestratorHandler)
+    server = BenchmarkHTTPServer(("0.0.0.0", port), OrchestratorHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     log(f"Orchestrator HTTP server listening on 0.0.0.0:{port}")
@@ -1046,9 +1051,8 @@ def maybe_spawn_worker(client, rng: random.Random) -> bool:
 
 
 def wait_for_benchmark_start(stop: threading.Event) -> bool:
-    if BENCHMARK_MODE == "loaded":
-        _benchmark_start.set()
-        return True
+    # Synchronize all modes so large-N startup time does not overlap the
+    # measurement window differently for early and late agents.
     log(f"{BENCHMARK_MODE.capitalize()} mode armed. Waiting for orchestrator start signal.")
     while not stop.is_set():
         if _benchmark_start.wait(timeout=0.5):
