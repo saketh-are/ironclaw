@@ -32,7 +32,7 @@ import subprocess
 import time
 import urllib.request
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from approaches.base import Approach, BenchmarkConfig
 
@@ -44,7 +44,7 @@ class ContainerSysboxDindApproach(Approach):
 
     def __init__(self):
         self._agent_ids: List[str] = []
-        self._host_ports: Dict[str, int] = {}  # agent_id → host port
+        self._agent_ips: Dict[str, str] = {}  # agent_id → outer container IP
         self._agent_image = "bench-agent-sysbox:latest"
         self._run_id: str = "unknown"
 
@@ -108,11 +108,11 @@ class ContainerSysboxDindApproach(Approach):
     def start_agents(self, n: int, config: BenchmarkConfig) -> List[str]:
         """Start N Sysbox DinD agent containers, each with its own Docker daemon."""
         self._agent_ids = []
+        self._agent_ips = {}
 
         for i in range(n):
             agent_id = f"agent-{i}"
             container_name = f"bench-agent-{i}"
-            host_port = config.orchestrator_base_port + i
 
             cmd = [
                 "docker", "run", "-d",
@@ -120,8 +120,6 @@ class ContainerSysboxDindApproach(Approach):
                 "--runtime=sysbox-runc",
                 # No --cap-add ALL: Sysbox handles capabilities via user-ns
                 "--memory", f"{config.agent_memory_mb}m",
-                # Publish orchestrator HTTP port (for debugging / external access)
-                "-p", f"{host_port}:8080",
                 # Mount worker image tarball (read-only)
                 "-v", f"{WORKER_TAR_PATH}:/opt/.worker-image.tar:ro",
                 # Labels for identification and cleanup
@@ -169,22 +167,28 @@ class ContainerSysboxDindApproach(Approach):
                     f"Failed to start agent {agent_id}: {result.stderr.strip()}"
                 )
 
+            ip_addr = self._get_container_ip(container_name)
+            if not ip_addr:
+                raise RuntimeError(
+                    f"Failed to resolve container IP for agent {agent_id}"
+                )
+
             self._agent_ids.append(agent_id)
-            self._host_ports[agent_id] = host_port
+            self._agent_ips[agent_id] = ip_addr
             print(f"[{self.name}] Started {container_name}")
 
-        # Poll /health on each agent's host port until all are ready (max 60s)
+        # Poll /health on each agent container IP until all are ready (max 60s)
         print(f"[{self.name}] Waiting for {n} agents to become healthy "
               f"(dockerd startup + image load)...")
         deadline = time.monotonic() + 60
         ready = set()
         while time.monotonic() < deadline and len(ready) < n:
-            for agent_id, port in self._host_ports.items():
+            for agent_id, ip_addr in self._agent_ips.items():
                 if agent_id in ready:
                     continue
                 try:
                     resp = urllib.request.urlopen(
-                        f"http://127.0.0.1:{port}/health", timeout=2
+                        self._agent_url(ip_addr, "/health"), timeout=2
                     )
                     if resp.status == 200:
                         ready.add(agent_id)
@@ -195,16 +199,16 @@ class ContainerSysboxDindApproach(Approach):
                 time.sleep(2)
 
         if len(ready) < n:
-            not_ready = set(self._host_ports) - ready
+            not_ready = set(self._agent_ips) - ready
             print(f"[{self.name}] WARNING: agents not ready after 60s: {not_ready}")
 
         print(f"[{self.name}] {len(ready)}/{n} agents started (Sysbox DinD, private daemon per agent).")
         return list(self._agent_ids)
 
     def start_benchmark(self) -> None:
-        for agent_id, port in self._host_ports.items():
+        for agent_id, ip_addr in self._agent_ips.items():
             req = urllib.request.Request(
-                f"http://127.0.0.1:{port}/control/start",
+                self._agent_url(ip_addr, "/control/start"),
                 data=b"{}",
                 headers={"Content-Type": "application/json"},
                 method="POST",
@@ -215,7 +219,7 @@ class ContainerSysboxDindApproach(Approach):
                     raise RuntimeError(f"HTTP {resp.status}")
             except Exception as e:
                 raise RuntimeError(
-                    f"Failed to start benchmark on {agent_id}:{port}: {e}"
+                    f"Failed to start benchmark on {agent_id}@{ip_addr}: {e}"
                 ) from e
 
     def get_agent_pids(self) -> Dict[str, int]:
@@ -261,10 +265,10 @@ class ContainerSysboxDindApproach(Approach):
     def count_active_workers(self) -> int:
         """Query each agent's /status endpoint and sum active workers."""
         total = 0
-        for agent_id, port in self._host_ports.items():
+        for agent_id, ip_addr in self._agent_ips.items():
             try:
                 resp = urllib.request.urlopen(
-                    f"http://127.0.0.1:{port}/status", timeout=2
+                    self._agent_url(ip_addr, "/status"), timeout=2
                 )
                 data = json.loads(resp.read())
                 total += data.get("active_workers", 0)
@@ -325,9 +329,30 @@ class ContainerSysboxDindApproach(Approach):
                     capture_output=True,
                 )
         self._agent_ids = []
+        self._agent_ips = {}
         print(f"[{self.name}] All containers removed.")
 
     def cleanup(self) -> None:
         """Stop containers and clean up worker tarball."""
         self.stop_agents()
         self.remove_containers()
+
+    @staticmethod
+    def _agent_url(ip_addr: str, path: str) -> str:
+        return f"http://{ip_addr}:8080{path}"
+
+    @staticmethod
+    def _get_container_ip(container_name: str) -> Optional[str]:
+        result = subprocess.run(
+            [
+                "docker", "inspect",
+                "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
+                container_name,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return None
+        ip_addr = result.stdout.strip()
+        return ip_addr or None
