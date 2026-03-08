@@ -58,6 +58,7 @@ class BenchmarkConfig:
 
     # Run metadata
     run_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    run_dir: str = ""
     rng_seed: int = 42
 
     @classmethod
@@ -92,6 +93,7 @@ class BenchmarkConfig:
             plateau_settle_s=int(e.get("PLATEAU_SETTLE_S", "20")),
             orchestrator_base_port=int(e.get("ORCHESTRATOR_BASE_PORT", "50100")),
             storage_validation=e.get("STORAGE_VALIDATION", "").lower() in ("1", "true", "yes"),
+            run_dir=e.get("RUN_DIR", ""),
             rng_seed=int(e.get("RNG_SEED", "42")),
         )
 
@@ -158,6 +160,18 @@ class Approach(ABC):
     def get_agent_gateways(self) -> Dict[str, int]:
         """Return agent_id -> host gateway port for host-side control."""
         return {}
+
+    def get_agent_roots(self) -> Dict[str, Path]:
+        """Return agent_id -> host-visible benchmark root for direct verification."""
+        return {}
+
+    def verify_worker_absent(self, agent_id: str, job_id: str) -> bool | None:
+        """Return whether a worker container is absent after cleanup, if supported."""
+        return None
+
+    def verify_agent_absent(self, agent_id: str) -> bool | None:
+        """Return whether an outer agent container is absent after cleanup, if supported."""
+        return None
 
     def collect_agent_logs(self, agent_ids: List[str], output_dir) -> None:
         """

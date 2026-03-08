@@ -9,7 +9,9 @@ execution via the web gateway API.
 import json
 import os
 import time
+import urllib.parse
 import urllib.request
+from pathlib import Path
 
 # Default ironclaw gateway auth token used in benchmark containers.
 GATEWAY_AUTH_TOKEN = "bench-token"
@@ -19,6 +21,31 @@ IRONCLAW_AGENT_IMAGE = "ironclaw-bench-agent:latest"
 IRONCLAW_AGENT_DIND_IMAGE = "ironclaw-bench-agent-dind:latest"
 IRONCLAW_SANDBOX_IMAGE = "ironclaw-bench-sandbox:latest"
 SANDBOX_WORKER_TAR_PATH = "/tmp/ironclaw-bench-sandbox.tar"
+BENCH_COMMAND_BEGIN = "<BENCH_COMMAND>"
+BENCH_COMMAND_END = "</BENCH_COMMAND>"
+
+
+def prepare_agent_host_dirs(config, agent_id):
+    """Create host-visible directories for one benchmark agent."""
+    if not config.run_dir:
+        raise RuntimeError("BenchmarkConfig.run_dir is required for real IronClaw verification")
+
+    agent_root = Path(config.run_dir) / "agents" / agent_id
+    workspace_dir = agent_root / "workspace"
+    base_dir = agent_root / "ironclaw"
+    evidence_dir = agent_root / "evidence"
+
+    for path in (agent_root, workspace_dir, base_dir, evidence_dir):
+        path.mkdir(parents=True, exist_ok=True)
+        path.chmod(0o777)
+
+    return {
+        "agent_root": agent_root,
+        "workspace_dir": workspace_dir,
+        "base_dir": base_dir,
+        "evidence_dir": evidence_dir,
+        "agent_log_path": evidence_dir / "agent-events.jsonl",
+    }
 
 
 def ironclaw_agent_env(config, agent_id, gateway_port):
@@ -68,6 +95,8 @@ def ironclaw_agent_env(config, agent_id, gateway_port):
 
         # Agent identity
         "AGENT_NAME": f"bench-{agent_id}",
+        "BENCH_AGENT_ID": agent_id,
+        "BENCH_RUN_ID": config.run_id,
 
         # Logging — debug level needed to see tool call events in logs
         "RUST_LOG": "ironclaw=debug",
@@ -106,6 +135,17 @@ def gateway_get_json(path, port, auth_token=GATEWAY_AUTH_TOKEN, timeout=10):
     return json.loads(resp.read())
 
 
+def gateway_read_text(path, port, auth_token=GATEWAY_AUTH_TOKEN, timeout=10):
+    """Fetch a plain-text response from the web gateway."""
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        headers={"Authorization": f"Bearer {auth_token}"},
+        method="GET",
+    )
+    resp = urllib.request.urlopen(req, timeout=timeout)
+    return resp.read().decode()
+
+
 def list_jobs(port, auth_token=GATEWAY_AUTH_TOKEN, timeout=10):
     """Return the jobs list from a benchmark agent's gateway."""
     data = gateway_get_json("/api/jobs", port, auth_token=auth_token, timeout=timeout)
@@ -121,23 +161,69 @@ def count_active_jobs(port, auth_token=GATEWAY_AUTH_TOKEN, timeout=10):
     jobs = list_jobs(port, auth_token=auth_token, timeout=timeout)
     return sum(1 for job in jobs if job.get("state") in ("pending", "in_progress"))
 
+def get_job_detail(port, job_id, auth_token=GATEWAY_AUTH_TOKEN, timeout=10):
+    """Fetch detailed job metadata for one job."""
+    return gateway_get_json(
+        f"/api/jobs/{job_id}",
+        port,
+        auth_token=auth_token,
+        timeout=timeout,
+    )
 
-def trigger_worker_spawn(port, command=None, auth_token=GATEWAY_AUTH_TOKEN):
-    """Send a message to ironclaw's gateway that triggers a shell tool call.
 
-    The mock LLM will respond with a `shell` tool call, causing ironclaw
-    to execute the command (either directly or via sandbox depending on config).
+def get_job_events(port, job_id, auth_token=GATEWAY_AUTH_TOKEN, timeout=10):
+    """Fetch persisted worker/bridge events for one job."""
+    data = gateway_get_json(
+        f"/api/jobs/{job_id}/events",
+        port,
+        auth_token=auth_token,
+        timeout=timeout,
+    )
+    return data.get("events", []) if isinstance(data, dict) else []
 
-    Returns True if the message was accepted (200/202).
+
+def read_job_file(port, job_id, path, auth_token=GATEWAY_AUTH_TOKEN, timeout=10):
+    """Read a file from a sandbox job's project workspace."""
+    encoded = urllib.parse.quote(path, safe="/")
+    data = gateway_get_json(
+        f"/api/jobs/{job_id}/files/read?path={encoded}",
+        port,
+        auth_token=auth_token,
+        timeout=timeout,
+    )
+    if isinstance(data, dict):
+        return data.get("content")
+    return None
+
+
+def _render_benchmark_message(command, dispatch_mode):
+    if command:
+        return "\n".join([
+            "Please create benchmark job." if dispatch_mode == "worker-job" else "Please run benchmark command.",
+            BENCH_COMMAND_BEGIN,
+            command,
+            BENCH_COMMAND_END,
+        ])
+    if dispatch_mode == "worker-job":
+        return "Please create benchmark job."
+    return "Please run: echo benchmark-worker-ok"
+
+
+def trigger_worker_spawn(
+    port,
+    command=None,
+    auth_token=GATEWAY_AUTH_TOKEN,
+    dispatch_mode="shell",
+):
+    """Send a benchmark message that triggers a sandbox execution path.
+
+    dispatch_mode:
+      - ``shell``: main agent calls the sandboxed shell tool directly
+      - ``worker-job``: main agent creates a worker-mode sandbox job
     """
     url = f"http://127.0.0.1:{port}/api/chat/send"
-    content = (
-        f"Please run: {command}"
-        if command
-        else "Please run: echo benchmark-worker-ok"
-    )
     payload = json.dumps({
-        "content": content,
+        "content": _render_benchmark_message(command, dispatch_mode),
     }).encode()
 
     req = urllib.request.Request(

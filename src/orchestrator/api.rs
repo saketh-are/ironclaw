@@ -230,14 +230,26 @@ async fn report_complete(
         );
     }
 
-    // Store the result and clean up the container
+    crate::benchmark_evidence::write_worker_callback(
+        job_id,
+        report.success,
+        report.message.as_deref(),
+    );
+
+    // Store the result and clean up the container asynchronously. The worker is
+    // still in the middle of its /complete request, so trying to stop/remove
+    // the container inline can deadlock cleanup behind the HTTP response and
+    // force-kill an otherwise healthy exit.
     let result = crate::orchestrator::job_manager::CompletionResult {
         success: report.success,
         message: report.message.clone(),
     };
-    if let Err(e) = state.job_manager.complete_job(job_id, result).await {
-        tracing::error!(job_id = %job_id, "Failed to complete job cleanup: {}", e);
-    }
+    let job_manager = state.job_manager.clone();
+    tokio::spawn(async move {
+        if let Err(e) = job_manager.complete_job(job_id, result).await {
+            tracing::error!(job_id = %job_id, "Failed to complete job cleanup: {}", e);
+        }
+    });
 
     Ok(Json(serde_json::json!({"status": "ok"})))
 }

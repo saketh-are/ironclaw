@@ -305,17 +305,23 @@ impl ContainerJobManager {
         // Connect to Docker (reuses cached connection)
         let docker = self.docker().await?;
 
-        // Build container configuration
-        let orchestrator_host = if cfg!(target_os = "linux") {
+        // Allow benchmark/containerized agent topologies to override how worker
+        // containers call back into the orchestrator. By default we preserve the
+        // normal product behavior: bridge networking plus host gateway routing.
+        let default_orchestrator_host = if cfg!(target_os = "linux") {
             "172.17.0.1"
         } else {
             "host.docker.internal"
         };
-
-        let orchestrator_url = format!(
-            "http://{}:{}",
-            orchestrator_host, self.config.orchestrator_port
-        );
+        let orchestrator_url =
+            std::env::var("IRONCLAW_WORKER_ORCHESTRATOR_URL").unwrap_or_else(|_| {
+                format!(
+                    "http://{}:{}",
+                    default_orchestrator_host, self.config.orchestrator_port
+                )
+            });
+        let worker_network_mode =
+            std::env::var("IRONCLAW_WORKER_NETWORK_MODE").unwrap_or_else(|_| "bridge".to_string());
 
         let mut env_vec = vec![
             format!("IRONCLAW_WORKER_TOKEN={}", token),
@@ -361,12 +367,18 @@ impl ContainerJobManager {
         use bollard::container::{Config, CreateContainerOptions};
         use bollard::models::HostConfig;
 
+        let extra_hosts = if worker_network_mode == "bridge" {
+            Some(vec!["host.docker.internal:host-gateway".to_string()])
+        } else {
+            None
+        };
+
         let host_config = HostConfig {
             binds: if binds.is_empty() { None } else { Some(binds) },
             memory: Some((memory_mb * 1024 * 1024) as i64),
             cpu_shares: Some(self.config.cpu_shares as i64),
-            network_mode: Some("bridge".to_string()),
-            extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
+            network_mode: Some(worker_network_mode),
+            extra_hosts,
             cap_drop: Some(vec!["ALL".to_string()]),
             cap_add: Some(vec!["CHOWN".to_string()]),
             security_opt: Some(vec!["no-new-privileges:true".to_string()]),
@@ -533,6 +545,7 @@ impl ContainerJobManager {
         if let Some(cid) = container_id
             && !cid.is_empty()
         {
+            let mut removed = false;
             match self.docker().await {
                 Ok(docker) => {
                     if let Err(e) = docker
@@ -544,7 +557,7 @@ impl ContainerJobManager {
                     {
                         tracing::warn!(job_id = %job_id, error = %e, "Failed to stop completed container");
                     }
-                    if let Err(e) = docker
+                    match docker
                         .remove_container(
                             &cid,
                             Some(bollard::container::RemoveContainerOptions {
@@ -554,13 +567,21 @@ impl ContainerJobManager {
                         )
                         .await
                     {
-                        tracing::warn!(job_id = %job_id, error = %e, "Failed to remove completed container");
+                        Ok(()) => {
+                            removed = true;
+                        }
+                        Err(e) => {
+                            tracing::warn!(job_id = %job_id, error = %e, "Failed to remove completed container");
+                        }
                     }
                 }
                 Err(e) => {
                     tracing::warn!(job_id = %job_id, error = %e, "Failed to connect to Docker for container cleanup");
                 }
             }
+            crate::benchmark_evidence::write_worker_cleaned(job_id, Some(&cid), removed);
+        } else {
+            crate::benchmark_evidence::write_worker_cleaned(job_id, None, false);
         }
         self.token_store.revoke(job_id).await;
 

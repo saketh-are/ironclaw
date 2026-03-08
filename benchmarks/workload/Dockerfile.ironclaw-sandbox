@@ -1,21 +1,29 @@
-# Minimal sandbox worker image for ironclaw benchmarks.
+# Benchmark sandbox image for real IronClaw worker-mode jobs.
 #
-# Ironclaw's SandboxManager creates containers from SANDBOX_IMAGE and runs
-# shell commands via `sh -c <command>` as UID 1000. This image provides a
-# minimal environment sufficient for benchmark shell commands (sleep, echo).
+# IronClaw uses this image for both:
+#   1. direct sandboxed shell execution
+#   2. worker-mode sub-agents launched by create_job(mode=worker)
 #
-# In production, ironclaw uses the full ironclaw-worker image with Python,
-# Node, Rust, etc. For benchmarks we only need coreutils.
+# It therefore needs:
+#   - a usable shell environment for benchmark commands
+#   - the real `ironclaw worker` binary entrypoint expected by JobManager
 
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
         coreutils \
-        python3-minimal && \
+        python3 && \
     rm -rf /var/lib/apt/lists/* && \
     useradd -m -u 1000 -s /bin/bash sandbox && \
     mkdir -p /workspace /tmp && \
     chmod 777 /workspace /tmp
+
+COPY .ironclaw-bin /usr/local/bin/ironclaw
+COPY ironclaw-worker-wrapper.sh /usr/local/bin/worker
+
+RUN chmod +x /usr/local/bin/ironclaw && \
+    chmod +x /usr/local/bin/worker
 
 USER sandbox
 WORKDIR /workspace

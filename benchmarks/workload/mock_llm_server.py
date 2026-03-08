@@ -31,6 +31,9 @@ WORKER_COMMAND = os.environ.get(
     "MOCK_WORKER_COMMAND",
     "mkdir -p /workspace/bench-test && echo proof-$(hostname) > /workspace/bench-test/output.txt && cat /workspace/bench-test/output.txt",
 )
+BENCH_COMMAND_BEGIN = "<BENCH_COMMAND>"
+BENCH_COMMAND_END = "</BENCH_COMMAND>"
+CREATE_JOB_HINT = "Please create benchmark job."
 
 
 def normalize_message_content(content):
@@ -58,21 +61,53 @@ def normalize_message_content(content):
     return ""
 
 
-def extract_requested_command(messages):
-    """Extract an explicit shell command from the last user message if present."""
+def message_has_tool_result(message):
+    """Detect tool results in both OpenAI-style and IronClaw worker-style payloads."""
+    if message.get("role") == "tool":
+        return True
+    content_text = normalize_message_content(message.get("content"))
+    if content_text.startswith("[Tool `") and " returned:" in content_text:
+        return True
+    content = message.get("content")
+    if not isinstance(content, list):
+        return False
+    for item in content:
+        if isinstance(item, dict) and item.get("type") == "tool_result":
+            return True
+    return False
+
+
+def latest_message_content(messages):
+    """Return the most recent non-empty message content."""
     for message in reversed(messages):
-        if message.get("role") != "user":
-            continue
         content = normalize_message_content(message.get("content"))
+        if content:
+            return content
+    return ""
+
+
+def extract_requested_command(messages):
+    """Extract an explicit benchmark command and preferred dispatch tool."""
+    for message in reversed(messages):
+        content = normalize_message_content(message.get("content"))
+        if not content:
+            continue
+        dispatch_mode = "create_job" if CREATE_JOB_HINT in content else "shell"
+        if BENCH_COMMAND_BEGIN in content and BENCH_COMMAND_END in content:
+            start = content.index(BENCH_COMMAND_BEGIN) + len(BENCH_COMMAND_BEGIN)
+            end = content.index(BENCH_COMMAND_END, start)
+            return content[start:end].strip(), dispatch_mode
         prefix = "Please run: "
         if content.startswith(prefix):
-            return content[len(prefix) :].strip()
+            return content[len(prefix) :].strip(), dispatch_mode
         for line in content.splitlines():
             line = line.strip()
-            if line.startswith(prefix):
-                return line[len(prefix) :].strip()
-        break
-    return None
+            if prefix in line:
+                return line.split(prefix, 1)[1].strip(), dispatch_mode
+            legacy = "Execute this shell command and report the output:"
+            if legacy in line:
+                return line.split(legacy, 1)[1].strip(), dispatch_mode
+    return None, None
 
 
 def _make_id():
@@ -199,17 +234,40 @@ def _sse_chunk(chat_id, created, model, delta, finish_reason):
 
 def generate_response(messages, tools):
     """Decide what the mock LLM should return based on conversation state."""
-    has_tool_results = any(m.get("role") == "tool" for m in messages)
-    requested_command = extract_requested_command(messages) or WORKER_COMMAND
+    latest_content = latest_message_content(messages)
+    if latest_content.startswith("[Job ") and (
+        "Container finished" in latest_content or "Claude Code:" in latest_content
+    ):
+        return "text", "Acknowledged job update. No further action is required."
+
+    has_tool_results = any(message_has_tool_result(m) for m in messages)
+    requested_command, preferred_tool = extract_requested_command(messages)
+    requested_command = requested_command or WORKER_COMMAND
 
     if has_tool_results:
-        return "text", "The command executed successfully. The benchmark worker ran as expected."
+        return "text", (
+            "The job is complete. The benchmark worker ran successfully and "
+            "produced the expected result."
+        )
 
     tool_names = {
         t.get("function", {}).get("name", "")
         for t in (tools or [])
         if t.get("type") == "function"
     }
+
+    if preferred_tool == "create_job" and "create_job" in tool_names:
+        return "tool_call", ("create_job", json.dumps({
+            "title": "Run benchmark worker command",
+            "description": "\n".join([
+                "Please run benchmark command.",
+                BENCH_COMMAND_BEGIN,
+                requested_command,
+                BENCH_COMMAND_END,
+            ]),
+            "wait": False,
+            "mode": "worker",
+        }))
 
     # Prefer shell tool (direct execution, always available with ALLOW_LOCAL_TOOLS)
     if "shell" in tool_names:
@@ -219,8 +277,14 @@ def generate_response(messages, tools):
     if "create_job" in tool_names:
         return "tool_call", ("create_job", json.dumps({
             "title": "Run benchmark worker command",
-            "description": f"Execute this shell command and report the output: {requested_command}",
+            "description": "\n".join([
+                "Please run benchmark command.",
+                BENCH_COMMAND_BEGIN,
+                requested_command,
+                BENCH_COMMAND_END,
+            ]),
             "wait": False,
+            "mode": "worker",
         }))
 
     # Fallback: no suitable tool, just return text

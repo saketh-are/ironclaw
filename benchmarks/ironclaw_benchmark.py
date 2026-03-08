@@ -37,8 +37,6 @@ LAUNCH_VISIBILITY_TIMEOUT_S = 30.0
 BASELINE_DURATION_S = 10.0
 IDLE_WARMUP_S = 30.0
 LOADED_WARMUP_S = 60.0
-
-
 def parse_int_list(raw: str) -> List[int]:
     raw = (raw or "").strip()
     if not raw:
@@ -138,26 +136,259 @@ def render_job_command(
     return " && ".join(parts)
 
 
+def proof_relpath(agent_id: str, trigger_index: int) -> str:
+    return f"bench-test/output-{agent_id}-{trigger_index}.txt"
+
+
+def parse_rfc3339_epoch(raw: str):
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def summarize_latency_ms(job_records: List[dict], field: str) -> dict:
+    values = []
+    for record in job_records:
+        target = record.get(field)
+        if target is None:
+            continue
+        if isinstance(target, str):
+            target = parse_rfc3339_epoch(target)
+        trigger_epoch = record.get("triggered_at_epoch_s")
+        if trigger_epoch is None or target is None:
+            continue
+        values.append(max(0.0, (target - trigger_epoch) * 1000.0))
+    if not values:
+        return {"count": 0}
+    percentiles = compute_percentiles(values, [50, 95, 99])
+    return {
+        "count": len(values),
+        "p50": round(percentiles.get("p50", 0.0), 1),
+        "p95": round(percentiles.get("p95", 0.0), 1),
+        "p99": round(percentiles.get("p99", 0.0), 1),
+        "max": round(max(values), 1),
+    }
+
+
+def parse_unix_ms(raw):
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw) / 1000.0
+    return None
+
+
+def read_json_file(path: Path):
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return None
+
+
+def read_jsonl(path: Path) -> List[dict]:
+    events = []
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    except FileNotFoundError:
+        return []
+    return events
+
+
+def ensure_agent_record(agent_records: Dict[str, dict], agent_id: str) -> dict:
+    return agent_records.setdefault(agent_id, {
+        "agent_id": agent_id,
+        "started_logged": False,
+        "started_at_epoch_s": None,
+        "storage_logged": False,
+        "storage_path": None,
+        "storage_verified": False,
+        "exited_logged": False,
+        "exited_at_epoch_s": None,
+        "absent_verified": None,
+    })
+
+
+def sync_host_evidence(
+    approach,
+    agent_roots: Dict[str, Path],
+    states: Dict[str, "AgentState"],
+    tracked_jobs: Dict[str, dict],
+    agent_records: Dict[str, dict],
+) -> None:
+    now_epoch_s = time.time()
+
+    for agent_id, agent_root in agent_roots.items():
+        state = states[agent_id]
+        agent_record = ensure_agent_record(agent_records, agent_id)
+        evidence_dir = Path(agent_root) / "evidence"
+        event_log = evidence_dir / "agent-events.jsonl"
+
+        for event in read_jsonl(event_log):
+            event_name = event.get("event")
+            event_epoch_s = parse_unix_ms(event.get("ts_unix_ms"))
+            if event_name == "agent_started":
+                agent_record["started_logged"] = True
+                agent_record["started_at_epoch_s"] = (
+                    event_epoch_s or agent_record.get("started_at_epoch_s")
+                )
+            elif event_name == "agent_storage_written":
+                agent_record["storage_logged"] = True
+                path_str = event.get("path")
+                agent_record["storage_path"] = path_str or agent_record.get("storage_path")
+                if path_str:
+                    proof_path = Path(path_str)
+                    if proof_path.exists():
+                        try:
+                            content = proof_path.read_text().strip()
+                        except Exception:
+                            content = ""
+                        agent_record["storage_verified"] = content.startswith(
+                            f"agent-storage {agent_id}"
+                        )
+            elif event_name == "agent_exited":
+                agent_record["exited_logged"] = True
+                agent_record["exited_at_epoch_s"] = event_epoch_s or agent_record.get("exited_at_epoch_s")
+
+        for created_path in sorted(evidence_dir.glob("job-created-*.json")):
+            payload = read_json_file(created_path)
+            if not payload:
+                continue
+            job_id = payload.get("job_id")
+            if not job_id or job_id in tracked_jobs:
+                continue
+            pending = state.pending_triggers.popleft() if state.pending_triggers else {
+                "trigger_index": None,
+                "command": "",
+                "triggered_at_epoch_s": now_epoch_s,
+                "proof_relpath": None,
+            }
+            tracked_jobs[job_id] = {
+                "job_id": job_id,
+                "agent_id": agent_id,
+                "trigger_index": pending.get("trigger_index"),
+                "command": pending.get("command"),
+                "triggered_at_epoch_s": pending.get("triggered_at_epoch_s"),
+                "discovered_at_epoch_s": parse_unix_ms(payload.get("ts_unix_ms")) or now_epoch_s,
+                "proof_relpath": pending.get("proof_relpath"),
+                "project_dir": payload.get("project_dir"),
+                "job_mode": payload.get("mode"),
+                "job_created_at_epoch_s": parse_unix_ms(payload.get("ts_unix_ms")) or now_epoch_s,
+                "worker_started_at_epoch_s": None,
+                "callback_at_epoch_s": None,
+                "worker_cleaned_at_epoch_s": None,
+                "proof_verified": None,
+                "proof_verified_at_epoch_s": None,
+                "proof_content": None,
+                "result_success": None,
+                "failure_reason": None,
+                "worker_absent_verified": None,
+            }
+
+        for callback_path in sorted(evidence_dir.glob("worker-callback-*.json")):
+            payload = read_json_file(callback_path)
+            if not payload:
+                continue
+            job_id = payload.get("job_id")
+            record = tracked_jobs.get(job_id)
+            if not record:
+                continue
+            record["callback_at_epoch_s"] = (
+                parse_unix_ms(payload.get("ts_unix_ms")) or record.get("callback_at_epoch_s")
+            )
+            record["completed_at"] = record.get("callback_at_epoch_s")
+            record["result_success"] = payload.get("success")
+            record["failure_reason"] = payload.get("message")
+            record["state"] = "completed" if payload.get("success") else "failed"
+
+        for cleaned_path in sorted(evidence_dir.glob("worker-cleaned-*.json")):
+            payload = read_json_file(cleaned_path)
+            if not payload:
+                continue
+            job_id = payload.get("job_id")
+            record = tracked_jobs.get(job_id)
+            if not record:
+                continue
+            record["worker_cleaned_at_epoch_s"] = (
+                parse_unix_ms(payload.get("ts_unix_ms")) or record.get("worker_cleaned_at_epoch_s")
+            )
+            record["worker_cleanup_logged"] = True
+            record["container_removed"] = payload.get("container_removed")
+
+    for job_id, record in tracked_jobs.items():
+        project_dir = record.get("project_dir")
+        if not project_dir:
+            continue
+        project_path = Path(project_dir)
+        started_path = project_path / ".bench-evidence" / f"worker-started-{job_id}.json"
+        if record.get("worker_started_at_epoch_s") is None and started_path.exists():
+            payload = read_json_file(started_path)
+            if payload:
+                record["worker_started_at_epoch_s"] = parse_unix_ms(payload.get("ts_unix_ms"))
+                record["started_at"] = record.get("worker_started_at_epoch_s")
+
+        if record.get("proof_relpath") and record.get("proof_verified") is None:
+            proof_path = project_path / record["proof_relpath"]
+            if proof_path.exists():
+                try:
+                    content = proof_path.read_text().strip()
+                except Exception:
+                    content = ""
+                record["proof_content"] = content
+                expected_prefix = (
+                    f"proof-{record['agent_id']}-{record['trigger_index']}"
+                    if record.get("trigger_index") is not None
+                    else "proof-"
+                )
+                record["proof_verified"] = content.startswith(expected_prefix)
+                record["proof_verified_at_epoch_s"] = proof_path.stat().st_mtime
+
+        if (
+            record.get("worker_cleaned_at_epoch_s") is not None
+            and record.get("worker_absent_verified") is None
+        ):
+            verdict = approach.verify_worker_absent(record["agent_id"], job_id)
+            if verdict is not None:
+                record["worker_absent_verified"] = verdict
+
+    for state in states.values():
+        state.expire_pending(now_epoch_s)
+
+
 def fetch_active_counts(
     approach,
     agent_ids: List[str],
+    agent_roots: Dict[str, Path],
+    states: Dict[str, "AgentState"],
+    tracked_jobs: Dict[str, dict],
+    agent_records: Dict[str, dict],
     previous_counts: Dict[str, int],
 ) -> (Dict[str, int], Dict[str, str]):
+    counts = {agent_id: 0 for agent_id in agent_ids}
+    errors = {}
     try:
-        counts = approach.count_active_workers_per_agent()
+        observed = approach.count_active_workers_per_agent()
+        if observed:
+            for agent_id in counts:
+                counts[agent_id] = int(observed.get(agent_id, 0))
+        else:
+            counts = dict(previous_counts)
     except Exception as exc:  # pragma: no cover - defensive
-        return dict(previous_counts), {agent_id: str(exc) for agent_id in agent_ids}
+        counts = dict(previous_counts)
+        errors["count_active_workers"] = str(exc)
 
-    if not counts and agent_ids:
-        return dict(previous_counts), {
-            agent_id: "per-agent worker counts unavailable"
-            for agent_id in agent_ids
-        }
-
-    merged = {}
-    for agent_id in agent_ids:
-        merged[agent_id] = counts.get(agent_id, previous_counts.get(agent_id, 0))
-    return merged, {}
+    sync_host_evidence(approach, agent_roots, states, tracked_jobs, agent_records)
+    return counts, errors
 
 
 def summarize_timeseries(run_dir: Path, params: dict, num_agents: int) -> dict:
@@ -319,8 +550,7 @@ class AgentState:
         self.rng = rng
         self.release_at = release_at
         self.next_spawn_at = next_spawn_at
-        self.pending_launches: Deque[float] = deque()
-        self.prev_observed_active = 0
+        self.pending_triggers: Deque[dict] = deque()
         self.trigger_index = 0
         self.trigger_attempts = 0
         self.trigger_ok = 0
@@ -329,17 +559,14 @@ class AgentState:
         self.pending_timeouts = 0
 
     def effective_active(self, observed_active: int) -> int:
-        return observed_active + len(self.pending_launches)
+        return observed_active + len(self.pending_triggers)
 
-    def reconcile(self, observed_active: int, now: float) -> None:
-        increased = max(0, observed_active - self.prev_observed_active)
-        while increased > 0 and self.pending_launches:
-            self.pending_launches.popleft()
-            increased -= 1
-        while self.pending_launches and (now - self.pending_launches[0]) > LAUNCH_VISIBILITY_TIMEOUT_S:
-            self.pending_launches.popleft()
+    def expire_pending(self, now_epoch_s: float) -> None:
+        while self.pending_triggers and (
+            now_epoch_s - self.pending_triggers[0]["triggered_at_epoch_s"]
+        ) > LAUNCH_VISIBILITY_TIMEOUT_S:
+            self.pending_triggers.popleft()
             self.pending_timeouts += 1
-        self.prev_observed_active = observed_active
 
 
 def build_params(args, config, run_label: str, run_dir: Path) -> dict:
@@ -354,9 +581,11 @@ def build_params(args, config, run_label: str, run_dir: Path) -> dict:
         "rng_seed": args.rng_seed,
         "sample_interval_ms": args.sample_interval_ms,
         "control_interval_s": args.control_interval_s,
+        "max_triggers_per_agent": args.max_triggers_per_agent,
         "pre_trigger_settle_s": args.pre_trigger_settle_s,
         "batch_size": args.batch_size,
         "batch_interval_s": args.batch_interval_s,
+        "job_dispatch": args.job_dispatch,
         "job_profile": args.job_profile,
         "job_command": args.job_command,
         "timestamp": datetime.now().strftime("%Y%m%dT%H%M%S"),
@@ -378,6 +607,7 @@ def build_params(args, config, run_label: str, run_dir: Path) -> dict:
             "plateau_settle_s": config.plateau_settle_s,
             "job_profile": args.job_profile,
             "job_command": args.job_command,
+            "job_dispatch": args.job_dispatch,
         },
     }
 
@@ -387,19 +617,22 @@ def control_loaded(
     approach,
     agent_ids: List[str],
     agent_ports: Dict[str, int],
+    agent_roots: Dict[str, Path],
     states: Dict[str, AgentState],
+    tracked_jobs: Dict[str, dict],
+    agent_records: Dict[str, dict],
     benchmark_duration_s: float,
 ) -> dict:
     start_time = time.monotonic()
     end_time = time.monotonic() + benchmark_duration_s
     control_samples = []
-    last_counts = {agent_id: 0 for agent_id in agent_ids}
+    last_counts = {agent_id: 0 for agent_id in agent_ports}
     last_errors = {}
     while time.monotonic() < end_time:
         now = time.monotonic()
-        counts, errors = fetch_active_counts(approach, agent_ids, last_counts)
-        for agent_id in agent_ids:
-            states[agent_id].reconcile(counts[agent_id], now)
+        counts, errors = fetch_active_counts(
+            approach, agent_ids, agent_roots, states, tracked_jobs, agent_records, last_counts
+        )
         last_counts = counts
         last_errors = errors
 
@@ -409,9 +642,14 @@ def control_loaded(
             "active_workers": total_active,
         })
 
-        for agent_id in agent_ids:
+        for agent_id, port in agent_ports.items():
             state = states[agent_id]
             if now < state.release_at or now < state.next_spawn_at:
+                continue
+            if (
+                args.max_triggers_per_agent > 0
+                and state.trigger_ok >= args.max_triggers_per_agent
+            ):
                 continue
             observed = counts[agent_id]
             if state.effective_active(observed) < args.max_concurrent_workers:
@@ -431,10 +669,19 @@ def control_loaded(
                     args.job_memory_mb,
                 )
                 state.trigger_attempts += 1
-                ok = trigger_worker_spawn(agent_ports[agent_id], command=command)
+                ok = trigger_worker_spawn(
+                    port,
+                    command=command,
+                    dispatch_mode=args.job_dispatch,
+                )
                 if ok:
                     state.trigger_ok += 1
-                    state.pending_launches.append(now)
+                    state.pending_triggers.append({
+                        "trigger_index": state.trigger_index,
+                        "command": command,
+                        "triggered_at_epoch_s": time.time(),
+                        "proof_relpath": proof_relpath(agent_id, state.trigger_index),
+                    })
                     state.trigger_index += 1
                 else:
                     state.trigger_failed += 1
@@ -444,7 +691,9 @@ def control_loaded(
 
         time.sleep(args.control_interval_s)
 
-    final_counts, final_errors = fetch_active_counts(approach, agent_ids, last_counts)
+    final_counts, final_errors = fetch_active_counts(
+        approach, agent_ids, agent_roots, states, tracked_jobs, agent_records, last_counts
+    )
     return {
         "control_samples": control_samples,
         "last_errors": last_errors,
@@ -458,7 +707,10 @@ def control_plateau(
     approach,
     agent_ids: List[str],
     agent_ports: Dict[str, int],
+    agent_roots: Dict[str, Path],
     states: Dict[str, AgentState],
+    tracked_jobs: Dict[str, dict],
+    agent_records: Dict[str, dict],
 ) -> dict:
     targets = args.plateau_workers_per_agent
     hold_s = args.plateau_hold_s
@@ -466,7 +718,7 @@ def control_plateau(
     end_time = time.monotonic() + total_duration_s
     plateau_start = time.monotonic()
     control_samples = []
-    last_counts = {agent_id: 0 for agent_id in agent_ids}
+    last_counts = {agent_id: 0 for agent_id in agent_ports}
     last_errors = {}
 
     while time.monotonic() < end_time:
@@ -475,9 +727,9 @@ def control_plateau(
         stage_index = min(int(elapsed // hold_s), max(len(targets) - 1, 0))
         target = targets[stage_index]
 
-        counts, errors = fetch_active_counts(approach, agent_ids, last_counts)
-        for agent_id in agent_ids:
-            states[agent_id].reconcile(counts[agent_id], now)
+        counts, errors = fetch_active_counts(
+            approach, agent_ids, agent_roots, states, tracked_jobs, agent_records, last_counts
+        )
         last_counts = counts
         last_errors = errors
 
@@ -489,9 +741,14 @@ def control_plateau(
             "target_workers_per_agent": target,
         })
 
-        for agent_id in agent_ids:
+        for agent_id, port in agent_ports.items():
             state = states[agent_id]
             if now < state.release_at:
+                continue
+            if (
+                args.max_triggers_per_agent > 0
+                and state.trigger_ok >= args.max_triggers_per_agent
+            ):
                 continue
             observed = counts[agent_id]
             if state.effective_active(observed) < target:
@@ -511,10 +768,19 @@ def control_plateau(
                     args.job_memory_mb,
                 )
                 state.trigger_attempts += 1
-                ok = trigger_worker_spawn(agent_ports[agent_id], command=command)
+                ok = trigger_worker_spawn(
+                    port,
+                    command=command,
+                    dispatch_mode=args.job_dispatch,
+                )
                 if ok:
                     state.trigger_ok += 1
-                    state.pending_launches.append(now)
+                    state.pending_triggers.append({
+                        "trigger_index": state.trigger_index,
+                        "command": command,
+                        "triggered_at_epoch_s": time.time(),
+                        "proof_relpath": proof_relpath(agent_id, state.trigger_index),
+                    })
                     state.trigger_index += 1
                 else:
                     state.trigger_failed += 1
@@ -523,7 +789,9 @@ def control_plateau(
 
         time.sleep(args.control_interval_s)
 
-    final_counts, final_errors = fetch_active_counts(approach, agent_ids, last_counts)
+    final_counts, final_errors = fetch_active_counts(
+        approach, agent_ids, agent_roots, states, tracked_jobs, agent_records, last_counts
+    )
     return {
         "control_samples": control_samples,
         "last_errors": last_errors,
@@ -533,14 +801,25 @@ def control_plateau(
     }
 
 
-def control_idle(args, approach, agent_ids: List[str], agent_ports: Dict[str, int]) -> dict:
+def control_idle(
+    args,
+    approach,
+    agent_ids: List[str],
+    agent_ports: Dict[str, int],
+    agent_roots: Dict[str, Path],
+    states: Dict[str, AgentState],
+    tracked_jobs: Dict[str, dict],
+    agent_records: Dict[str, dict],
+) -> dict:
     start_time = time.monotonic()
     end_time = time.monotonic() + args.benchmark_duration_s
     control_samples = []
-    last_counts = {agent_id: 0 for agent_id in agent_ids}
+    last_counts = {agent_id: 0 for agent_id in agent_ports}
     last_errors = {}
     while time.monotonic() < end_time:
-        counts, errors = fetch_active_counts(approach, agent_ids, last_counts)
+        counts, errors = fetch_active_counts(
+            approach, agent_ids, agent_roots, states, tracked_jobs, agent_records, last_counts
+        )
         last_counts = counts
         last_errors = errors
         control_samples.append({
@@ -548,7 +827,9 @@ def control_idle(args, approach, agent_ids: List[str], agent_ports: Dict[str, in
             "active_workers": sum(counts.values()),
         })
         time.sleep(args.control_interval_s)
-    final_counts, final_errors = fetch_active_counts(approach, agent_ids, last_counts)
+    final_counts, final_errors = fetch_active_counts(
+        approach, agent_ids, agent_roots, states, tracked_jobs, agent_records, last_counts
+    )
     return {
         "control_samples": control_samples,
         "last_errors": last_errors,
@@ -578,10 +859,14 @@ def main():
                         help="Release agents in batches of this size (0 = no ramp)")
     parser.add_argument("--batch-interval-s", type=float, default=0.0,
                         help="Delay between agent release batches")
+    parser.add_argument("--job-dispatch", choices=["worker-job", "shell"], default="worker-job",
+                        help="Dispatch jobs through real worker-mode sandbox jobs or direct shell")
     parser.add_argument("--pre-trigger-settle-s", type=float, default=10.0,
                         help="Collect zero-worker samples after agents start before control begins")
     parser.add_argument("--control-interval-s", type=float, default=1.0,
                         help="Host control-loop polling interval")
+    parser.add_argument("--max-triggers-per-agent", type=int, default=0,
+                        help="Maximum total job triggers per agent (0 = unlimited)")
     parser.add_argument("--sample-interval-ms", type=int, default=1000,
                         help="Collector sampling interval")
     parser.add_argument("--agent-memory-mb", type=int, default=2048,
@@ -632,6 +917,7 @@ def main():
         f"{args.approach}-{args.mode}-n{args.agents}-{timestamp}"
     )
     run_dir = Path(args.output_dir) if args.output_dir else (BENCH_DIR / "results" / run_label)
+    run_dir = run_dir.resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
 
     config = BenchmarkConfig(
@@ -648,6 +934,7 @@ def main():
         plateau_workers_per_agent=args.plateau_workers_per_agent,
         plateau_hold_s=int(args.plateau_hold_s),
         plateau_settle_s=int(args.plateau_settle_s),
+        run_dir=str(run_dir),
         rng_seed=args.rng_seed,
     )
 
@@ -662,6 +949,9 @@ def main():
     running_thread = None
     ts_file = None
     agent_ids = []
+    agent_roots: Dict[str, Path] = {}
+    agent_records: Dict[str, dict] = {}
+    tracked_jobs = {}
     summary = dict(params)
     run_error = None
     cleanup_error = None
@@ -687,10 +977,19 @@ def main():
         agent_ids = approach.start_agents(args.agents, config)
         summary["agent_ids"] = agent_ids
         summary["agent_start_elapsed_s"] = round(time.time() - start_ts, 1)
+        agent_roots = approach.get_agent_roots()
 
         agent_ports = approach.get_agent_gateways()
         if set(agent_ports) != set(agent_ids):
             raise RuntimeError("Approach did not expose gateway ports for all agents")
+        if set(agent_roots) != set(agent_ids):
+            raise RuntimeError("Approach did not expose host-visible roots for all agents")
+
+        def collector_active_count():
+            try:
+                return approach.count_active_workers()
+            except Exception:
+                return 0
 
         states = {}
         control_start_ref = time.monotonic() + args.pre_trigger_settle_s
@@ -705,7 +1004,7 @@ def main():
             output=ts_file,
             get_agent_pids=approach.get_agent_pids,
             get_daemon_pids=approach.get_daemon_pids,
-            count_workers=approach.count_active_workers,
+            count_workers=collector_active_count,
         )
 
         if args.pre_trigger_settle_s > 0:
@@ -715,21 +1014,28 @@ def main():
             )
             time.sleep(args.pre_trigger_settle_s)
 
-        if args.mode != "idle":
-            probe_counts = approach.count_active_workers_per_agent()
-            if not probe_counts:
-                raise RuntimeError(
-                    f"{args.approach} does not expose per-agent worker counts for real loaded/plateau control"
-                )
+        sync_host_evidence(approach, agent_roots, states, tracked_jobs, agent_records)
 
         if args.mode == "idle":
-            control_result = control_idle(args, approach, agent_ids, agent_ports)
+            control_result = control_idle(
+                args, approach, agent_ids, agent_ports, agent_roots, states, tracked_jobs, agent_records
+            )
         elif args.mode == "loaded":
             control_result = control_loaded(
-                args, approach, agent_ids, agent_ports, states, args.benchmark_duration_s
+                args,
+                approach,
+                agent_ids,
+                agent_ports,
+                agent_roots,
+                states,
+                tracked_jobs,
+                agent_records,
+                args.benchmark_duration_s,
             )
         else:
-            control_result = control_plateau(args, approach, agent_ids, agent_ports, states)
+            control_result = control_plateau(
+                args, approach, agent_ids, agent_ports, agent_roots, states, tracked_jobs, agent_records
+            )
             params["plateau_start_offset_s"] = control_result.get("plateau_start_offset_s", 0.0)
             summary["plateau_start_offset_s"] = params["plateau_start_offset_s"]
             with open(run_dir / "params.json", "w") as f:
@@ -739,6 +1045,7 @@ def main():
         running_thread.join(timeout=30)
         ts_file.close()
         ts_file = None
+        sync_host_evidence(approach, agent_roots, states, tracked_jobs, agent_records)
 
         summary["control_samples"] = control_result["control_samples"]
         summary["final_active_workers"] = sum(control_result["final_counts"].values())
@@ -753,6 +1060,59 @@ def main():
         summary["per_agent_triggers_ok"] = {agent_id: state.trigger_ok for agent_id, state in states.items()}
         summary["per_agent_trigger_attempts"] = {agent_id: state.trigger_attempts for agent_id, state in states.items()}
         summary["per_agent_pending_timeouts"] = {agent_id: state.pending_timeouts for agent_id, state in states.items()}
+        job_records = sorted(
+            tracked_jobs.values(),
+            key=lambda record: (
+                record.get("agent_id", ""),
+                record.get("trigger_index")
+                if record.get("trigger_index") is not None
+                else 10**9,
+                record.get("job_id", ""),
+            ),
+        )
+        summary["agent_records"] = [agent_records[agent_id] for agent_id in sorted(agent_records)]
+        summary["job_records"] = job_records
+        summary["agents_started"] = sum(
+            1 for record in agent_records.values() if record.get("started_logged")
+        )
+        summary["agents_with_storage"] = sum(
+            1
+            for record in agent_records.values()
+            if record.get("storage_logged") and record.get("storage_verified")
+        )
+        summary["jobs_discovered"] = len(job_records)
+        summary["jobs_started"] = sum(
+            1 for record in job_records if record.get("worker_started_at_epoch_s")
+        )
+        summary["jobs_with_callback_event"] = sum(
+            1 for record in job_records if record.get("callback_at_epoch_s")
+        )
+        summary["jobs_with_proof"] = sum(1 for record in job_records if record.get("proof_verified") is True)
+        summary["jobs_cleaned"] = sum(
+            1 for record in job_records if record.get("worker_cleaned_at_epoch_s")
+        )
+        summary["jobs_cleanup_verified"] = sum(
+            1 for record in job_records if record.get("worker_absent_verified") is True
+        )
+        summary["jobs_completed"] = sum(1 for record in job_records if record.get("completed_at"))
+        summary["jobs_succeeded"] = sum(
+            1
+            for record in job_records
+            if record.get("result_success") is True
+            and record.get("proof_verified") is True
+        )
+        summary["jobs_failed"] = sum(
+            1
+            for record in job_records
+            if record.get("result_success") is False
+        )
+        summary["job_latency_ms"] = {
+            "trigger_to_job_created": summarize_latency_ms(job_records, "job_created_at_epoch_s"),
+            "trigger_to_started": summarize_latency_ms(job_records, "worker_started_at_epoch_s"),
+            "trigger_to_proof": summarize_latency_ms(job_records, "proof_verified_at_epoch_s"),
+            "trigger_to_callback": summarize_latency_ms(job_records, "callback_at_epoch_s"),
+            "trigger_to_cleanup": summarize_latency_ms(job_records, "worker_cleaned_at_epoch_s"),
+        }
         summary["elapsed_s"] = round(time.time() - start_ts, 1)
 
     except Exception as exc:
@@ -773,6 +1133,28 @@ def main():
             except Exception:
                 pass
 
+    print("[ironclaw-benchmark] cleaning up...", flush=True)
+    try:
+        approach.cleanup()
+        if "states" in locals():
+            sync_host_evidence(approach, agent_roots, states, tracked_jobs, agent_records)
+        for agent_id in agent_ids:
+            agent_record = ensure_agent_record(agent_records, agent_id)
+            verdict = approach.verify_agent_absent(agent_id)
+            if verdict is not None:
+                agent_record["absent_verified"] = verdict
+    except Exception as exc:
+        cleanup_error = exc
+        print(f"[ironclaw-benchmark] cleanup error: {exc}", flush=True)
+
+    summary["agent_records"] = [agent_records[agent_id] for agent_id in sorted(agent_records)]
+    summary["agents_exited_logged"] = sum(
+        1 for record in agent_records.values() if record.get("exited_logged")
+    )
+    summary["agents_cleanup_verified"] = sum(
+        1 for record in agent_records.values() if record.get("absent_verified") is True
+    )
+
     if (run_dir / "timeseries.jsonl").exists():
         summary.update(summarize_timeseries(run_dir, params, args.agents))
 
@@ -784,19 +1166,22 @@ def main():
         "approach": args.approach,
         "mode": args.mode,
         "workers_spawned": summary.get("workers_spawned", 0),
+        "jobs_with_proof": summary.get("jobs_with_proof", 0),
+        "jobs_succeeded": summary.get("jobs_succeeded", 0),
+        "trigger_to_callback_p50_ms": (
+            summary.get("job_latency_ms", {})
+            .get("trigger_to_callback", {})
+            .get("p50")
+        ),
         "avg_workers": round(summary.get("avg_workers", 0.0), 3),
         "per_agent_mean_mib": round(summary.get("per_agent_mean_mib", 0.0), 3),
         "final_active_workers": summary.get("final_active_workers", 0),
         "peak_mib": round(summary.get("peak_mib", 0.0), 3),
         "p95_mib": round(summary.get("p95_mib", 0.0), 3),
+        "agents_started": summary.get("agents_started", 0),
+        "agents_cleanup_verified": summary.get("agents_cleanup_verified", 0),
+        "jobs_cleanup_verified": summary.get("jobs_cleanup_verified", 0),
     }, indent=2), flush=True)
-
-    print("[ironclaw-benchmark] cleaning up...", flush=True)
-    try:
-        approach.cleanup()
-    except Exception as exc:
-        cleanup_error = exc
-        print(f"[ironclaw-benchmark] cleanup error: {exc}", flush=True)
 
     if cleanup_error is not None:
         raise cleanup_error

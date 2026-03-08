@@ -59,7 +59,7 @@ fc-setup: fc-kernel fc-rootfs fc-image ## Full Firecracker setup (kernel + rootf
 
 ironclaw-binary: ## Build ironclaw binary for benchmarks (libsql backend)
 	@if command -v cargo >/dev/null 2>&1; then \
-		cd $(PROJECT_ROOT) && cargo build --release --no-default-features --features libsql; \
+		cd $(PROJECT_ROOT) && IRONCLAW_SKIP_TELEGRAM_WASM_BUILD=1 cargo build --release --no-default-features --features libsql; \
 		cp $(PROJECT_ROOT)/target/release/ironclaw $(BENCH_DIR)/workload/.ironclaw-bin; \
 		echo "IronClaw binary copied to workload/.ironclaw-bin"; \
 	elif [ -x "$(BENCH_DIR)/workload/.ironclaw-bin" ]; then \
@@ -70,7 +70,7 @@ ironclaw-binary: ## Build ironclaw binary for benchmarks (libsql backend)
 		exit 1; \
 	fi
 
-ironclaw-sandbox-image: workload/Dockerfile.ironclaw-sandbox ## Build minimal sandbox worker image
+ironclaw-sandbox-image: ironclaw-binary workload/Dockerfile.ironclaw-sandbox ## Build sandbox image for shell + worker-mode jobs
 	docker build -t ironclaw-bench-sandbox:latest -f workload/Dockerfile.ironclaw-sandbox workload/
 
 ironclaw-agent-image: ironclaw-binary workload/Dockerfile.ironclaw-agent workload/mock_llm_server.py workload/docker_socket_proxy.py workload/ironclaw-bench-entrypoint.sh ## Build ironclaw agent image (shared daemon)

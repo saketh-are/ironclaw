@@ -13,7 +13,6 @@ fully isolated inside the agent's daemon namespace.
 import json
 import subprocess
 import time
-import urllib.request
 from pathlib import Path
 from typing import Dict, List
 
@@ -24,6 +23,7 @@ from approaches._ironclaw_helpers import (
     IRONCLAW_SANDBOX_IMAGE,
     SANDBOX_WORKER_TAR_PATH,
     ironclaw_agent_env,
+    prepare_agent_host_dirs,
     wait_for_gateway,
     trigger_worker_spawn,
 )  # noqa: F401 — SANDBOX_IMAGE and TAR_PATH kept for DinD setup logic
@@ -43,6 +43,7 @@ class _IronclawDindBase(Approach):
     def __init__(self):
         self._agent_ids: List[str] = []
         self._host_ports: Dict[str, int] = {}
+        self._agent_roots: Dict[str, Path] = {}
         self._run_id: str = "unknown"
 
     def setup(self, config: BenchmarkConfig) -> None:
@@ -98,15 +99,26 @@ class _IronclawDindBase(Approach):
     def start_agents(self, n: int, config: BenchmarkConfig) -> List[str]:
         self._agent_ids = []
         self._host_ports = {}
+        self._agent_roots = {}
 
         for i in range(n):
             agent_id = f"agent-{i}"
             container_name = f"bench-ic-agent-{i}"
             gateway_port = config.orchestrator_base_port + i
+            host_dirs = prepare_agent_host_dirs(config, agent_id)
 
             env = ironclaw_agent_env(config, agent_id, 3000)
+            env["WORKSPACE_DIR"] = str(host_dirs["workspace_dir"])
+            env["IRONCLAW_BASE_DIR"] = str(host_dirs["base_dir"])
+            env["BENCH_EVIDENCE_DIR"] = str(host_dirs["evidence_dir"])
             # Inner dockerd args
             env["DOCKERD_EXTRA_ARGS"] = self._dockerd_extra_args
+            # Real worker-mode jobs need a callback route back into the parent
+            # agent's internal API. With a private inner daemon, host network
+            # means "share the outer agent container's namespace", so loopback
+            # reaches the agent directly without the flaky inner bridge hop.
+            env["IRONCLAW_WORKER_ORCHESTRATOR_URL"] = "http://127.0.0.1:50051"
+            env["IRONCLAW_WORKER_NETWORK_MODE"] = "host"
 
             cmd = [
                 "docker", "run", "-d",
@@ -115,6 +127,8 @@ class _IronclawDindBase(Approach):
                 "-p", f"{gateway_port}:3000",
                 # Mount worker image tarball
                 "-v", f"{SANDBOX_WORKER_TAR_PATH}:/opt/.worker-image.tar:ro",
+                # Mount host-visible benchmark root at same path inside container.
+                "-v", f"{host_dirs['agent_root']}:{host_dirs['agent_root']}:rw",
                 # Labels
                 "--label", f"bench_run_id={config.run_id}",
                 "--label", "bench_role=agent",
@@ -138,6 +152,7 @@ class _IronclawDindBase(Approach):
 
             self._agent_ids.append(agent_id)
             self._host_ports[agent_id] = gateway_port
+            self._agent_roots[agent_id] = host_dirs["agent_root"]
             print(f"[{self.name}] Started {container_name}")
 
         # DinD startup is slower (dockerd + image load + ironclaw startup)
@@ -203,7 +218,7 @@ class _IronclawDindBase(Approach):
             try:
                 result = subprocess.run(
                     ["docker", "exec", container_name,
-                     "docker", "ps", "-q", "--filter", "name=sandbox-"],
+                     "docker", "ps", "-q", "--filter", "name=ironclaw-worker-"],
                     capture_output=True, text=True, timeout=5,
                 )
                 if result.returncode == 0 and result.stdout.strip():
@@ -215,6 +230,40 @@ class _IronclawDindBase(Approach):
 
     def get_agent_gateways(self) -> Dict[str, int]:
         return dict(self._host_ports)
+
+    def get_agent_roots(self) -> Dict[str, Path]:
+        return dict(self._agent_roots)
+
+    def verify_worker_absent(self, agent_id: str, job_id: str) -> bool | None:
+        try:
+            idx = agent_id.split("-")[-1]
+            inspect = subprocess.run(
+                ["docker", "inspect", f"bench-ic-agent-{idx}"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if inspect.returncode != 0:
+                return None
+            result = subprocess.run(
+                [
+                    "docker", "exec", f"bench-ic-agent-{idx}",
+                    "docker", "ps", "-aq",
+                    "--filter", f"name=ironclaw-worker-{job_id}",
+                ],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode != 0:
+                return None
+            return not result.stdout.strip()
+        except (subprocess.SubprocessError, subprocess.TimeoutExpired):
+            return None
+
+    def verify_agent_absent(self, agent_id: str) -> bool:
+        idx = agent_id.split("-")[-1]
+        result = subprocess.run(
+            ["docker", "inspect", f"bench-ic-agent-{idx}"],
+            capture_output=True, text=True,
+        )
+        return result.returncode != 0
 
     def collect_agent_logs(self, agent_ids: List[str], output_dir) -> None:
         output_dir = Path(output_dir)
@@ -253,6 +302,7 @@ class _IronclawDindBase(Approach):
             subprocess.run(["docker", "rm", "-f"] + ids, capture_output=True)
         self._agent_ids = []
         self._host_ports = {}
+        self._agent_roots = {}
         print(f"[{self.name}] Cleanup complete.")
 
 

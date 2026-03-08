@@ -10,9 +10,7 @@ This is the simplest real-ironclaw approach: no inner daemon, no proxy needed.
 
 import json
 import subprocess
-import tempfile
 import time
-import urllib.request
 from pathlib import Path
 from typing import Dict, List
 
@@ -22,6 +20,7 @@ from approaches._ironclaw_helpers import (
     IRONCLAW_AGENT_IMAGE,
     IRONCLAW_SANDBOX_IMAGE,
     ironclaw_agent_env,
+    prepare_agent_host_dirs,
     wait_for_gateway,
     trigger_worker_spawn,
 )
@@ -34,7 +33,8 @@ class IronclawDockerApproach(Approach):
         self._agent_ids: List[str] = []
         self._host_ports: Dict[str, int] = {}
         self._run_id: str = "unknown"
-        self._workspace_dirs: Dict[str, Path] = {}  # agent_id -> host temp dir
+        self._workspace_dirs: Dict[str, Path] = {}
+        self._agent_roots: Dict[str, Path] = {}
 
     @property
     def suite(self) -> str:
@@ -61,6 +61,8 @@ class IronclawDockerApproach(Approach):
     def start_agents(self, n: int, config: BenchmarkConfig) -> List[str]:
         self._agent_ids = []
         self._host_ports = {}
+        self._workspace_dirs = {}
+        self._agent_roots = {}
 
         for i in range(n):
             agent_id = f"agent-{i}"
@@ -68,20 +70,23 @@ class IronclawDockerApproach(Approach):
             gateway_port = config.orchestrator_base_port + i
 
             env = ironclaw_agent_env(config, agent_id, 3000)
+            host_dirs = prepare_agent_host_dirs(config, agent_id)
 
-            # In the shared-daemon topology, sandbox containers are siblings
-            # on the host daemon.  Ironclaw bind-mounts its cwd (the
-            # workspace) into sandbox containers.  For this to work, the
-            # workspace path inside the agent must also exist on the HOST
-            # so Docker can find it.  We create a unique host directory
-            # and mount it at the SAME path inside the agent container.
-            ws_host = Path(f"/tmp/ic-bench-ws-{config.run_id}-{i}")
-            ws_host.mkdir(parents=True, exist_ok=True)
-            ws_host.chmod(0o777)  # writable by sandbox user 1000
+            # In the shared-daemon topology, paths used by the agent must exist
+            # on the host so sibling sandbox containers can bind-mount them.
+            ws_host = host_dirs["workspace_dir"]
             self._workspace_dirs[agent_id] = ws_host
+            self._agent_roots[agent_id] = host_dirs["agent_root"]
 
-            # Override WORKSPACE_DIR so entrypoint.sh uses this path
+            # Override paths so they remain host-visible to sibling workers.
             env["WORKSPACE_DIR"] = str(ws_host)
+            env["IRONCLAW_BASE_DIR"] = str(host_dirs["base_dir"])
+            env["BENCH_EVIDENCE_DIR"] = str(host_dirs["evidence_dir"])
+            # Real worker-mode jobs need a callback route back into the parent
+            # agent's internal API. In the benchmark shared-daemon topology,
+            # the cleanest route is to join the agent container's network namespace.
+            env["IRONCLAW_WORKER_ORCHESTRATOR_URL"] = "http://127.0.0.1:50051"
+            env["IRONCLAW_WORKER_NETWORK_MODE"] = f"container:{container_name}"
 
             cmd = [
                 "docker", "run", "-d",
@@ -90,9 +95,8 @@ class IronclawDockerApproach(Approach):
                 "-p", f"{gateway_port}:3000",
                 # Shared host Docker socket
                 "-v", "/var/run/docker.sock:/var/run/docker.sock",
-                # Workspace: same path on host and in container so that
-                # sandbox sibling containers can bind-mount the same path.
-                "-v", f"{ws_host}:{ws_host}",
+                # Mount host-visible benchmark root at same path inside container.
+                "-v", f"{host_dirs['agent_root']}:{host_dirs['agent_root']}:rw",
                 # Labels
                 "--label", f"bench_run_id={config.run_id}",
                 "--label", "bench_role=agent",
@@ -173,7 +177,7 @@ class IronclawDockerApproach(Approach):
         counts = {agent_id: 0 for agent_id in self._agent_ids}
         try:
             result = subprocess.run(
-                ["docker", "ps", "-q", "--filter", "name=sandbox-"],
+                ["docker", "ps", "-q", "--filter", "name=ironclaw-worker-"],
                 capture_output=True, text=True,
             )
             if result.returncode != 0 or not result.stdout.strip():
@@ -205,6 +209,26 @@ class IronclawDockerApproach(Approach):
     def get_agent_gateways(self) -> Dict[str, int]:
         return dict(self._host_ports)
 
+    def get_agent_roots(self) -> Dict[str, Path]:
+        return dict(self._agent_roots)
+
+    def verify_worker_absent(self, agent_id: str, job_id: str) -> bool | None:
+        result = subprocess.run(
+            ["docker", "ps", "-aq", "--filter", f"name=ironclaw-worker-{job_id}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            return None
+        return not result.stdout.strip()
+
+    def verify_agent_absent(self, agent_id: str) -> bool:
+        idx = agent_id.split("-")[-1]
+        result = subprocess.run(
+            ["docker", "inspect", f"bench-ic-agent-{idx}"],
+            capture_output=True, text=True,
+        )
+        return result.returncode != 0
+
     def collect_agent_logs(self, agent_ids: List[str], output_dir) -> None:
         output_dir = Path(output_dir)
         for i, agent_id in enumerate(agent_ids):
@@ -231,7 +255,7 @@ class IronclawDockerApproach(Approach):
         # Also stop any lingering sandbox containers
         try:
             result = subprocess.run(
-                ["docker", "ps", "-q", "--filter", "name=sandbox-"],
+                ["docker", "ps", "-q", "--filter", "name=ironclaw-worker-"],
                 capture_output=True, text=True,
             )
             if result.returncode == 0 and result.stdout.strip():
@@ -264,4 +288,5 @@ class IronclawDockerApproach(Approach):
         self._agent_ids = []
         self._host_ports = {}
         self._workspace_dirs = {}
+        self._agent_roots = {}
         print(f"[{self.name}] Cleanup complete.")
