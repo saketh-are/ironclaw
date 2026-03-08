@@ -24,16 +24,16 @@ For live topology monitoring during a synthetic run, pass `MONITOR=1` to the
 
 ## Key Metrics
 
-All data below was collected on a 2x 36-core, 512 GiB bare-metal host. Equivalent results were reproduced on GCP VMs with nested virtualization.
+All data below was collected on a 2x 36-core, 512 GiB bare-metal host.
 
 | Approach | Agent Mem | Worker Mem | Agent CPU | Worker CPU | Worker Latency |
 |---|---:|---:|---:|---:|---:|
-| `container-docker` | 92.7 | 18.4 | 0.0 | 0.6 | 836 |
-| `container-gvisor-dind` | 339.1 | 67.5 | 76.0 | 246.6 | 8116 |
-| `container-sysbox-dind` | 187.2 | 17.0 | 0.0 | 0.8 | 1205 |
-| `podman-rootless` | 124.4 | 11.9 | 0.0 | 0.6 | 751 |
-| `hybrid-firecracker` | 82.0 | 53.9 | 0.0 | 0.3 | 2109 |
-| `vm-qemu` | 904.4 | 21.0* | 55.9 | 16.0 | 1045 |
+| `container-docker` | 107.6 | 28.5 | 0.0 | 0.7 | 924 |
+| `container-gvisor-dind` | 326.2 | 67.9 | 70.7 | 373.7 | 14220 |
+| `container-sysbox-dind` | 175.0 | 20.3 | 1.7 | 0.4 | 1025 |
+| `podman-rootless` | 236.4 | 34.7 | 3.3 | 0.4 | 817 |
+| `hybrid-firecracker` | 103.3 | 55.8 | 0.0 | 0.3 | 2210 |
+| `vm-qemu` | 897.0 | 21.6 | 43.1 | 21.7 | 1082 |
 
 Sysbox provides competitive performance in all metrics while offering nested containerization. In the "sibling" approaches the agent's access to a Host runtime daemon represents an attack surface which is non-trivial to harden. VM per-agent adds significant memory overhead while sibling microVMs add excessive worker latency.
 
@@ -43,26 +43,15 @@ Test parameters: `SPAWN_INTERVAL_MEAN_S=5`, `WORKER_DURATION=30s`, `MAX_CONCURRE
 
 | Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Agent+Workers / Agent (MiB) | Workers Spawned | Avg Workers | Time-to-checkin p50 &#124; p95 (ms) | Checkins OK |
 |----------|---------------:|-----------:|----------:|----------------:|----------------:|------------:|------------------------------:|------------:|
-| `container-docker` | 11227 | 13462 | 13364 | 2245 | 118 | 19.1 | 836 &#124; 940 | 118/118 |
-| `container-gvisor-dind` | 10581 | 12213 | 11704 | 2116 | 83 | 13.8 | 8116 &#124; 8503 | 83/83 |
-| `container-sysbox-dind` | 11566 | 13388 | 13198 | 2313 | 120 | 19.4 | 1205 &#124; 1289 | 120/120 |
-| `podman-rootless` | 10635 | 13472 | 12777 | 2127 | 125 | 19.2 | 751 &#124; 784 | 125/125 |
-| `hybrid-firecracker` | 11413 | 14092 | 13747 | 2283 | 115 | 19.2 | 2109 &#124; 2136 | 115/115 |
-| `vm-qemu` | 17489 | 17625 | 17573 | 3498 | 117 | 19.1 | 1045 &#124; 1567 | 117/117 |
+| `container-docker` | 11114 | 13958 | 13327 | 2223 | 120 | 19.4 | 924 &#124; 1020 | 120/120 |
+| `container-gvisor-dind` | 7137 | 9124 | 8379 | 1427 | 57 | 9.8 | 14220 &#124; 16060 | 57/57 |
+| `container-sysbox-dind` | 11002 | 13605 | 13030 | 2200 | 119 | 19.5 | 1025 &#124; 1103 | 119/119 |
+| `podman-rootless` | 11331 | 14058 | 13511 | 2266 | 119 | 19.3 | 817 &#124; 887 | 119/119 |
+| `hybrid-firecracker` | 10725 | 13428 | 13188 | 2145 | 115 | 19.1 | 2210 &#124; 2261 | 115/115 |
+| `vm-qemu` | 17326 | 17408 | 17396 | 3465 | 115 | 18.9 | 1082 &#124; 2059 | 115/115 |
 
 Notes:
 - `container-gvisor-dind`: fewer workers spawned because inner `container.create()` still takes multiple seconds on this host, which materially eats into the `5s` mean spawn interval.
-
-### Results (loaded mode, 50 agents)
-
-| Approach | Net Mean (MiB) | Peak (MiB) | p95 (MiB) | Agent+Workers / Agent (MiB) | Workers Spawned | Avg Workers | Time-to-checkin p50 &#124; p95 (ms) | Checkins OK |
-|----------|---------------:|-----------:|----------:|----------------:|----------------:|------------:|------------------------------:|------------:|
-| `container-docker` | 101284 | 119767 | 112977 | 2026 | 1131 | 179.7 | 1323 &#124; 4534 | 1131/1131 |
-| `container-gvisor-dind` | 13412 | 47492 | 34221 | 268 | 928 | 19.4 | 5182 &#124; 8022 | 928/928 |
-| `container-sysbox-dind` | 97564 | 113196 | 112227 | 1951 | 1127 | 167.5 | 1738 &#124; 3632 | 1127/1127 |
-| `podman-rootless` | failed | failed | failed | failed | failed | failed | failed | failed |
-| `hybrid-firecracker` | 110515 | 127185 | 120664 | 2210 | 1172 | 185.0 | 2069 &#124; 2249 | 1172/1172 |
-| `vm-qemu` | 172451 | 172938 | 172904 | 3449 | 1181 | 190.7 | 864 &#124; 1741 | 1181/1181 |
 
 ## Decomposed Overhead
 
@@ -70,9 +59,9 @@ The fixed-per-agent and marginal-per-worker figures above come from a local idle
 
 | Approach | Agent Fixed MiB | Worker Runtime Tax MiB |
 |----------|----------------:|-----------------------:|
-| `container-docker` | 92.7 | 18.4 |
-| `container-gvisor-dind` | 339.1 | 67.5 |
-| `container-sysbox-dind` | 187.2 | 17.0 |
-| `podman-rootless` | 124.4 | 11.9 |
-| `hybrid-firecracker` | 82.0 | 53.9 |
-| `vm-qemu` | 904.4 | 21.0* |
+| `container-docker` | 107.6 | 28.5 |
+| `container-gvisor-dind` | 326.2 | 67.9 |
+| `container-sysbox-dind` | 175.0 | 20.3 |
+| `podman-rootless` | 236.4 | 34.7 |
+| `hybrid-firecracker` | 103.3 | 55.8 |
+| `vm-qemu` | 897.0 | 21.6 |
