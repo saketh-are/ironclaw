@@ -216,7 +216,6 @@ body {
   background: var(--green);
 }
 .compact-dot.emoji-dot {
-  background: none;
   font-size: 10px;
   line-height: 8px;
   text-align: center;
@@ -227,7 +226,7 @@ body {
   font-size: 7px;
   line-height: 8px;
   text-align: center;
-  color: rgba(0,0,0,0.5);
+  color: var(--green);
   font-variant-numeric: tabular-nums;
   overflow: hidden;
 }
@@ -286,7 +285,7 @@ body {
 
 <script>
 const STATE_URL = "/api/state";
-const POLL_MS = 800;
+const POLL_MS = 100;
 
 // Stable slot assignments: agentId -> { workerId -> slotIndex }
 const slotMap = {};
@@ -401,8 +400,8 @@ function renderCompact(state) {
       if (!w) return `<div class="compact-dot"></div>`;
       if (w.checkin_emoji) return `<div class="compact-dot filled emoji-dot" title="${w.id} callback">${w.checkin_emoji}</div>`;
       if (w.started_at) {
-        const elapsed = Math.round(now - w.started_at);
-        return `<div class="compact-dot filled timer-dot" title="${w.id} waiting for checkin">${elapsed}s</div>`;
+        const elapsed = now - w.started_at;
+        return `<div class="compact-dot filled timer-dot" title="${w.id} waiting for checkin">${formatTime(elapsed)}</div>`;
       }
       return `<div class="compact-dot filled"></div>`;
     });
@@ -488,7 +487,7 @@ function renderLifecycle(state) {
   const p = state.job_params || {};
   if (!p.profile) { bar.innerHTML = ""; return; }
   const steps = ["start"];
-  if (p.checkin) steps.push("sleep 3s", "worker callback (random emoji)", "sleep 3s");
+  if (p.checkin) steps.push("sleep 3s", "callback (random emoji)", "sleep 3s");
   steps.push("storage write");
   const dur = p.duration_min_s === p.duration_max_s
     ? `sleep ${p.duration_min_s}s`
