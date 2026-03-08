@@ -458,6 +458,9 @@ function phaseClass(phase) {
 
 function progressText(state) {
   if (state.phase === "running") {
+    if (state.duration_s == null || state.duration_s <= 0) {
+      return `${formatTime(state.elapsed_s)} / ∞`;
+    }
     return `${formatTime(state.elapsed_s)} / ${formatTime(state.duration_s)}`;
   }
   if (state.phase === "finished") {
@@ -627,7 +630,7 @@ class MonitorState:
         mode: str,
         run_id: str,
         expected_agents: List[str],
-        duration_s: int,
+        duration_s: float | None,
         max_worker_slots: int,
     ) -> None:
         now = time.time()
@@ -1198,7 +1201,7 @@ class BenchmarkMonitor:
         mode: str,
         run_id: str,
         expected_agents: List[str],
-        duration_s: int,
+        duration_s: float | None,
         max_worker_slots: int,
     ) -> None:
         self.state = MonitorState(

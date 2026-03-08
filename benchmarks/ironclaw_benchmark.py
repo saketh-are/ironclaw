@@ -17,8 +17,10 @@ import json
 import os
 import random
 import shlex
+import signal
 import sys
 import textwrap
+import threading
 import time
 from collections import deque
 from datetime import datetime
@@ -90,11 +92,20 @@ def sampled_duration_s(
     benchmark_duration_s: float,
 ) -> int:
     if lifetime_mode == "hold":
-        floor = max(duration_max_s, int(benchmark_duration_s) + 300)
+        if benchmark_duration_s <= 0:
+            floor = max(duration_max_s, 30 * 24 * 3600)
+        else:
+            floor = max(duration_max_s, int(benchmark_duration_s) + 300)
         return max(duration_min_s, floor)
     if duration_max_s <= duration_min_s:
         return max(0, duration_min_s)
     return rng.randint(duration_min_s, duration_max_s)
+
+
+def sleep_or_stop(stop_event: threading.Event, timeout_s: float) -> bool:
+    if timeout_s <= 0:
+        return stop_event.is_set()
+    return stop_event.wait(timeout_s)
 
 
 def render_job_command(
@@ -880,6 +891,7 @@ def build_params(args, config, run_label: str, run_dir: Path) -> dict:
         "sample_interval_ms": args.sample_interval_ms,
         "control_interval_s": args.control_interval_s,
         "max_triggers_per_agent": args.max_triggers_per_agent,
+        "run_until_killed": args.run_until_killed,
         "global_launch_bucket_size": args.global_launch_bucket_size,
         "global_launch_refill_rate_per_s": args.global_launch_refill_rate_per_s,
         "skip_graceful_shutdown": args.skip_graceful_shutdown,
@@ -897,6 +909,7 @@ def build_params(args, config, run_label: str, run_dir: Path) -> dict:
             "max_concurrent_workers": config.max_concurrent_workers,
             "spawn_interval_mean_s": config.spawn_interval_mean_s,
             "benchmark_duration_s": total_duration,
+            "run_until_killed": args.run_until_killed,
             "worker_image": config.worker_image,
             "worker_memory_limit_mb": config.worker_memory_limit_mb,
             "worker_memory_mb": config.worker_memory_mb,
@@ -926,9 +939,10 @@ def control_loaded(
     agent_records: Dict[str, dict],
     benchmark_duration_s: float,
     use_approach_counts: bool,
+    stop_event: threading.Event,
 ) -> dict:
     start_time = time.monotonic()
-    end_time = time.monotonic() + benchmark_duration_s
+    end_time = None if args.run_until_killed else time.monotonic() + benchmark_duration_s
     control_samples = []
     last_counts = {agent_id: 0 for agent_id in agent_ids}
     last_errors = {}
@@ -938,7 +952,7 @@ def control_loaded(
     )
     bucket_deferred = 0
     agent_cursor = 0
-    while time.monotonic() < end_time:
+    while not stop_event.is_set() and (end_time is None or time.monotonic() < end_time):
         now = time.monotonic()
         counts, errors = fetch_active_counts(
             approach,
@@ -1020,7 +1034,8 @@ def control_loaded(
                 state.skipped_due_to_limit += 1
             state.next_spawn_at = now + exponential_delay_s(state.rng, args.spawn_interval_mean_s)
 
-        time.sleep(args.control_interval_s)
+        if sleep_or_stop(stop_event, args.control_interval_s):
+            break
 
     final_counts, final_errors = fetch_active_counts(
         approach,
@@ -1057,6 +1072,7 @@ def control_plateau(
     tracked_jobs: Dict[str, dict],
     agent_records: Dict[str, dict],
     use_approach_counts: bool,
+    stop_event: threading.Event,
 ) -> dict:
     targets = args.plateau_workers_per_agent
     hold_s = args.plateau_hold_s
@@ -1067,7 +1083,7 @@ def control_plateau(
     last_counts = {agent_id: 0 for agent_id in agent_ids}
     last_errors = {}
 
-    while time.monotonic() < end_time:
+    while not stop_event.is_set() and time.monotonic() < end_time:
         now = time.monotonic()
         elapsed = now - plateau_start
         stage_index = min(int(elapsed // hold_s), max(len(targets) - 1, 0))
@@ -1140,7 +1156,8 @@ def control_plateau(
             elif state.effective_active(observed) > target:
                 state.skipped_due_to_limit += 1
 
-        time.sleep(args.control_interval_s)
+        if sleep_or_stop(stop_event, args.control_interval_s):
+            break
 
     final_counts, final_errors = fetch_active_counts(
         approach,
@@ -1170,13 +1187,14 @@ def control_idle(
     tracked_jobs: Dict[str, dict],
     agent_records: Dict[str, dict],
     use_approach_counts: bool,
+    stop_event: threading.Event,
 ) -> dict:
     start_time = time.monotonic()
-    end_time = time.monotonic() + args.benchmark_duration_s
+    end_time = None if args.run_until_killed else time.monotonic() + args.benchmark_duration_s
     control_samples = []
     last_counts = {agent_id: 0 for agent_id in agent_ids}
     last_errors = {}
-    while time.monotonic() < end_time:
+    while not stop_event.is_set() and (end_time is None or time.monotonic() < end_time):
         counts, errors = fetch_active_counts(
             approach,
             agent_ids,
@@ -1193,7 +1211,8 @@ def control_idle(
             "t_s": round(time.monotonic() - start_time, 3),
             "active_workers": sum(counts.values()),
         })
-        time.sleep(args.control_interval_s)
+        if sleep_or_stop(stop_event, args.control_interval_s):
+            break
     final_counts, final_errors = fetch_active_counts(
         approach,
         agent_ids,
@@ -1239,6 +1258,8 @@ def main():
                         help="Collect zero-worker samples after agents start before control begins")
     parser.add_argument("--control-interval-s", type=float, default=1.0,
                         help="Host control-loop polling interval")
+    parser.add_argument("--run-until-killed", action="store_true",
+                        help="Run idle/loaded control loops until SIGINT or SIGTERM")
     parser.add_argument("--skip-graceful-shutdown", action="store_true",
                         help="Force-remove agents during teardown instead of waiting for graceful shutdown")
     parser.add_argument("--max-triggers-per-agent", type=int, default=0,
@@ -1287,6 +1308,8 @@ def main():
         parser.error("--global-launch-bucket-* only applies to loaded mode")
     if args.global_launch_refill_rate_per_s > 0 and args.global_launch_bucket_size <= 0:
         parser.error("--global-launch-bucket-size must be > 0 when --global-launch-refill-rate-per-s is set")
+    if args.run_until_killed and args.mode == "plateau":
+        parser.error("--run-until-killed is not supported in plateau mode")
     if args.mode == "plateau":
         args.plateau_workers_per_agent = parse_int_list(args.plateau_workers_per_agent)
         if not args.plateau_workers_per_agent:
@@ -1294,6 +1317,18 @@ def main():
         args.benchmark_duration_s = args.plateau_hold_s * len(args.plateau_workers_per_agent)
     else:
         args.plateau_workers_per_agent = parse_int_list(args.plateau_workers_per_agent)
+
+    stop_event = threading.Event()
+
+    def _request_stop(signum, _frame):
+        if stop_event.is_set():
+            return
+        name = signal.Signals(signum).name
+        print(f"[ironclaw-benchmark] received {name}; finalizing run", flush=True)
+        stop_event.set()
+
+    signal.signal(signal.SIGINT, _request_stop)
+    signal.signal(signal.SIGTERM, _request_stop)
 
     approaches = discover_approaches(suite="ironclaw")
     if args.approach not in approaches:
@@ -1318,7 +1353,7 @@ def main():
         orchestrator_base_port=args.orchestrator_base_port,
         max_concurrent_workers=args.max_concurrent_workers,
         spawn_interval_mean_s=args.spawn_interval_mean_s,
-        benchmark_duration_s=int(args.benchmark_duration_s),
+        benchmark_duration_s=0 if args.run_until_killed else int(args.benchmark_duration_s),
         worker_memory_mb=args.job_memory_mb,
         worker_duration_min_s=args.job_duration_min_s,
         worker_duration_max_s=args.job_duration_max_s,
@@ -1355,7 +1390,7 @@ def main():
             host=args.monitor_host, port=args.monitor_port,
             approach=args.approach, mode=args.mode, run_id=run_label,
             expected_agents=expected_agent_ids,
-            duration_s=int(args.benchmark_duration_s),
+            duration_s=None if args.run_until_killed else int(args.benchmark_duration_s),
             max_worker_slots=args.max_concurrent_workers,
         )
         monitor.start()
@@ -1385,7 +1420,8 @@ def main():
             count_workers=lambda: 0,
         )
         print(f"[ironclaw-benchmark] collecting no-agent baseline for {BASELINE_DURATION_S:.0f}s", flush=True)
-        time.sleep(BASELINE_DURATION_S)
+        if sleep_or_stop(stop_event, BASELINE_DURATION_S):
+            raise KeyboardInterrupt
         baseline_collector.stop()
         baseline_thread.join(timeout=10)
 
@@ -1440,7 +1476,8 @@ def main():
                 f"[ironclaw-benchmark] collecting zero-worker settle window for {args.pre_trigger_settle_s:.1f}s",
                 flush=True,
             )
-            time.sleep(args.pre_trigger_settle_s)
+            if sleep_or_stop(stop_event, args.pre_trigger_settle_s):
+                raise KeyboardInterrupt
 
         sync_host_evidence(approach, agent_roots, states, tracked_jobs, agent_records)
 
@@ -1457,6 +1494,7 @@ def main():
                 tracked_jobs,
                 agent_records,
                 use_approach_counts,
+                stop_event,
             )
         elif args.mode == "loaded":
             control_result = control_loaded(
@@ -1469,6 +1507,7 @@ def main():
                 agent_records,
                 args.benchmark_duration_s,
                 use_approach_counts,
+                stop_event,
             )
         else:
             control_result = control_plateau(
@@ -1480,6 +1519,7 @@ def main():
                 tracked_jobs,
                 agent_records,
                 use_approach_counts,
+                stop_event,
             )
             params["plateau_start_offset_s"] = control_result.get("plateau_start_offset_s", 0.0)
             summary["plateau_start_offset_s"] = params["plateau_start_offset_s"]
@@ -1578,8 +1618,14 @@ def main():
             "trigger_to_cleanup": summarize_latency_ms(job_records, "worker_cleaned_at_epoch_s"),
         }
         summary["elapsed_s"] = round(time.time() - start_ts, 1)
+        summary["run_until_killed"] = args.run_until_killed
+        summary["stop_requested"] = stop_event.is_set()
         write_summary(run_dir, summary)
 
+    except KeyboardInterrupt:
+        summary["interrupted"] = True
+        summary["stop_requested"] = True
+        run_error = None
     except Exception as exc:
         summary["error"] = str(exc)
         run_error = exc
@@ -1661,6 +1707,10 @@ def main():
 
     if (run_dir / "timeseries.jsonl").exists():
         summary.update(summarize_timeseries(run_dir, params, args.agents))
+
+    summary.setdefault("elapsed_s", round(time.time() - start_ts, 1))
+    summary["run_until_killed"] = args.run_until_killed
+    summary["stop_requested"] = stop_event.is_set() or bool(summary.get("stop_requested"))
 
     write_summary(run_dir, summary)
 

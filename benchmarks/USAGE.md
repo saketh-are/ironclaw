@@ -176,6 +176,16 @@ python3 ironclaw_benchmark.py \
   --global-launch-bucket-size 10 \
   --global-launch-refill-rate-per-s 2
 
+# Loaded until interrupted:
+python3 ironclaw_benchmark.py \
+  --approach ironclaw-sysbox-dind \
+  --agents 50 \
+  --mode loaded \
+  --run-until-killed \
+  --max-concurrent-workers 1 \
+  --global-launch-bucket-size 10 \
+  --global-launch-refill-rate-per-s 2
+
 # Plateau
 python3 ironclaw_benchmark.py \
   --approach ironclaw-docker \
@@ -192,6 +202,10 @@ python3 ironclaw_benchmark.py \
 - `--global-launch-refill-rate-per-s`: refill rate for that shared bucket
 
 This is useful when you want to keep many agents alive but deliberately avoid a thundering herd of worker launches.
+
+For `idle` and `loaded`, you can also make the benchmark run until `SIGINT`/`SIGTERM`:
+
+- `--run-until-killed`: ignore `--benchmark-duration-s` and keep the control loop active until interrupted
 
 For large runs where you care about the measurements more than graceful agent exit, add:
 
