@@ -97,3 +97,32 @@ pub fn write_worker_cleaned(job_id: Uuid, container_id: Option<&str>, container_
         }),
     );
 }
+
+pub fn write_agent_workspace_written(
+    db_path: Option<&std::path::Path>,
+    imported_files: usize,
+    seeded_files: usize,
+    backend: &str,
+) {
+    let Some(dir) = evidence_dir() else {
+        return;
+    };
+
+    let size_bytes = db_path
+        .and_then(|path| std::fs::metadata(path).ok())
+        .map(|meta| meta.len());
+
+    write_json(
+        dir.join("agent-workspace-written.json"),
+        json!({
+            "event": "agent_workspace_written",
+            "backend": backend,
+            "path": db_path.map(|p| p.display().to_string()),
+            "imported_files": imported_files,
+            "seeded_files": seeded_files,
+            "files_written": imported_files + seeded_files,
+            "size_bytes": size_bytes,
+            "ts_unix_ms": now_unix_ms(),
+        }),
+    );
+}

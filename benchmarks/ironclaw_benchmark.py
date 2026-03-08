@@ -235,6 +235,13 @@ def ensure_agent_record(agent_records: Dict[str, dict], agent_id: str) -> dict:
         "storage_at_epoch_s": None,
         "storage_path": None,
         "storage_verified": False,
+        "workspace_write_logged": False,
+        "workspace_write_at_epoch_s": None,
+        "workspace_write_path": None,
+        "workspace_write_backend": None,
+        "workspace_write_files": 0,
+        "workspace_write_size_bytes": None,
+        "workspace_write_verified": False,
         "exited_logged": False,
         "exited_at_epoch_s": None,
         "absent_verified": None,
@@ -288,6 +295,30 @@ def sync_host_evidence(
             elif event_name == "agent_exited":
                 agent_record["exited_logged"] = True
                 agent_record["exited_at_epoch_s"] = event_epoch_s or agent_record.get("exited_at_epoch_s")
+
+        workspace_write_path = evidence_dir / "agent-workspace-written.json"
+        if not agent_record.get("workspace_write_logged") and workspace_write_path.exists():
+            payload = read_json_file(workspace_write_path)
+            if payload:
+                agent_record["workspace_write_logged"] = True
+                agent_record["workspace_write_at_epoch_s"] = parse_unix_ms(
+                    payload.get("ts_unix_ms")
+                )
+                agent_record["workspace_write_backend"] = payload.get("backend")
+                agent_record["workspace_write_files"] = int(payload.get("files_written") or 0)
+                agent_record["workspace_write_size_bytes"] = payload.get("size_bytes")
+                path_str = payload.get("path")
+                host_path = approach.translate_agent_path(agent_id, path_str)
+                if host_path is not None:
+                    agent_record["workspace_write_path"] = str(host_path)
+                elif path_str:
+                    agent_record["workspace_write_path"] = path_str
+                if host_path and host_path.exists():
+                    try:
+                        size_bytes = host_path.stat().st_size
+                    except OSError:
+                        size_bytes = 0
+                    agent_record["workspace_write_verified"] = size_bytes > 0
 
         for created_path in sorted(evidence_dir.glob("job-created-*.json")):
             payload = read_json_file(created_path)
@@ -1141,6 +1172,11 @@ def main():
             1
             for record in agent_records.values()
             if record.get("storage_logged") and record.get("storage_verified")
+        )
+        summary["agents_with_workspace_write"] = sum(
+            1
+            for record in agent_records.values()
+            if record.get("workspace_write_logged") and record.get("workspace_write_verified")
         )
         summary["jobs_discovered"] = len(job_records)
         summary["jobs_started"] = sum(

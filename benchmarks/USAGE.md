@@ -15,7 +15,8 @@ The default benchmark flow is:
 The real benchmark now verifies these events from disk rather than trusting IronClaw job APIs:
 
 - agent started
-- agent wrote storage
+- benchmark wrapper wrote agent bootstrap storage proof
+- agent wrote workspace storage
 - worker job created
 - worker started
 - worker wrote storage
@@ -264,7 +265,8 @@ Important files:
 - `params.json`: exact benchmark inputs
 - `timeseries.jsonl`: memory and CPU samples
 - `summary.json`: aggregated resource stats plus evidence-derived lifecycle stats
-- `agents/<agent>/evidence/agent-events.jsonl`: agent start/storage/exit events
+- `agents/<agent>/evidence/agent-events.jsonl`: wrapper-emitted agent start/bootstrap storage/exit events
+- `agents/<agent>/evidence/agent-workspace-written.json`: IronClaw-native workspace write marker
 - `agents/<agent>/ironclaw/projects/<job-id>/.bench-evidence/worker-started-<job>.json`: worker-start marker
 - `agents/<agent>/ironclaw/projects/<job-id>/.bench-evidence/worker-storage-written-<job>.json`: worker storage-write marker
 - `agents/<agent>/ironclaw/projects/<job-id>/bench-test/output-...txt`: worker proof output
@@ -279,6 +281,7 @@ The real benchmark `summary.json` includes:
 - evidence stats:
   - `agents_started`
   - `agents_with_storage`
+  - `agents_with_workspace_write`
   - `jobs_discovered`
   - `jobs_started`
   - `jobs_with_storage_event`

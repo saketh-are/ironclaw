@@ -57,7 +57,6 @@ def ironclaw_agent_env(config, agent_id, gateway_port):
 
         # Database — embedded libSQL, no external deps
         "DATABASE_BACKEND": "libsql",
-        "LIBSQL_PATH": f"/tmp/ironclaw-{agent_id}.db",
 
         # LLM — point to the mock server running inside the container
         "LLM_BACKEND": "openai_compatible",
