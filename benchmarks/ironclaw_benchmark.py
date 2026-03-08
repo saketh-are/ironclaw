@@ -16,7 +16,9 @@ import argparse
 import json
 import os
 import random
+import re
 import shlex
+import subprocess as _subprocess
 import sys
 import textwrap
 import time
@@ -30,11 +32,84 @@ sys.path.insert(0, str(BENCH_DIR))
 
 from approaches.base import BenchmarkConfig, discover_approaches
 from runner.collect import Collector, HOST_CPU_FIELDS
+from runner.monitor import BenchmarkMonitor
 from runner.orchestrate import build_plateau_summary, compute_drift_slope, compute_percentiles
 
 
 LAUNCH_VISIBILITY_TIMEOUT_S = 30.0
 BASELINE_DURATION_S = 10.0
+
+
+def emit_monitor_event(agent_root: Path, agent_id: str, event_name: str, **kwargs) -> None:
+    """Append a monitor-compatible JSONL event to the agent's evidence log."""
+    log_path = agent_root / "evidence" / "agent-events.jsonl"
+    payload = {"event": event_name, "agent_id": agent_id, "t": time.time()}
+    payload.update(kwargs)
+    try:
+        with open(log_path, "a") as f:
+            f.write(json.dumps(payload) + "\n")
+    except OSError:
+        pass
+
+
+_TUNNEL_URL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
+_CLOUDFLARED_BIN = "/tmp/cloudflared"
+
+
+def start_agent_tunnels(
+    gateways: Dict[str, int],
+    timeout_s: int = 30,
+) -> Dict[str, str]:
+    """Start a cloudflared quick tunnel per agent port, return {agent_id: url}."""
+    if not Path(_CLOUDFLARED_BIN).exists():
+        print("[tunnels] cloudflared not found, skipping", flush=True)
+        return {}
+
+    procs: Dict[str, tuple] = {}
+    for agent_id, port in gateways.items():
+        log_path = f"/tmp/cf-agent-{agent_id}.log"
+        proc = _subprocess.Popen(
+            [_CLOUDFLARED_BIN, "tunnel", "--protocol", "http2",
+             "--url", f"http://localhost:{port}"],
+            stdout=open(log_path, "w"),
+            stderr=_subprocess.STDOUT,
+        )
+        procs[agent_id] = (proc, log_path)
+
+    urls: Dict[str, str] = {}
+    deadline = time.monotonic() + timeout_s
+    while len(urls) < len(procs) and time.monotonic() < deadline:
+        time.sleep(2)
+        for agent_id, (proc, log_path) in procs.items():
+            if agent_id in urls:
+                continue
+            try:
+                text = Path(log_path).read_text()
+                m = _TUNNEL_URL_RE.search(text)
+                if m:
+                    urls[agent_id] = m.group(0)
+            except OSError:
+                pass
+
+    for agent_id in urls:
+        print(f"[tunnels] {agent_id}: {urls[agent_id]}", flush=True)
+    missing = set(procs) - set(urls)
+    if missing:
+        print(f"[tunnels] WARNING: no URL for {missing}", flush=True)
+    return urls
+
+
+def stop_agent_tunnels() -> None:
+    """Kill all cloudflared tunnel processes started for agents."""
+    try:
+        result = _subprocess.run(
+            ["pkill", "-f", "cloudflared tunnel"],
+            capture_output=True,
+        )
+    except _subprocess.SubprocessError:
+        pass
+
+
 IDLE_WARMUP_S = 30.0
 LOADED_WARMUP_S = 60.0
 def parse_int_list(raw: str) -> List[int]:
@@ -368,6 +443,14 @@ def sync_host_evidence(
                 "failure_reason": None,
                 "worker_absent_verified": None,
             }
+            active = sum(
+                1 for r in tracked_jobs.values()
+                if r.get("agent_id") == agent_id
+                and r.get("job_created_at_epoch_s") is not None
+                and r.get("worker_cleaned_at_epoch_s") is None
+            )
+            emit_monitor_event(agent_root, agent_id, "worker_start",
+                               worker_id=job_id, active_workers=active)
 
         for callback_path in sorted(evidence_dir.glob("worker-callback-*.json")):
             payload = read_json_file(callback_path)
@@ -377,6 +460,7 @@ def sync_host_evidence(
             record = tracked_jobs.get(job_id)
             if not record:
                 continue
+            already_checked_in = record.get("callback_at_epoch_s") is not None
             record["callback_at_epoch_s"] = (
                 parse_unix_ms(payload.get("ts_unix_ms")) or record.get("callback_at_epoch_s")
             )
@@ -384,6 +468,10 @@ def sync_host_evidence(
             record["result_success"] = payload.get("success")
             record["failure_reason"] = payload.get("message")
             record["state"] = "completed" if payload.get("success") else "failed"
+            if not already_checked_in:
+                emit_monitor_event(agent_root, agent_id, "checkin",
+                                   worker_id=job_id,
+                                   success=payload.get("success", False))
 
         for cleaned_path in sorted(evidence_dir.glob("worker-cleaned-*.json")):
             payload = read_json_file(cleaned_path)
@@ -393,11 +481,21 @@ def sync_host_evidence(
             record = tracked_jobs.get(job_id)
             if not record:
                 continue
+            already_cleaned = record.get("worker_cleaned_at_epoch_s") is not None
             record["worker_cleaned_at_epoch_s"] = (
                 parse_unix_ms(payload.get("ts_unix_ms")) or record.get("worker_cleaned_at_epoch_s")
             )
             record["worker_cleanup_logged"] = True
             record["container_removed"] = payload.get("container_removed")
+            if not already_cleaned:
+                active = sum(
+                    1 for r in tracked_jobs.values()
+                    if r.get("agent_id") == agent_id
+                    and r.get("job_created_at_epoch_s") is not None
+                    and r.get("worker_cleaned_at_epoch_s") is None
+                )
+                emit_monitor_event(agent_root, agent_id, "worker_end",
+                                   worker_id=job_id, active_workers=active)
 
     for job_id, record in tracked_jobs.items():
         project_dir = record.get("project_dir")
@@ -1003,6 +1101,12 @@ def main():
                         help="Memory payload for the built-in memory-touch job profile")
     parser.add_argument("--output-dir", default="",
                         help="Optional explicit results directory")
+    parser.add_argument("--monitor-port", type=int, default=0,
+                        help="Port for live monitor dashboard (0 = disabled)")
+    parser.add_argument("--monitor-host", default="0.0.0.0",
+                        help="Host for monitor dashboard")
+    parser.add_argument("--tunnels", action="store_true", default=False,
+                        help="Start cloudflared tunnels for each agent UI")
     args = parser.parse_args()
 
     if args.job_profile == "custom" and not args.job_command:
@@ -1067,6 +1171,19 @@ def main():
     summary = dict(params)
     run_error = None
     cleanup_error = None
+    monitor = None
+
+    if args.monitor_port:
+        monitor = BenchmarkMonitor(
+            host=args.monitor_host, port=args.monitor_port,
+            approach=args.approach, mode=args.mode, run_id=run_label,
+            expected_agents=[f"agent-{i}" for i in range(args.agents)],
+            duration_s=int(args.benchmark_duration_s),
+            max_worker_slots=args.max_concurrent_workers,
+        )
+        monitor.start()
+        print(f"[ironclaw-benchmark] monitor: {monitor.url}", flush=True)
+        monitor.set_phase("setup", f"Setting up {args.approach}")
 
     try:
         print(f"[ironclaw-benchmark] setup {args.approach}", flush=True)
@@ -1085,11 +1202,25 @@ def main():
         baseline_collector.stop()
         baseline_thread.join(timeout=10)
 
+        if monitor:
+            monitor.set_phase("starting_agents", f"Launching {args.agents} agents")
         print(f"[ironclaw-benchmark] starting {args.agents} agents", flush=True)
         agent_ids = approach.start_agents(args.agents, config)
         summary["agent_ids"] = agent_ids
         summary["agent_start_elapsed_s"] = round(time.time() - start_ts, 1)
         agent_roots = approach.get_agent_roots()
+
+        if monitor:
+            log_paths = approach.live_event_log_paths(agent_ids, run_dir)
+            monitor.attach_agents(agent_ids, log_paths)
+            gateways = approach.get_agent_gateways()
+            if gateways:
+                monitor.state.set_agent_gateways(gateways)
+                if args.tunnels:
+                    print("[ironclaw-benchmark] starting cloudflared tunnels...", flush=True)
+                    tunnel_urls = start_agent_tunnels(gateways)
+                    if tunnel_urls:
+                        monitor.state.set_agent_tunnel_urls(tunnel_urls)
 
         if set(agent_roots) != set(agent_ids):
             raise RuntimeError("Approach did not expose host-visible roots for all agents")
@@ -1127,6 +1258,9 @@ def main():
 
         sync_host_evidence(approach, agent_roots, states, tracked_jobs, agent_records)
 
+        if monitor:
+            monitor.set_phase("running", f"{args.mode} control loop active")
+
         if args.mode == "idle":
             control_result = control_idle(
                 args, approach, agent_ids, agent_roots, states, tracked_jobs, agent_records
@@ -1151,6 +1285,8 @@ def main():
             with open(run_dir / "params.json", "w") as f:
                 json.dump(params, f, indent=2)
 
+        if monitor:
+            monitor.set_phase("cooldown", "Collecting final evidence")
         running_collector.stop()
         running_thread.join(timeout=30)
         ts_file.close()
@@ -1267,6 +1403,8 @@ def main():
                 cleanup_error = exc
             print(f"[ironclaw-benchmark] post-stop evidence sync error: {exc}", flush=True)
 
+    if monitor:
+        monitor.set_phase("cleanup", "Removing containers")
     print("[ironclaw-benchmark] cleaning up...", flush=True)
     try:
         approach.cleanup()
@@ -1332,6 +1470,13 @@ def main():
         "agents_cleanup_verified": summary.get("agents_cleanup_verified", 0),
         "jobs_cleanup_verified": summary.get("jobs_cleanup_verified", 0),
     }, indent=2), flush=True)
+
+    if args.tunnels:
+        stop_agent_tunnels()
+
+    if monitor:
+        monitor.set_phase("done", "Benchmark complete")
+        monitor.stop()
 
     if cleanup_error is not None:
         raise cleanup_error

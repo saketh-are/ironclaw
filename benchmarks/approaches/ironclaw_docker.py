@@ -230,6 +230,12 @@ class IronclawDockerApproach(Approach):
         )
         return result.returncode != 0
 
+    def live_event_log_paths(self, agent_ids: List[str], output_dir: Path) -> Dict[str, Path]:
+        return {
+            aid: self._agent_roots[aid] / "evidence" / "agent-events.jsonl"
+            for aid in agent_ids if aid in self._agent_roots
+        }
+
     def collect_agent_logs(self, agent_ids: List[str], output_dir) -> None:
         output_dir = Path(output_dir)
         for i, agent_id in enumerate(agent_ids):

@@ -129,6 +129,11 @@ body {
   padding: 4px 6px;
   min-width: 0;
   transition: border-color 0.3s, opacity 0.3s;
+  cursor: pointer;
+}
+.compact-tile:hover {
+  border-color: var(--accent);
+  opacity: 1 !important;
 }
 .compact-tile.pending { opacity: 0.72; }
 .compact-tile.stopped { opacity: 0.66; }
@@ -266,10 +271,16 @@ function renderCompact(state) {
     for (let index = 0; index < maxSlots; index += 1) {
       dots.push(`<div class="compact-dot${index < agent.active_workers ? " filled" : ""}"></div>`);
     }
+    const agentUrl = agent.tunnel_url
+      ? `${agent.tunnel_url}/?token=bench-token`
+      : agent.gateway_port ? `http://localhost:${agent.gateway_port}/?token=bench-token` : null;
+    const click = agentUrl ? `onclick="window.open('${agentUrl}', '_blank')"` : "";
+    const tip = agent.tunnel_url ? `${agent.id} — click to open UI` : agent.gateway_port ? `${agent.id} — port ${agent.gateway_port}` : agent.id;
+    const hasGw = !!(agent.tunnel_url || agent.gateway_port);
     return `
-      <div class="compact-tile ${statusClass(agent)} ${healthClass(agent)}" title="${agent.id}">
+      <div class="compact-tile ${statusClass(agent)} ${healthClass(agent)}" title="${tip}" ${click}>
         <div class="compact-tile-header">
-          <span class="compact-tile-name">${agent.id}</span>
+          <span class="compact-tile-name">${agent.id}${hasGw ? " ↗" : ""}</span>
           <span class="compact-tile-count">${agent.active_workers}/${maxSlots}</span>
         </div>
         <div class="compact-tile-dots">${dots.join("")}</div>
@@ -334,6 +345,7 @@ window.addEventListener("resize", () => {
 </body>
 </html>
 """
+
 
 
 def _agent_index(agent_id: str) -> int:
@@ -427,6 +439,24 @@ class MonitorState:
                 self._state["running_started_at"] = time.time()
             self._state["updated_at"] = time.time()
 
+    def set_agent_gateways(self, gateways: Dict[str, int]) -> None:
+        with self._lock:
+            self._state.setdefault("agent_gateways", {}).update(gateways)
+            self._state["updated_at"] = time.time()
+
+    def get_agent_gateways(self) -> Dict[str, int]:
+        with self._lock:
+            return dict(self._state.get("agent_gateways", {}))
+
+    def set_agent_tunnel_urls(self, urls: Dict[str, str]) -> None:
+        with self._lock:
+            self._state.setdefault("agent_tunnel_urls", {}).update(urls)
+            self._state["updated_at"] = time.time()
+
+    def get_agent_tunnel_urls(self) -> Dict[str, str]:
+        with self._lock:
+            return dict(self._state.get("agent_tunnel_urls", {}))
+
     def attach_agents(self, agent_ids: List[str]) -> None:
         with self._lock:
             self._state["agent_order"] = list(agent_ids)
@@ -435,12 +465,25 @@ class MonitorState:
                 self._ensure_agent(agent_id)
             self._state["updated_at"] = time.time()
 
+    _EVENT_ALIASES = {
+        "agent_started": "agent_start",
+        "agent_exited": "agent_stop",
+        "agent_exiting": "agent_stop",
+    }
+
     def ingest_event(self, agent_id: str, event: dict) -> None:
         event_name = event.get("event")
         if not event_name:
             return
+        event_name = self._EVENT_ALIASES.get(event_name, event_name)
 
-        event_ts = float(event.get("t") or time.time())
+        event_ts = event.get("t")
+        if not event_ts:
+            ts_ms = event.get("ts_unix_ms")
+            if ts_ms:
+                event_ts = float(ts_ms) / 1000.0
+        event_ts = float(event_ts or time.time())
+
         with self._lock:
             agent = self._ensure_agent(agent_id)
             agent["last_event_at"] = event_ts
@@ -574,6 +617,8 @@ class MonitorState:
                         key=lambda worker: worker["index"],
                     )
                 ]
+                gateways = state.get("agent_gateways", {})
+                tunnel_urls = state.get("agent_tunnel_urls", {})
                 agents.append(
                     {
                         "id": agent["id"],
@@ -591,6 +636,8 @@ class MonitorState:
                         "worker_runtime": agent["worker_runtime"],
                         "last_event_at": agent["last_event_at"],
                         "workers": workers,
+                        "gateway_port": gateways.get(agent_id),
+                        "tunnel_url": tunnel_urls.get(agent_id),
                     }
                 )
 
