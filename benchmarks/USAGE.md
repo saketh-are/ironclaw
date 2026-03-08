@@ -90,6 +90,20 @@ make ironclaw-benchmark APPROACH=ironclaw-sysbox-dind AGENTS=5
 
 Requires `sysbox-runc` registered in the host Docker daemon config.
 
+### `ironclaw-hybrid-firecracker`
+
+Real IronClaw agents in Docker containers, with worker jobs executed inside Firecracker microVMs. This keeps the real agent/gateway path while moving worker execution onto a KVM-backed microVM boundary.
+
+```bash
+# One-time setup
+sudo make ironclaw-fc-setup
+
+# Benchmark run
+make ironclaw-benchmark APPROACH=ironclaw-hybrid-firecracker AGENTS=3
+```
+
+Requires `firecracker`, `/dev/kvm`, `/dev/net/tun`, and the Firecracker kernel/rootfs assets under `approaches/hybrid_firecracker_assets/`.
+
 ### `ironclaw-podman`
 
 Each agent gets its own rootless Podman user and user-scoped Podman service.

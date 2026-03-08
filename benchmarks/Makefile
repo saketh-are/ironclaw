@@ -1,5 +1,5 @@
 .PHONY: images worker-image agent-image agent-dind-image agent-sysbox-image vm-image fc-kernel fc-rootfs fc-image fc-setup podman-setup run run-idle run-plateau run-sweep plot compare decompose clean help \
-       ironclaw-binary ironclaw-sandbox-image ironclaw-agent-image ironclaw-agent-dind-image ironclaw-images smoke-test \
+       ironclaw-binary ironclaw-sandbox-image ironclaw-agent-image ironclaw-agent-dind-image ironclaw-agent-fc-image ironclaw-fc-rootfs ironclaw-fc-setup ironclaw-images smoke-test \
        bench bench-list ironclaw-benchmark
 
 -include config.env
@@ -79,7 +79,16 @@ ironclaw-agent-image: ironclaw-binary workload/Dockerfile.ironclaw-agent workloa
 ironclaw-agent-dind-image: ironclaw-binary workload/Dockerfile.ironclaw-agent-dind workload/mock_llm_server.py workload/docker_socket_proxy.py workload/ironclaw-dind-entrypoint.sh ## Build ironclaw agent DinD image
 	docker build -t ironclaw-bench-agent-dind:latest -f workload/Dockerfile.ironclaw-agent-dind workload/
 
-ironclaw-images: ironclaw-sandbox-image ironclaw-agent-image ironclaw-agent-dind-image ## Build all ironclaw benchmark images
+ironclaw-agent-fc-image: ironclaw-binary workload/Dockerfile.ironclaw-agent-fc workload/mock_llm_server.py workload/ironclaw-fc-entrypoint.sh workload/firecracker_bench_launch.py ## Build ironclaw agent Firecracker image
+	docker build -t ironclaw-bench-agent-fc:latest -f workload/Dockerfile.ironclaw-agent-fc workload/
+
+ironclaw-fc-rootfs: ironclaw-binary ## Build Firecracker rootfs with real ironclaw worker (requires root for loopback mount)
+	chmod +x $(FC_ASSETS_DIR)/build-ironclaw-rootfs.sh
+	bash $(FC_ASSETS_DIR)/build-ironclaw-rootfs.sh
+
+ironclaw-fc-setup: fc-kernel ironclaw-fc-rootfs ironclaw-agent-fc-image ## Full real IronClaw Firecracker setup
+
+ironclaw-images: ironclaw-sandbox-image ironclaw-agent-image ironclaw-agent-dind-image ## Build the standard ironclaw benchmark images
 
 # --- Smoke tests ---
 
@@ -155,9 +164,9 @@ decompose: ## Fit per-agent idle slope and print plateau worker costs
 clean: ## Remove images, VMs, Firecracker artifacts, and results
 	-docker rm -f $$(docker ps -a --filter "label=bench_role" --format '{{.Names}}') 2>/dev/null
 	-docker rm -f $$(docker ps -a --filter "name=bench-" --format '{{.Names}}') 2>/dev/null
-	-docker rmi -f bench-worker:latest bench-agent:latest bench-agent-dind:latest bench-agent-sysbox:latest bench-agent-fc:latest 2>/dev/null
+	-docker rmi -f bench-worker:latest bench-agent:latest bench-agent-dind:latest bench-agent-sysbox:latest bench-agent-fc:latest ironclaw-bench-agent-fc:latest 2>/dev/null
 	-bash $(VM_ASSETS_DIR)/launch.sh stop-all 2>/dev/null
 	rm -rf results/*/
 	rm -f $(VM_ASSETS_DIR)/alpine-agent.qcow2 $(VM_ASSETS_DIR)/.alpine-base.qcow2 $(VM_ASSETS_DIR)/.worker-image.tar
-	rm -f $(FC_ASSETS_DIR)/vmlinux-5.10.bin $(FC_ASSETS_DIR)/worker-rootfs.ext4
+	rm -f $(FC_ASSETS_DIR)/vmlinux-5.10.bin $(FC_ASSETS_DIR)/worker-rootfs.ext4 $(FC_ASSETS_DIR)/ironclaw-worker-rootfs.ext4
 	@echo "Clean complete."

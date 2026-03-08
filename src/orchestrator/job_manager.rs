@@ -40,6 +40,12 @@ impl std::fmt::Display for JobMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobBackend {
+    Container,
+    External,
+}
+
 /// Configuration for the container job manager.
 #[derive(Debug, Clone)]
 pub struct ContainerJobConfig {
@@ -112,6 +118,7 @@ pub struct ContainerHandle {
     pub container_id: String,
     pub state: ContainerState,
     pub mode: JobMode,
+    pub backend: JobBackend,
     pub created_at: DateTime<Utc>,
     pub project_dir: Option<PathBuf>,
     pub task_description: String,
@@ -270,6 +277,7 @@ impl ContainerJobManager {
             container_id: String::new(), // set after container creation
             state: ContainerState::Creating,
             mode,
+            backend: JobBackend::Container,
             created_at: Utc::now(),
             project_dir: project_dir.clone(),
             task_description: task.to_string(),
@@ -292,6 +300,41 @@ impl ContainerJobManager {
                 Err(e)
             }
         }
+    }
+
+    /// Register a benchmark-local external worker job.
+    ///
+    /// This allocates a real worker token and in-memory handle without creating
+    /// a container. External launchers (e.g. Firecracker benchmark helpers)
+    /// can then boot a worker process that calls the normal orchestrator APIs.
+    pub async fn create_external_job(
+        &self,
+        job_id: Uuid,
+        task: &str,
+        project_dir: Option<PathBuf>,
+        mode: JobMode,
+        credential_grants: Vec<CredentialGrant>,
+    ) -> Result<String, OrchestratorError> {
+        let token = self.token_store.create_token(job_id).await;
+        self.token_store
+            .store_grants(job_id, credential_grants)
+            .await;
+
+        let handle = ContainerHandle {
+            job_id,
+            container_id: String::new(),
+            state: ContainerState::Running,
+            mode,
+            backend: JobBackend::External,
+            created_at: Utc::now(),
+            project_dir,
+            task_description: task.to_string(),
+            last_worker_status: None,
+            worker_iteration: 0,
+            completion_result: None,
+        };
+        self.containers.write().await.insert(job_id, handle);
+        Ok(token)
     }
 
     /// Inner implementation of container creation (separated for cleanup).
@@ -468,10 +511,13 @@ impl ContainerJobManager {
     pub async fn stop_job(&self, job_id: Uuid) -> Result<(), OrchestratorError> {
         let container_id = {
             let containers = self.containers.read().await;
-            containers
+            let handle = containers
                 .get(&job_id)
-                .map(|h| h.container_id.clone())
-                .ok_or(OrchestratorError::ContainerNotFound { job_id })?
+                .ok_or(OrchestratorError::ContainerNotFound { job_id })?;
+            if handle.backend == JobBackend::External {
+                return Ok(());
+            }
+            handle.container_id.clone()
         };
 
         if container_id.is_empty() {
@@ -538,13 +584,19 @@ impl ContainerJobManager {
         }
 
         // Stop container and revoke token (but keep handle in map)
-        let container_id = {
+        let (container_id, backend) = {
             let containers = self.containers.read().await;
-            containers.get(&job_id).map(|h| h.container_id.clone())
+            containers
+                .get(&job_id)
+                .map(|h| (h.container_id.clone(), h.backend))
+                .unwrap_or_else(|| (String::new(), JobBackend::Container))
         };
-        if let Some(cid) = container_id
-            && !cid.is_empty()
-        {
+        if backend == JobBackend::External {
+            // External worker launchers are responsible for writing the
+            // worker-cleaned benchmark evidence after the VM/process has
+            // actually exited and host-side teardown has completed.
+        } else if !container_id.is_empty() {
+            let cid = container_id;
             let mut removed = false;
             match self.docker().await {
                 Ok(docker) => {
@@ -700,6 +752,7 @@ mod tests {
                     container_id: "test".to_string(),
                     state: ContainerState::Running,
                     mode: JobMode::Worker,
+                    backend: JobBackend::Container,
                     created_at: chrono::Utc::now(),
                     project_dir: None,
                     task_description: "test job".to_string(),

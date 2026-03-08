@@ -19,6 +19,7 @@ GATEWAY_AUTH_TOKEN = "bench-token"
 # Image names
 IRONCLAW_AGENT_IMAGE = "ironclaw-bench-agent:latest"
 IRONCLAW_AGENT_DIND_IMAGE = "ironclaw-bench-agent-dind:latest"
+IRONCLAW_AGENT_FC_IMAGE = "ironclaw-bench-agent-fc:latest"
 IRONCLAW_SANDBOX_IMAGE = "ironclaw-bench-sandbox:latest"
 SANDBOX_WORKER_TAR_PATH = "/tmp/ironclaw-bench-sandbox.tar"
 BENCH_COMMAND_BEGIN = "<BENCH_COMMAND>"

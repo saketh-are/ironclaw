@@ -245,9 +245,21 @@ async fn async_main() -> anyhow::Result<()> {
         ironclaw::sandbox::DockerStatus::Disabled
     };
 
+    let external_benchmark_jobs_only = std::env::var("IRONCLAW_BENCHMARK_EXTERNAL_WORKERS_ONLY")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false);
+    let benchmark_job_manager_enabled =
+        config.sandbox.enabled && (docker_status.is_ok() || external_benchmark_jobs_only);
+
+    if external_benchmark_jobs_only && config.sandbox.enabled && !docker_status.is_ok() {
+        tracing::info!(
+            "Benchmark external-worker mode enabled without Docker; container sandbox execution remains unavailable"
+        );
+    }
+
     let job_event_tx: Option<
         tokio::sync::broadcast::Sender<(uuid::Uuid, ironclaw::channels::web::types::SseEvent)>,
-    > = if config.sandbox.enabled && docker_status.is_ok() {
+    > = if benchmark_job_manager_enabled {
         let (tx, _) = tokio::sync::broadcast::channel(256);
         Some(tx)
     } else {
@@ -259,7 +271,7 @@ async fn async_main() -> anyhow::Result<()> {
     >::new()));
 
     let container_job_manager: Option<Arc<ContainerJobManager>> =
-        if config.sandbox.enabled && docker_status.is_ok() {
+        if benchmark_job_manager_enabled {
             let token_store = TokenStore::new();
             let job_config = ContainerJobConfig {
                 image: config.sandbox.image.clone(),
@@ -293,7 +305,7 @@ async fn async_main() -> anyhow::Result<()> {
                 }
             });
 
-            if config.claude_code.enabled {
+            if config.claude_code.enabled && docker_status.is_ok() {
                 tracing::info!(
                     "Claude Code sandbox mode available (model: {}, max_turns: {})",
                     config.claude_code.model,

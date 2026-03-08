@@ -896,6 +896,7 @@ mod tests {
                     container_id: "test-container".to_string(),
                     state: crate::orchestrator::job_manager::ContainerState::Running,
                     mode: crate::orchestrator::job_manager::JobMode::Worker,
+                    backend: crate::orchestrator::job_manager::JobBackend::Container,
                     created_at: chrono::Utc::now(),
                     project_dir: None,
                     task_description: "test".to_string(),
