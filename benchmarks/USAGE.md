@@ -266,6 +266,7 @@ Important files:
 - `summary.json`: aggregated resource stats plus evidence-derived lifecycle stats
 - `agents/<agent>/evidence/agent-events.jsonl`: agent start/storage/exit events
 - `agents/<agent>/ironclaw/projects/<job-id>/.bench-evidence/worker-started-<job>.json`: worker-start marker
+- `agents/<agent>/ironclaw/projects/<job-id>/.bench-evidence/worker-storage-written-<job>.json`: worker storage-write marker
 - `agents/<agent>/ironclaw/projects/<job-id>/bench-test/output-...txt`: worker proof output
 
 ### Summary Fields
@@ -280,6 +281,7 @@ The real benchmark `summary.json` includes:
   - `agents_with_storage`
   - `jobs_discovered`
   - `jobs_started`
+  - `jobs_with_storage_event`
   - `jobs_with_callback_event`
   - `jobs_with_proof`
   - `jobs_cleaned`
@@ -289,6 +291,7 @@ The real benchmark `summary.json` includes:
 - latency breakdowns:
   - `trigger_to_job_created`
   - `trigger_to_started`
+  - `trigger_to_worker_storage`
   - `trigger_to_proof`
   - `trigger_to_callback`
   - `trigger_to_cleanup`

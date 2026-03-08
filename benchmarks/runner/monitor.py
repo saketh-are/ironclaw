@@ -235,6 +235,12 @@ function renderSummary(state) {
     ["Successful Check-ins", ratio(lifecycle.successful_checkins || 0, launchedWorkers)],
     ["Clean Worker Exits", ratio(lifecycle.workers_finished || 0, inactiveWorkers)],
   ];
+  if (state.storage_validation_enabled) {
+    stats.push(
+      ["Worker Storage Success", ratio(lifecycle.worker_storage_written || 0, launchedWorkers)],
+      ["Agent Storage Success", ratio(lifecycle.agent_storage_verified || 0, inactiveWorkers)],
+    );
+  }
   document.getElementById("summary-strip").innerHTML = stats.map(([label, value]) => `
     <div class="summary-card">
       <span class="summary-label">${label}</span>
@@ -362,10 +368,13 @@ def _blank_agent(agent_id: str) -> dict:
         "index": _agent_index(agent_id),
         "status": "pending",
         "benchmark_started": False,
+        "storage_validation": False,
         "active_workers": 0,
         "total_spawned": 0,
         "total_checkins": 0,
         "total_completed": 0,
+        "total_worker_storage_written": 0,
+        "total_agent_storage_verified": 0,
         "worker_backend": None,
         "worker_runtime": None,
         "last_event_at": None,
@@ -373,6 +382,8 @@ def _blank_agent(agent_id: str) -> dict:
         "_spawned_ids": set(),
         "_checkin_ids": set(),
         "_completed_ids": set(),
+        "_worker_storage_ids": set(),
+        "_agent_storage_ids": set(),
     }
 
 
@@ -439,6 +450,7 @@ class MonitorState:
                 agent["status"] = "running"
                 agent["worker_backend"] = event.get("worker_backend")
                 agent["worker_runtime"] = event.get("worker_runtime")
+                agent["storage_validation"] = bool(event.get("storage_validation"))
                 max_workers = event.get("max_concurrent_workers")
                 if isinstance(max_workers, int):
                     self._state["max_worker_slots"] = max(
@@ -495,6 +507,24 @@ class MonitorState:
                     agent["total_checkins"] += 1
                 return
 
+            if event_name == "worker_storage_written":
+                worker_id = event.get("worker_id")
+                if not worker_id:
+                    return
+                if worker_id not in agent["_worker_storage_ids"]:
+                    agent["_worker_storage_ids"].add(worker_id)
+                    agent["total_worker_storage_written"] += 1
+                return
+
+            if event_name == "agent_storage_verified":
+                worker_id = event.get("worker_id")
+                if not worker_id:
+                    return
+                if worker_id not in agent["_agent_storage_ids"]:
+                    agent["_agent_storage_ids"].add(worker_id)
+                    agent["total_agent_storage_verified"] += 1
+                return
+
             if event_name == "worker_end":
                 worker_id = event.get("worker_id")
                 if worker_id:
@@ -549,10 +579,13 @@ class MonitorState:
                         "index": agent["index"],
                         "status": agent["status"],
                         "benchmark_started": agent["benchmark_started"],
+                        "storage_validation": agent["storage_validation"],
                         "active_workers": agent["active_workers"],
                         "total_spawned": agent["total_spawned"],
                         "total_checkins": agent["total_checkins"],
                         "total_completed": agent["total_completed"],
+                        "total_worker_storage_written": agent["total_worker_storage_written"],
+                        "total_agent_storage_verified": agent["total_agent_storage_verified"],
                         "worker_backend": agent["worker_backend"],
                         "worker_runtime": agent["worker_runtime"],
                         "last_event_at": agent["last_event_at"],
@@ -573,6 +606,18 @@ class MonitorState:
             total_spawned = sum(agent["total_spawned"] for agent in agents)
             total_checkins = sum(agent["total_checkins"] for agent in agents)
             total_completed = sum(agent["total_completed"] for agent in agents)
+            total_worker_storage_written = sum(
+                agent["total_worker_storage_written"] for agent in agents
+            )
+            total_agent_storage_verified = sum(
+                agent["total_agent_storage_verified"] for agent in agents
+            )
+            storage_validation_enabled = any(
+                agent["storage_validation"]
+                or agent["total_worker_storage_written"] > 0
+                or agent["total_agent_storage_verified"] > 0
+                for agent in agents
+            )
 
             return {
                 "approach": state["approach"],
@@ -593,12 +638,15 @@ class MonitorState:
                 "total_spawned": total_spawned,
                 "total_checkins": total_checkins,
                 "total_completed": total_completed,
+                "storage_validation_enabled": storage_validation_enabled,
                 "lifecycle": {
                     "agents_started": started_agents,
                     "benchmark_started": benchmark_started_agents,
                     "workers_launched": total_spawned,
                     "successful_checkins": total_checkins,
                     "workers_finished": total_completed,
+                    "worker_storage_written": total_worker_storage_written,
+                    "agent_storage_verified": total_agent_storage_verified,
                     "agents_stopped": stopped_agents,
                     "active_workers": active_workers,
                 },

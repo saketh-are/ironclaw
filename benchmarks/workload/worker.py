@@ -76,16 +76,18 @@ CHECKIN_RETRY_DELAY_S = 2
 STORAGE_CHALLENGE = os.environ.get("STORAGE_CHALLENGE", "")
 
 
-def do_storage_validation() -> bool:
+def do_storage_validation() -> tuple[bool, bool]:
     """Validate workspace bind-mount by reading challenge and writing reply.
 
-    Returns True if the challenge file was read and matched STORAGE_CHALLENGE.
-    When storage validation is not active (no STORAGE_CHALLENGE), returns False.
+    Returns (read_ok, write_ok).
+    When storage validation is not active (no STORAGE_CHALLENGE), returns
+    (False, False).
     """
     if not STORAGE_CHALLENGE:
-        return False
+        return False, False
 
     read_ok = False
+    write_ok = False
     try:
         with open("/workspace/challenge.txt") as f:
             token = f.read().strip()
@@ -106,20 +108,22 @@ def do_storage_validation() -> bool:
             f.write(STORAGE_CHALLENGE)
             f.flush()
             os.fsync(f.fileno())
+        write_ok = True
         print("[worker] Storage write OK: reply.txt written", flush=True)
     except Exception as e:
         print(f"[worker] Storage write FAILED: {e}", flush=True)
 
-    return read_ok
+    return read_ok, write_ok
 
 
-def do_checkin(storage_read_ok: bool = False):
+def do_checkin(storage_read_ok: bool = False, storage_write_ok: bool = False):
     """Send a single mandatory checkin to the orchestrator. Retries on failure."""
     worker_id = WORKER_NAME or socket.gethostname()
     url = f"{ORCHESTRATOR_URL}/checkin"
     payload_dict = {"worker_id": worker_id}
     if STORAGE_CHALLENGE:
         payload_dict["storage_read_ok"] = storage_read_ok
+        payload_dict["storage_write_ok"] = storage_write_ok
     payload = json.dumps(payload_dict).encode()
     for attempt in range(1, CHECKIN_MAX_RETRIES + 1):
         try:
@@ -188,11 +192,14 @@ def main():
     )
 
     # Storage validation: proves workspace bind-mount works (read + write)
-    storage_read_ok = do_storage_validation()
+    storage_read_ok, storage_write_ok = do_storage_validation()
 
     # Mandatory checkin: proves the network path to the orchestrator works
     if ORCHESTRATOR_URL:
-        do_checkin(storage_read_ok=storage_read_ok)
+        do_checkin(
+            storage_read_ok=storage_read_ok,
+            storage_write_ok=storage_write_ok,
+        )
 
     if lifetime_mode == "hold":
         print("[worker] Hold mode: waiting for stop signal.", flush=True)

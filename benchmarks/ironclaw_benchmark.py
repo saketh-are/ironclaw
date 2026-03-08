@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import random
+import shlex
 import sys
 import textwrap
 import time
@@ -102,37 +103,58 @@ def render_job_command(
     }
 
     if custom_command:
-        return custom_command.format(**context)
+        base_command = custom_command.format(**context)
+    else:
+        parts = [
+            "set -eu",
+            f"mkdir -p {proof_dir}",
+            f"echo proof-{agent_id}-{trigger_index} > {proof_file}",
+        ]
 
-    parts = [
-        "set -eu",
-        f"mkdir -p {proof_dir}",
-        f"echo proof-{agent_id}-{trigger_index} > {proof_file}",
-    ]
+        if profile == "custom":
+            raise ValueError("custom job profile requires --job-command")
+        if profile == "memory-touch":
+            if memory_mb <= 0:
+                raise ValueError("memory-touch profile requires --job-memory-mb > 0")
+            parts.append(textwrap.dedent(f"""\
+                python3 - <<'PY'
+                import random
+                import time
 
-    if profile == "custom":
-        raise ValueError("custom job profile requires --job-command")
-    if profile == "memory-touch":
-        if memory_mb <= 0:
-            raise ValueError("memory-touch profile requires --job-memory-mb > 0")
-        parts.append(textwrap.dedent(f"""\
-            python3 - <<'PY'
-            import random
-            import time
+                size = {memory_mb} * 1024 * 1024
+                step = 4096
+                buf = bytearray(size)
+                rnd = random.Random({trigger_index})
+                for offset in range(0, size, step):
+                    buf[offset] = rnd.randrange(256)
+                time.sleep({duration_s})
+                PY"""))
 
-            size = {memory_mb} * 1024 * 1024
-            step = 4096
-            buf = bytearray(size)
-            rnd = random.Random({trigger_index})
-            for offset in range(0, size, step):
-                buf[offset] = rnd.randrange(256)
-            time.sleep({duration_s})
-            PY"""))
+        if duration_s > 0 and profile != "memory-touch":
+            parts.append(f"sleep {duration_s}")
+        base_command = " && ".join(parts)
 
-    if duration_s > 0 and profile != "memory-touch":
-        parts.append(f"sleep {duration_s}")
+    emit_storage_event = textwrap.dedent(f"""\
+        if [ -f {shlex.quote(proof_file)} ]; then
+            mkdir -p /workspace/.bench-evidence
+            python3 - "/workspace/.bench-evidence/worker-storage-written-${{IRONCLAW_JOB_ID:-unknown}}.json" "${{IRONCLAW_JOB_ID:-unknown}}" {shlex.quote(proof_file)} <<'PY'
+        import json
+        import sys
+        import time
 
-    return " && ".join(parts)
+        output_path, job_id, proof_path = sys.argv[1:]
+        payload = {{
+            "event": "worker_storage_written",
+            "job_id": job_id,
+            "ts_unix_ms": int(time.time() * 1000),
+            "path": proof_path,
+        }}
+        with open(output_path, "w") as f:
+            json.dump(payload, f)
+        PY
+        fi
+    """).strip()
+    return f"{base_command} && {emit_storage_event}"
 
 
 def proof_relpath(agent_id: str, trigger_index: int) -> str:
@@ -210,6 +232,7 @@ def ensure_agent_record(agent_records: Dict[str, dict], agent_id: str) -> dict:
         "started_logged": False,
         "started_at_epoch_s": None,
         "storage_logged": False,
+        "storage_at_epoch_s": None,
         "storage_path": None,
         "storage_verified": False,
         "exited_logged": False,
@@ -243,6 +266,9 @@ def sync_host_evidence(
                 )
             elif event_name == "agent_storage_written":
                 agent_record["storage_logged"] = True
+                agent_record["storage_at_epoch_s"] = (
+                    event_epoch_s or agent_record.get("storage_at_epoch_s")
+                )
                 path_str = event.get("path")
                 host_path = approach.translate_agent_path(agent_id, path_str)
                 if host_path is not None:
@@ -292,6 +318,9 @@ def sync_host_evidence(
                 "job_mode": payload.get("mode"),
                 "job_created_at_epoch_s": parse_unix_ms(payload.get("ts_unix_ms")) or now_epoch_s,
                 "worker_started_at_epoch_s": None,
+                "worker_storage_at_epoch_s": None,
+                "worker_storage_logged": False,
+                "worker_storage_path": None,
                 "callback_at_epoch_s": None,
                 "worker_cleaned_at_epoch_s": None,
                 "proof_verified": None,
@@ -343,6 +372,18 @@ def sync_host_evidence(
             if payload:
                 record["worker_started_at_epoch_s"] = parse_unix_ms(payload.get("ts_unix_ms"))
                 record["started_at"] = record.get("worker_started_at_epoch_s")
+
+        worker_storage_path = (
+            project_path / ".bench-evidence" / f"worker-storage-written-{job_id}.json"
+        )
+        if record.get("worker_storage_logged") is not True and worker_storage_path.exists():
+            payload = read_json_file(worker_storage_path)
+            if payload:
+                record["worker_storage_logged"] = True
+                record["worker_storage_at_epoch_s"] = parse_unix_ms(
+                    payload.get("ts_unix_ms")
+                )
+                record["worker_storage_path"] = payload.get("path")
 
         if record.get("proof_relpath") and record.get("proof_verified") is None:
             proof_path = project_path / record["proof_relpath"]
@@ -1105,6 +1146,9 @@ def main():
         summary["jobs_started"] = sum(
             1 for record in job_records if record.get("worker_started_at_epoch_s")
         )
+        summary["jobs_with_storage_event"] = sum(
+            1 for record in job_records if record.get("worker_storage_logged") is True
+        )
         summary["jobs_with_callback_event"] = sum(
             1 for record in job_records if record.get("callback_at_epoch_s")
         )
@@ -1130,6 +1174,7 @@ def main():
         summary["job_latency_ms"] = {
             "trigger_to_job_created": summarize_latency_ms(job_records, "job_created_at_epoch_s"),
             "trigger_to_started": summarize_latency_ms(job_records, "worker_started_at_epoch_s"),
+            "trigger_to_worker_storage": summarize_latency_ms(job_records, "worker_storage_at_epoch_s"),
             "trigger_to_proof": summarize_latency_ms(job_records, "proof_verified_at_epoch_s"),
             "trigger_to_callback": summarize_latency_ms(job_records, "callback_at_epoch_s"),
             "trigger_to_cleanup": summarize_latency_ms(job_records, "worker_cleaned_at_epoch_s"),

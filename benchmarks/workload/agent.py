@@ -264,6 +264,8 @@ def get_checkin_count() -> int:
 
 _storage_results = {}  # worker_name → {"read_ok": bool, "write_ok": bool}
 _storage_lock = threading.Lock()
+_worker_storage_events = set()
+_agent_storage_events = set()
 
 # Spawn → checkin cold-start tracking
 _spawn_timestamps = {}   # worker_name → time.time() at worker_start emit
@@ -284,6 +286,24 @@ def record_storage_write(worker_name: str, write_ok: bool):
         if worker_name not in _storage_results:
             _storage_results[worker_name] = {"read_ok": False, "write_ok": False}
         _storage_results[worker_name]["write_ok"] = write_ok
+
+
+def mark_worker_storage_event(worker_name: str) -> bool:
+    """Return True once per worker when the worker reports a successful write."""
+    with _storage_lock:
+        if worker_name in _worker_storage_events:
+            return False
+        _worker_storage_events.add(worker_name)
+        return True
+
+
+def mark_agent_storage_event(worker_name: str) -> bool:
+    """Return True once per worker when the agent verifies the write persisted."""
+    with _storage_lock:
+        if worker_name in _agent_storage_events:
+            return False
+        _agent_storage_events.add(worker_name)
+        return True
 
 
 def get_storage_summary() -> dict:
@@ -526,6 +546,8 @@ class OrchestratorHandler(BaseHTTPRequestHandler):
             # Record storage read result if present
             if "storage_read_ok" in data:
                 record_storage_read(worker_id, bool(data["storage_read_ok"]))
+            if bool(data.get("storage_write_ok")) and mark_worker_storage_event(worker_id):
+                emit_event("worker_storage_written", worker_id=worker_id)
             self._respond_ok()
         elif self.path == "/control/start":
             _benchmark_start.set()
@@ -705,6 +727,8 @@ def spawn_worker(client, rng: random.Random) -> bool:
         if ws_local and ws_token:
             write_ok = check_worker_reply(ws_local, ws_token)
             record_storage_write(worker_name, write_ok)
+            if write_ok and mark_agent_storage_event(worker_name):
+                emit_event("agent_storage_verified", worker_id=worker_name)
         try:
             container.remove(force=True)
         except Exception:
@@ -956,6 +980,8 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
             reply = _read_reply_from_ext4(ws_img_path)
             write_ok = reply == ws_token
             record_storage_write(worker_name, write_ok)
+            if write_ok and mark_agent_storage_event(worker_name):
+                emit_event("agent_storage_verified", worker_id=worker_name)
 
         count = _dec_active()
         emit_event("worker_end", worker_id=worker_name, active_workers=count)
@@ -1237,6 +1263,7 @@ def main():
                max_concurrent_workers=MAX_CONCURRENT_WORKERS,
                duration_s=BENCHMARK_DURATION_S,
                rng_seed=AGENT_SEED,
+               storage_validation=STORAGE_VALIDATION,
                worker_runtime=WORKER_RUNTIME or "default",
                worker_backend=WORKER_BACKEND,
                worker_lifetime_mode=WORKER_LIFETIME_MODE,
