@@ -164,8 +164,27 @@ body {
 }
 .compact-tile-dots {
   display: flex;
+  flex-wrap: wrap;
   gap: 3px;
 }
+/* Medium tiles (3-5 columns) */
+.compact-grid.size-md .compact-tile { padding: 8px 10px; }
+.compact-grid.size-md .compact-tile-header { margin-bottom: 5px; }
+.compact-grid.size-md .compact-tile-name { font-size: 12px; }
+.compact-grid.size-md .compact-tile-count { font-size: 11px; }
+.compact-grid.size-md .compact-tile-dots { gap: 4px; }
+.compact-grid.size-md .compact-dot { width: 22px; height: 12px; border-radius: 3px; }
+.compact-grid.size-md .compact-dot.emoji-dot { font-size: 15px; line-height: 12px; }
+.compact-grid.size-md .compact-dot.timer-dot { font-size: 9px; line-height: 12px; }
+/* Large tiles (1-2 columns) */
+.compact-grid.size-lg .compact-tile { padding: 12px 16px; }
+.compact-grid.size-lg .compact-tile-header { margin-bottom: 8px; }
+.compact-grid.size-lg .compact-tile-name { font-size: 15px; }
+.compact-grid.size-lg .compact-tile-count { font-size: 13px; }
+.compact-grid.size-lg .compact-tile-dots { gap: 5px; }
+.compact-grid.size-lg .compact-dot { width: 30px; height: 18px; border-radius: 3px; }
+.compact-grid.size-lg .compact-dot.emoji-dot { font-size: 22px; line-height: 18px; }
+.compact-grid.size-lg .compact-dot.timer-dot { font-size: 12px; line-height: 18px; }
 .compact-dot {
   width: 14px;
   height: 8px;
@@ -175,6 +194,22 @@ body {
 }
 .compact-dot.filled {
   background: var(--green);
+}
+.compact-dot.emoji-dot {
+  background: none;
+  font-size: 10px;
+  line-height: 8px;
+  text-align: center;
+  overflow: hidden;
+}
+.compact-dot.timer-dot {
+  position: relative;
+  font-size: 7px;
+  line-height: 8px;
+  text-align: center;
+  color: rgba(0,0,0,0.5);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
 }
 .empty-msg {
   font-size: 11px;
@@ -214,8 +249,12 @@ function formatTime(seconds) {
 }
 
 function gridColumns(agentCount) {
+  const n = agentCount || 1;
   const width = document.getElementById("main-area").clientWidth || window.innerWidth;
-  return Math.max(1, Math.min(agentCount || 1, Math.floor((width + 4) / 104)));
+  const maxCols = Math.floor((width + 4) / 104);
+  // Prefer a squarish layout: ceil(sqrt(n)) columns, capped by screen width.
+  const sqrtCols = Math.ceil(Math.sqrt(n));
+  return Math.max(1, Math.min(sqrtCols, maxCols));
 }
 
 function statusClass(agent) {
@@ -236,20 +275,15 @@ function renderSummary(state) {
   const lifecycle = state.lifecycle || {};
   const expectedAgents = state.expected_agents || state.num_agents || 0;
   const launchedWorkers = lifecycle.workers_launched || 0;
-  const inactiveWorkers = Math.max(0, launchedWorkers - (state.active_workers || 0));
+  const inactiveWorkers = launchedWorkers - (state.active_workers || 0);
   const stats = [
     ["Active Agents", ratio(state.started_agents || 0, expectedAgents)],
     ["Active Workers", String(state.active_workers || 0)],
-    ["Successful Check-ins", ratio(lifecycle.successful_checkins || 0, launchedWorkers)],
+    ["Cumulative Workers", String(launchedWorkers)],
+    ["Worker Check-ins", String(lifecycle.successful_checkins || 0)],
+    ["Persisted Worker Writes", String(lifecycle.worker_storage_written || 0)],
+    ["Clean Exits", ratio(lifecycle.workers_finished || 0, inactiveWorkers)],
   ];
-  if (state.storage_validation_enabled) {
-    stats.push(
-      ["Persisted Worker Writes", ratio(lifecycle.worker_storage_written || 0, launchedWorkers)],
-    );
-  }
-  stats.push(
-    ["Clean Worker Exits", ratio(lifecycle.workers_finished || 0, inactiveWorkers)],
-  );
   document.getElementById("summary-strip").innerHTML = stats.map(([label, value]) => `
     <div class="summary-card">
       <span class="summary-label">${label}</span>
@@ -270,9 +304,30 @@ function renderCompact(state) {
 
   const cols = gridColumns(state.num_agents);
   const cards = agents.map(agent => {
+    const now = Date.now() / 1000;
+    // Active workers: have started_at but no emoji (real job IDs).
+    // Checked-in workers: have emoji (checkin-generated IDs).
+    // We fill slots with: emojis from most recent checkins, then timers
+    // for active-but-waiting workers, then empty slots.
+    const allWorkers = agent.workers || [];
+    const waiting = allWorkers.filter(w => w.started_at && !w.checkin_emoji)
+      .sort((a, b) => a.started_at - b.started_at);
+    const withEmoji = allWorkers.filter(w => w.checkin_emoji);
+    const recentEmojis = withEmoji.slice(-maxSlots);
     const dots = [];
-    for (let index = 0; index < maxSlots; index += 1) {
-      dots.push(`<div class="compact-dot${index < agent.active_workers ? " filled" : ""}"></div>`);
+    // Fill slots: waiting workers first (with timers), then recent emojis, then empty
+    const numWaiting = Math.min(waiting.length, maxSlots);
+    const emojiSlots = Math.min(recentEmojis.length, maxSlots - numWaiting);
+    for (let i = 0; i < numWaiting; i++) {
+      const w = waiting[i];
+      const elapsed = Math.round(now - w.started_at);
+      dots.push(`<div class="compact-dot filled timer-dot" title="${w.id} waiting for checkin">${elapsed}s</div>`);
+    }
+    for (let i = recentEmojis.length - emojiSlots; i < recentEmojis.length; i++) {
+      dots.push(`<div class="compact-dot filled emoji-dot" title="${recentEmojis[i].id} checked in">${recentEmojis[i].checkin_emoji}</div>`);
+    }
+    for (let i = dots.length; i < maxSlots; i++) {
+      dots.push(`<div class="compact-dot"></div>`);
     }
     const hasGw = !!agent.gateway_port;
     const click = hasGw ? `onclick="window.open('/agent-loader/${agent.id}/', '_blank')"` : "";
@@ -288,7 +343,8 @@ function renderCompact(state) {
     `;
   }).join("");
 
-  area.innerHTML = `<div class="compact-grid" style="--cols:${cols}">${cards}</div>`;
+  const sizeClass = cols <= 2 ? 'size-lg' : cols <= 5 ? 'size-md' : '';
+  area.innerHTML = `<div class="compact-grid ${sizeClass}" style="--cols:${cols}">${cards}</div>`;
 }
 
 function phaseClass(phase) {
@@ -406,7 +462,9 @@ def _blank_worker(worker_id: str) -> dict:
         "started_at": None,
         "checked_in": False,
         "checkin_at": None,
+        "checkin_emoji": None,
         "cold_start_ms": None,
+        "storage_written": False,
         "rss_kb": -1,
     }
 
@@ -549,9 +607,7 @@ class MonitorState:
                 if worker_id not in agent["_spawned_ids"]:
                     agent["_spawned_ids"].add(worker_id)
                     agent["total_spawned"] += 1
-                agent["active_workers"] = int(
-                    event.get("active_workers", len(agent["workers"]))
-                )
+                agent["active_workers"] = len(agent["workers"])
                 if agent["status"] == "pending":
                     agent["status"] = "running"
                 return
@@ -560,19 +616,35 @@ class MonitorState:
                 worker_id = event.get("worker_id")
                 if not worker_id:
                     return
-                worker = agent["workers"].setdefault(worker_id, _blank_worker(worker_id))
-                worker["rss_kb"] = int(event.get("rss_kb", -1))
+                worker = agent["workers"].get(worker_id)
+                if worker is not None:
+                    worker["rss_kb"] = int(event.get("rss_kb", -1))
                 return
 
             if event_name == "checkin":
                 worker_id = event.get("worker_id")
                 if not worker_id:
                     return
-                worker = agent["workers"].setdefault(worker_id, _blank_worker(worker_id))
+                # The checkin POST carries a sandbox-generated UUID (real
+                # job ID is scrubbed by shell.rs), so correlate to the
+                # oldest started-but-unchecked-in worker for this agent.
+                worker = agent["workers"].get(worker_id)
+                if worker is None:
+                    candidates = [
+                        w for w in agent["workers"].values()
+                        if w["started_at"] and not w["checked_in"]
+                    ]
+                    if not candidates:
+                        return
+                    worker = min(candidates, key=lambda w: w["started_at"])
                 worker["checked_in"] = True
                 worker["checkin_at"] = event_ts
-                if "cold_start_ms" in event:
-                    worker["cold_start_ms"] = event["cold_start_ms"]
+                if event.get("emoji"):
+                    worker["checkin_emoji"] = event["emoji"]
+                if worker["started_at"] and event_ts:
+                    worker["cold_start_ms"] = round(
+                        (event_ts - worker["started_at"]) * 1000
+                    )
                 if worker_id not in agent["_checkin_ids"]:
                     agent["_checkin_ids"].add(worker_id)
                     agent["total_checkins"] += 1
@@ -582,6 +654,9 @@ class MonitorState:
                 worker_id = event.get("worker_id")
                 if not worker_id:
                     return
+                worker = agent["workers"].get(worker_id)
+                if worker is not None:
+                    worker["storage_written"] = True
                 if worker_id not in agent["_worker_storage_ids"]:
                     agent["_worker_storage_ids"].add(worker_id)
                     agent["total_worker_storage_written"] += 1
@@ -599,32 +674,30 @@ class MonitorState:
             if event_name == "worker_end":
                 worker_id = event.get("worker_id")
                 if worker_id:
-                    agent["workers"].pop(worker_id, None)
-                    if worker_id not in agent["_completed_ids"]:
+                    worker = agent["workers"].pop(worker_id, None)
+                    if worker is not None \
+                            and worker["checked_in"] \
+                            and (worker["storage_written"] or not agent["storage_validation"]) \
+                            and worker_id not in agent["_completed_ids"]:
                         agent["_completed_ids"].add(worker_id)
                         agent["total_completed"] += 1
-                agent["active_workers"] = int(
-                    event.get("active_workers", len(agent["workers"]))
-                )
+                agent["active_workers"] = len(agent["workers"])
                 return
 
             if event_name == "status":
-                agent["active_workers"] = int(
-                    event.get("active_workers", len(agent["workers"]))
-                )
                 return
 
             if event_name == "agent_stop":
                 agent["status"] = "stopped"
-                agent["active_workers"] = 0
                 agent["workers"] = {}
+                agent["active_workers"] = len(agent["workers"])
 
     def snapshot(self) -> dict:
         with self._lock:
             state = self._state
             elapsed_s = 0.0
             if state["running_started_at"] is not None:
-                elapsed_s = max(0.0, time.time() - state["running_started_at"])
+                elapsed_s = time.time() - state["running_started_at"]
             agents = []
             for agent_id in state["agent_order"]:
                 agent = self._ensure_agent(agent_id)
@@ -636,6 +709,7 @@ class MonitorState:
                         "started_at": worker["started_at"],
                         "checked_in": worker["checked_in"],
                         "checkin_at": worker["checkin_at"],
+                        "checkin_emoji": worker["checkin_emoji"],
                         "cold_start_ms": worker["cold_start_ms"],
                         "rss_kb": worker["rss_kb"],
                     }
@@ -895,6 +969,34 @@ class _MonitorHandler(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def do_POST(self) -> None:
+        if self.path == "/api/checkin":
+            cl = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(cl) if cl > 0 else b""
+            try:
+                data = json.loads(raw)
+            except (json.JSONDecodeError, ValueError):
+                self.send_error(400, "invalid JSON")
+                return
+            agent_id = data.get("agent_id", "")
+            worker_id = data.get("job_id", "")
+            emoji = data.get("emoji", "")
+            if not agent_id or not worker_id:
+                self.send_error(400, "missing agent_id or job_id")
+                return
+            self.server.monitor.state.ingest_event(agent_id, {
+                "event": "checkin",
+                "worker_id": worker_id,
+                "emoji": emoji,
+                "t": time.time(),
+            })
+            body = b'{"ok":true}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if self._proxy_agent("POST"):
             return
         self.send_error(404)

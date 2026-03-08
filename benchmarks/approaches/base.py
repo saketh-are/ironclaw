@@ -56,6 +56,9 @@ class BenchmarkConfig:
     # Storage validation
     storage_validation: bool = False
 
+    # Extra domains to allow through the sandbox network proxy (comma-separated).
+    sandbox_extra_domains: str = ""
+
     # Run metadata
     run_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     run_dir: str = ""

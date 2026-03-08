@@ -38,6 +38,29 @@ LAUNCH_VISIBILITY_TIMEOUT_S = 30.0
 BASELINE_DURATION_S = 10.0
 
 
+def _detect_docker_host_ip() -> str:
+    """Detect the IP address of the Docker bridge gateway on the host.
+
+    This is the IP that containers can use to reach the host.  Falls back
+    to 172.17.0.1 (the Docker default) if detection fails.
+    """
+    import subprocess as _sp
+    try:
+        out = _sp.run(
+            ["ip", "-4", "addr", "show", "docker0"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if out.returncode == 0:
+            for line in out.stdout.splitlines():
+                line = line.strip()
+                if line.startswith("inet "):
+                    # e.g. "inet 172.20.0.1/16 brd ..."
+                    return line.split()[1].split("/")[0]
+    except Exception:
+        pass
+    return "172.17.0.1"
+
+
 def emit_monitor_event(agent_root: Path, agent_id: str, event_name: str, **kwargs) -> None:
     """Append a monitor-compatible JSONL event to the agent's evidence log."""
     log_path = agent_root / "evidence" / "agent-events.jsonl"
@@ -103,6 +126,7 @@ def render_job_command(
     trigger_index: int,
     duration_s: int,
     memory_mb: int,
+    checkin_url: str = "",
 ) -> str:
     proof_dir = "/workspace/bench-test"
     proof_file = f"{proof_dir}/output-{agent_id}-{trigger_index}.txt"
@@ -118,14 +142,59 @@ def render_job_command(
         "alloc_file": alloc_file,
     }
 
+    # Emoji check-in: worker picks a random emoji and POSTs it through the
+    # sandbox network proxy to the benchmark monitor, proving end-to-end
+    # network connectivity between the sandbox container and the host.
+    checkin_snippet = ""
+    if checkin_url:
+        # The heredoc is single-quoted ('CHECKIN') so the shell passes
+        # content through verbatim.  The f-string injects agent_id and
+        # checkin_url; double braces {{ }} become literal braces for Python.
+        checkin_snippet = textwrap.dedent(f"""\
+            python3 - <<'CHECKIN'
+import json, random, uuid, urllib.request, os
+EMOJIS = [chr(c) for c in [
+    0x1f980, 0x1f40d, 0x1f40b, 0x1f525, 0x26a1, 0x1f31f, 0x1f48e,
+    0x1f680, 0x1f3af, 0x1f6e1, 0x1f527, 0x2699, 0x1f9ea, 0x1f3b2,
+    0x1f308, 0x1f419, 0x1f98a, 0x1f422, 0x1f985, 0x1f41d, 0x1f340,
+    0x1f33b, 0x1f52e, 0x1f3b5, 0x1f3d4,
+]]
+emoji = random.choice(EMOJIS)
+job_id = os.environ.get("IRONCLAW_JOB_ID") or str(uuid.uuid4())[:12]
+payload = json.dumps({{
+    "agent_id": "{agent_id}",
+    "job_id": job_id,
+    "emoji": emoji,
+}}).encode()
+req = urllib.request.Request(
+    "{checkin_url}",
+    data=payload,
+    headers={{"Content-Type": "application/json"}},
+)
+try:
+    urllib.request.urlopen(req, timeout=5)
+except Exception:
+    pass
+CHECKIN
+        """).strip()
+
     if custom_command:
         base_command = custom_command.format(**context)
     else:
+        # Build command: setup → proof → checkin (early!) → workload → storage event
+        # NOTE: heredocs (<<'TAG' ... TAG) require the delimiter on its own
+        # line, so we join with newlines (\n) rather than ` && ` when a
+        # heredoc is involved.
         parts = [
             "set -eu",
             f"mkdir -p {proof_dir}",
             f"echo proof-{agent_id}-{trigger_index} > {proof_file}",
         ]
+
+        # Emit the emoji check-in right after proof file write, before the
+        # long sleep/workload.  This gives early visibility on the dashboard.
+        if checkin_snippet:
+            parts.append(checkin_snippet)
 
         if profile == "custom":
             raise ValueError("custom job profile requires --job-command")
@@ -148,7 +217,7 @@ def render_job_command(
 
         if duration_s > 0 and profile != "memory-touch":
             parts.append(f"sleep {duration_s}")
-        base_command = " && ".join(parts)
+        base_command = "\n".join(parts)
 
     emit_storage_event = textwrap.dedent(f"""\
         if [ -f {shlex.quote(proof_file)} ]; then
@@ -170,7 +239,10 @@ def render_job_command(
         PY
         fi
     """).strip()
-    return f"{base_command} && {emit_storage_event}"
+    # For custom commands, inject checkin before the custom command if available.
+    if custom_command and checkin_snippet:
+        return f"{checkin_snippet}\n{base_command}\n{emit_storage_event}"
+    return f"{base_command}\n{emit_storage_event}"
 
 
 def proof_relpath(agent_id: str, trigger_index: int) -> str:
@@ -444,11 +516,8 @@ def sync_host_evidence(
             if payload:
                 record["worker_started_at_epoch_s"] = parse_unix_ms(payload.get("ts_unix_ms"))
                 record["started_at"] = record.get("worker_started_at_epoch_s")
-                agent_id = record.get("agent_id")
-                agent_root = agent_roots.get(agent_id) if agent_id else None
-                if agent_root:
-                    emit_monitor_event(agent_root, agent_id, "checkin",
-                                       worker_id=job_id, success=True)
+                # Note: checkin events are now emitted by the worker itself
+                # via HTTP POST through the sandbox network proxy, not here.
 
         evidence_dir = project_path / ".bench-evidence"
         worker_storage_candidates = [
@@ -825,6 +894,7 @@ def control_loaded(
                     state.trigger_index,
                     duration_s,
                     args.job_memory_mb,
+                    checkin_url=getattr(args, "checkin_url", ""),
                 )
                 state.trigger_attempts += 1
                 ok = approach.trigger_worker_spawn(
@@ -923,6 +993,7 @@ def control_plateau(
                     state.trigger_index,
                     duration_s,
                     args.job_memory_mb,
+                    checkin_url=getattr(args, "checkin_url", ""),
                 )
                 state.trigger_attempts += 1
                 ok = approach.trigger_worker_spawn(
@@ -1128,6 +1199,16 @@ def main():
         monitor.start()
         print(f"[ironclaw-benchmark] monitor: {monitor.url}", flush=True)
         monitor.set_phase("setup", f"Setting up {args.approach}")
+        # Build a checkin URL that sandbox workers can reach through the
+        # network proxy.  Detect the Docker bridge gateway IP so this works
+        # regardless of Docker network configuration.
+        _, monitor_port = monitor.address
+        docker_host_ip = _detect_docker_host_ip()
+        args.checkin_url = f"http://{docker_host_ip}:{monitor_port}/api/checkin"
+        # Allow sandbox workers to reach the monitor host through the proxy.
+        config.sandbox_extra_domains = docker_host_ip
+    else:
+        args.checkin_url = ""
 
     try:
         print(f"[ironclaw-benchmark] setup {args.approach}", flush=True)
