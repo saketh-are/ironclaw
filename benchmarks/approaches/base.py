@@ -121,6 +121,16 @@ class Approach(ABC):
         """One-time setup: build images, VM disks, etc."""
         ...
 
+    def prepare_agents(self, n: int, config: BenchmarkConfig) -> None:
+        """
+        Optional pre-baseline hook.
+
+        Use this to perform one-time, per-agent host preparation that should not
+        be charged to the measured benchmark window, such as warming per-user
+        image stores.
+        """
+        return None
+
     @abstractmethod
     def start_agents(self, n: int, config: BenchmarkConfig) -> List[str]:
         """

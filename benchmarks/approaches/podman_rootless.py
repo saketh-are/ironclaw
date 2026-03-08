@@ -169,6 +169,7 @@ class PodmanRootlessApproach(Approach):
     def __init__(self):
         self._agent_ids: List[str] = []
         self._users: List[str] = []
+        self._prepared_users: List[str] = []
         self._host_ports: Dict[str, int] = {}
         self._agent_pids: Dict[str, int] = {}
         self._last_worker_counts: Dict[str, int] = {}
@@ -222,13 +223,77 @@ class PodmanRootlessApproach(Approach):
 
         print(f"[{self.name}] Setup complete. run_id={self._run_id}")
 
+    def _ensure_user(self, user: str, uid: int) -> None:
+        subprocess.run(
+            ["sudo", "useradd", "--create-home", "--shell", "/bin/bash",
+             "--uid", str(uid), user],
+            capture_output=True, text=True,
+        )
+        subprocess.run(
+            ["sudo", "chmod", "711", f"/home/{user}"],
+            capture_output=True,
+        )
+
+    def _activate_user_runtime(self, user: str) -> None:
+        subprocess.run(
+            ["sudo", "loginctl", "enable-linger", user],
+            capture_output=True, text=True,
+        )
+
+        for attempt in range(5):
+            r = _run_as_user(user, [
+                "systemctl", "--user", "enable", "--now", "podman.socket",
+            ])
+            if r.returncode == 0:
+                break
+            time.sleep(2)
+        if r.returncode != 0:
+            raise RuntimeError(
+                f"Failed to start podman.socket for {user}: "
+                f"{r.stderr.strip()}"
+            )
+
+    def _preload_images(self, user: str, images_to_load: List[str]) -> None:
+        for image in images_to_load:
+            print(f"[{self.name}] Loading {image} into {user}...")
+            _load_docker_image_to_user(user, image)
+
+    def _quiesce_user_runtime(self, user: str) -> None:
+        _run_as_user(user, ["systemctl", "--user", "stop", "podman.socket"])
+        subprocess.run(
+            ["sudo", "loginctl", "disable-linger", user],
+            capture_output=True,
+        )
+        subprocess.run(
+            ["sudo", "loginctl", "terminate-user", user],
+            capture_output=True,
+        )
+
+    def prepare_agents(self, n: int, config: BenchmarkConfig) -> None:
+        self._prepared_users = []
+        images_to_load = [self._agent_image, config.worker_image]
+        print(f"[{self.name}] Preloading images for {n} users before baseline...")
+        for i in range(n):
+            user = f"{USER_PREFIX}{i}"
+            uid = BASE_UID + i
+            self._ensure_user(user, uid)
+            self._activate_user_runtime(user)
+            self._preload_images(user, images_to_load)
+            # Leave the image store warm but drop the user runtime so the
+            # baseline does not absorb systemd/dbus/socket activation costs.
+            self._quiesce_user_runtime(user)
+            self._prepared_users.append(user)
+
     # ------------------------------------------------------------------
     # start_agents
     # ------------------------------------------------------------------
 
     def start_agents(self, n: int, config: BenchmarkConfig) -> List[str]:
         self._agent_ids = []
-        self._users = []
+        if len(self._prepared_users) == n:
+            self._users = list(self._prepared_users)
+        else:
+            self._users = []
         self._host_ports = {}
         self._agent_pids = {}
         self._last_worker_counts = {}
@@ -249,47 +314,13 @@ class PodmanRootlessApproach(Approach):
             host_log_file.touch()
             host_log_file.chmod(0o666)
 
-            # 1. Create unprivileged user
-            subprocess.run(
-                ["sudo", "useradd", "--create-home", "--shell", "/bin/bash",
-                 "--uid", str(uid), user],
-                capture_output=True, text=True,
-            )
-            # Make home dir traversable so orchestrator can stat proxy socket
-            subprocess.run(
-                ["sudo", "chmod", "711", f"/home/{user}"],
-                capture_output=True,
-            )
-
-            # 2. Enable linger so systemd user instance stays alive
-            subprocess.run(
-                ["sudo", "loginctl", "enable-linger", user],
-                capture_output=True, text=True,
-            )
-
-            # 3. Start podman.socket for this user.
-            #    Wait briefly for the user's systemd instance to become
-            #    reachable via D-Bus after enable-linger — without this,
-            #    rapid user creation can hit "Transport endpoint is not
-            #    connected" when there are many agents.
-            for attempt in range(5):
-                r = _run_as_user(user, [
-                    "systemctl", "--user", "enable", "--now", "podman.socket",
-                ])
-                if r.returncode == 0:
-                    break
-                time.sleep(2)
-            if r.returncode != 0:
-                raise RuntimeError(
-                    f"Failed to start podman.socket for {user}: "
-                    f"{r.stderr.strip()}"
-                )
-
-            # 4. Load images into this user's Podman store
-            #    Pipe via stdin to avoid OCI/docker-archive format issues.
-            for image in images_to_load:
-                print(f"[{self.name}] Loading {image} into {user}...")
-                _load_docker_image_to_user(user, image)
+            if user not in self._users:
+                self._ensure_user(user, uid)
+                self._activate_user_runtime(user)
+                self._preload_images(user, images_to_load)
+                self._users.append(user)
+            else:
+                self._activate_user_runtime(user)
 
             # 4.5. Start filtering API proxy for this user
             allowed_image = f"localhost/{config.worker_image}"
@@ -388,7 +419,6 @@ class PodmanRootlessApproach(Approach):
                 )
 
             self._agent_ids.append(agent_id)
-            self._users.append(user)
             self._host_ports[agent_id] = host_port
             self._event_log_paths[agent_id] = host_log_file
             print(f"[{self.name}] Started {container_name} as user {user}")
@@ -592,7 +622,7 @@ class PodmanRootlessApproach(Approach):
             self.remove_containers()
 
         # Disable linger, terminate user sessions, and remove users.
-        for user in self._users:
+        for user in sorted(set(self._users) | set(self._prepared_users)):
             subprocess.run(
                 ["sudo", "loginctl", "disable-linger", user],
                 capture_output=True,
@@ -611,6 +641,7 @@ class PodmanRootlessApproach(Approach):
         self._agent_pids = {}
         self._last_worker_counts = {}
         self._event_log_paths = {}
+        self._prepared_users = []
         if self._host_log_dir is not None:
             shutil.rmtree(self._host_log_dir, ignore_errors=True)
             self._host_log_dir = None

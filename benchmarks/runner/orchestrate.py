@@ -643,6 +643,7 @@ def run_benchmark(
     # Create collector
     collector = Collector(interval_ms=sample_interval_ms)
     agent_ids = []
+    cleaned_up = False
     monitor = None
     if monitor_port is not None:
         expected_agent_ids = [f"agent-{i}" for i in range(num_agents)]
@@ -661,6 +662,9 @@ def run_benchmark(
         print(f"Live monitor: {monitor.url}")
 
     try:
+        # Optional pre-baseline preparation (e.g. warming per-user image stores)
+        approach.prepare_agents(num_agents, config)
+
         # Phase 1: Baseline (10s, no agents)
         print("Recording baseline memory (10s)...")
         baseline_collector = Collector(interval_ms=sample_interval_ms, phase="baseline")
@@ -729,6 +733,7 @@ def run_benchmark(
             approach.remove_containers()
         # Phase 7: Approach-specific cleanup (e.g. Podman user deletion, VM dir removal)
         approach.cleanup()
+        cleaned_up = True
         print("Waiting for memory to settle (10s)...")
         if monitor is not None:
             monitor.set_phase("settling", "Waiting for memory to settle.")
@@ -739,6 +744,11 @@ def run_benchmark(
             monitor.set_phase("failed", str(exc))
         raise
     finally:
+        if not cleaned_up:
+            try:
+                approach.cleanup()
+            except Exception as e:
+                print(f"Warning: cleanup after failure raised: {e}")
         collector.stop()
         collector_thread.join(timeout=5)
         ts_file.close()
