@@ -106,6 +106,7 @@ class IronclawVmQemuApproach(Approach):
             # errors during migrations.
             env["IRONCLAW_BASE_DIR"] = "/mnt/benchshare/ironclaw"
             env["LIBSQL_PATH"] = "/var/lib/ironclaw-bench/ironclaw.db"
+            env["GATEWAY_READY_TIMEOUT_S"] = "120"
 
             env_pairs = [f"{k}={v}" for k, v in env.items()]
             cmd = [

@@ -79,13 +79,12 @@ IRONCLAW_PID=$!
 trap 'emit_event "agent_exiting" "signal=TERM" ""; kill -TERM "$IRONCLAW_PID" 2>/dev/null || true' INT TERM
 trap 'status=$?; emit_event "agent_exited" "exit_code=$status" ""' EXIT
 
-python3 - <<'PY'
+if ! python3 - "$GATEWAY_READY_TIMEOUT_S" <<'PY'
 import socket
 import sys
 import time
-import os
 
-timeout_s = float(os.environ.get("GATEWAY_READY_TIMEOUT_S", "30"))
+timeout_s = float(sys.argv[1])
 deadline = time.time() + timeout_s
 while time.time() < deadline:
     try:
@@ -95,6 +94,10 @@ while time.time() < deadline:
         time.sleep(0.1)
 sys.exit(1)
 PY
+then
+    echo "[entrypoint] ERROR: ironclaw gateway failed to become ready within ${GATEWAY_READY_TIMEOUT_S}s" >&2
+    exit 1
+fi
 
 emit_event "agent_started" "pid=$IRONCLAW_PID" "port=3000"
 
