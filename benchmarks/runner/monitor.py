@@ -21,6 +21,14 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 
+_INDEX_HTML_PATH = Path(__file__).with_name("monitor.html")
+
+
+def _load_index_html() -> str:
+    """Read monitor.html from disk on each request so edits take effect live."""
+    return _INDEX_HTML_PATH.read_text(encoding="utf-8")
+
+
 INDEX_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -288,7 +296,8 @@ body {
 
 <script>
 const STATE_URL = "/api/state";
-const POLL_MS = 100;
+const POLL_MS = 500;
+const RENDER_MS = 100;
 
 // Stable slot assignments: agentId -> { workerId -> slotIndex }
 const slotMap = {};
@@ -508,16 +517,27 @@ function renderLifecycle(state) {
     steps.map(s => `<span class="lifecycle-step">${s}</span>`).join('<span class="lifecycle-arrow">\u2192</span>');
 }
 
-async function tick() {
+let lastState = null;
+
+async function poll() {
   try {
     const response = await fetch(STATE_URL, { cache: "no-store" });
-    if (response.ok) update(await response.json());
+    if (response.ok) {
+      lastState = await response.json();
+      update(lastState);
+    }
   } finally {
-    window.setTimeout(tick, POLL_MS);
+    window.setTimeout(poll, POLL_MS);
   }
 }
 
-tick();
+function renderTick() {
+  if (lastState) renderCompact(lastState);
+  window.setTimeout(renderTick, RENDER_MS);
+}
+
+poll();
+renderTick();
 window.addEventListener("resize", () => {
   fetch(STATE_URL, { cache: "no-store" })
     .then(response => response.json())
@@ -635,6 +655,8 @@ class MonitorState:
     ) -> None:
         now = time.time()
         self._lock = threading.Lock()
+        self._snapshot_cache: Optional[bytes] = None
+        self._snapshot_cache_at: float = 0.0
         self._state = {
             "approach": approach,
             "mode": mode,
@@ -842,7 +864,23 @@ class MonitorState:
                     w["exited"] = True
                 agent["active_workers"] = 0
 
+    def snapshot_json(self) -> bytes:
+        """Return cached JSON bytes, recomputed at most once per 150ms."""
+        now = time.monotonic()
+        if (
+            self._snapshot_cache is not None
+            and now - self._snapshot_cache_at < 0.15
+        ):
+            return self._snapshot_cache
+        snap = self._snapshot_inner()
+        self._snapshot_cache = json.dumps(snap).encode()
+        self._snapshot_cache_at = now
+        return self._snapshot_cache
+
     def snapshot(self) -> dict:
+        return json.loads(self.snapshot_json())
+
+    def _snapshot_inner(self) -> dict:
         with self._lock:
             state = self._state
             elapsed_s = 0.0
@@ -1054,7 +1092,7 @@ class _MonitorHTTPServer(ThreadingHTTPServer):
 class _MonitorHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path in ("/", "/index.html"):
-            body = INDEX_HTML.encode("utf-8")
+            body = _load_index_html().encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
@@ -1064,7 +1102,7 @@ class _MonitorHandler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/api/state":
-            body = json.dumps(self.server.monitor.state.snapshot()).encode("utf-8")
+            body = self.server.monitor.state.snapshot_json()
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
