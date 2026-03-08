@@ -51,7 +51,7 @@ body {
 .header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
   margin-bottom: 8px;
   padding: 6px 12px;
@@ -60,7 +60,6 @@ body {
   border-radius: 6px;
 }
 .header-left { display: flex; align-items: center; gap: 10px; z-index: 1; min-width: 0; }
-.header-right { display: flex; align-items: center; gap: 10px; z-index: 1; }
 .header h1 { font-size: 13px; font-weight: 600; white-space: nowrap; }
 .badge {
   display: inline-block;
@@ -87,6 +86,37 @@ body {
 .stat { display: flex; gap: 4px; font-size: 11px; white-space: nowrap; }
 .stat-label { color: var(--text-dim); }
 .stat-value { color: var(--text); font-weight: 600; }
+.summary-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.summary-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 6px;
+  min-width: 0;
+}
+.summary-label {
+  display: block;
+  font-size: 9px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.summary-value {
+  display: block;
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 700;
+  white-space: nowrap;
+}
 .compact-grid {
   display: grid;
   gap: 4px;
@@ -146,7 +176,6 @@ body {
 }
 @media (max-width: 600px) {
   .header { flex-direction: column; align-items: flex-start; }
-  .header-right { width: 100%; justify-content: space-between; }
 }
 </style>
 </head>
@@ -159,12 +188,9 @@ body {
     <span class="badge badge-phase" id="badge-phase">setup</span>
     <span class="progress-text" id="progress-text"></span>
   </div>
-  <div class="header-right">
-    <span class="stat"><span class="stat-label">Agents:</span><span class="stat-value" id="stat-agents">0</span></span>
-    <span class="stat"><span class="stat-label">Workers:</span><span class="stat-value" id="stat-workers">0</span></span>
-  </div>
 </div>
 
+<div class="summary-strip" id="summary-strip"></div>
 <div id="main-area"></div>
 
 <script>
@@ -192,6 +218,29 @@ function statusClass(agent) {
 
 function healthClass(agent) {
   return agent.status === "running" || agent.status === "stopped" ? "" : "unhealthy";
+}
+
+function ratio(value, total) {
+  return `${value}/${total}`;
+}
+
+function renderSummary(state) {
+  const lifecycle = state.lifecycle || {};
+  const expectedAgents = state.expected_agents || state.num_agents || 0;
+  const launchedWorkers = lifecycle.workers_launched || 0;
+  const inactiveWorkers = Math.max(0, launchedWorkers - (state.active_workers || 0));
+  const stats = [
+    ["Active Agents", ratio(state.started_agents || 0, expectedAgents)],
+    ["Active Workers", String(state.active_workers || 0)],
+    ["Successful Check-ins", ratio(lifecycle.successful_checkins || 0, launchedWorkers)],
+    ["Clean Worker Exits", ratio(lifecycle.workers_finished || 0, inactiveWorkers)],
+  ];
+  document.getElementById("summary-strip").innerHTML = stats.map(([label, value]) => `
+    <div class="summary-card">
+      <span class="summary-label">${label}</span>
+      <span class="summary-value">${value}</span>
+    </div>
+  `).join("");
 }
 
 function renderCompact(state) {
@@ -253,9 +302,8 @@ function update(state) {
   phaseBadge.className = `badge badge-phase ${phaseClass(state.phase || "")}`;
 
   document.getElementById("progress-text").textContent = progressText(state);
-  document.getElementById("stat-agents").textContent = String(state.started_agents || 0);
-  document.getElementById("stat-workers").textContent = String(state.active_workers || 0);
 
+  renderSummary(state);
   renderCompact(state);
 }
 
@@ -515,8 +563,16 @@ class MonitorState:
             started_agents = sum(
                 1 for agent in agents if agent["status"] in ("running", "stopped")
             )
+            benchmark_started_agents = sum(
+                1 for agent in agents if agent["benchmark_started"]
+            )
+            stopped_agents = sum(
+                1 for agent in agents if agent["status"] == "stopped"
+            )
             active_workers = sum(len(agent["workers"]) for agent in agents)
             total_spawned = sum(agent["total_spawned"] for agent in agents)
+            total_checkins = sum(agent["total_checkins"] for agent in agents)
+            total_completed = sum(agent["total_completed"] for agent in agents)
 
             return {
                 "approach": state["approach"],
@@ -535,6 +591,17 @@ class MonitorState:
                 "started_agents": started_agents,
                 "active_workers": active_workers,
                 "total_spawned": total_spawned,
+                "total_checkins": total_checkins,
+                "total_completed": total_completed,
+                "lifecycle": {
+                    "agents_started": started_agents,
+                    "benchmark_started": benchmark_started_agents,
+                    "workers_launched": total_spawned,
+                    "successful_checkins": total_checkins,
+                    "workers_finished": total_completed,
+                    "agents_stopped": stopped_agents,
+                    "active_workers": active_workers,
+                },
                 "agents": agents,
             }
 
