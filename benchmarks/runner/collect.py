@@ -229,8 +229,11 @@ class Collector:
         """
         while not self._stop.is_set():
             sample = self.sample(get_agent_pids, get_daemon_pids, count_workers)
-            output.write(json.dumps(sample) + "\n")
-            output.flush()
+            try:
+                output.write(json.dumps(sample) + "\n")
+                output.flush()
+            except (ValueError, OSError):
+                break
             self._stop.wait(timeout=self.interval_s)
 
     def stop(self) -> None:

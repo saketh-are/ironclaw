@@ -289,10 +289,15 @@ class _IronclawDindBase(Approach):
                 print(f"[{self.name}] Log collection failed for {agent_id}: {e}")
 
     def stop_agents(self) -> None:
-        for i in range(len(self._agent_ids)):
-            container_name = f"bench-ic-agent-{i}"
+        result = subprocess.run(
+            ["docker", "ps", "-aq",
+             "--filter", f"label=bench_run_id={self._run_id}"],
+            capture_output=True, text=True,
+        )
+        ids = result.stdout.strip().splitlines() if result.returncode == 0 else []
+        if ids:
             subprocess.run(
-                ["docker", "stop", "-t", "10", container_name],
+                ["docker", "stop", "-t", "10"] + ids,
                 capture_output=True,
             )
         print(f"[{self.name}] All agents stopped.")

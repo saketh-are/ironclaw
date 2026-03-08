@@ -591,6 +591,11 @@ def evidence_active_counts(
     return counts
 
 
+def write_summary(run_dir: Path, summary: dict) -> None:
+    with open(run_dir / "summary.json", "w") as f:
+        json.dump(summary, f, indent=2)
+
+
 def fetch_active_counts(
     approach,
     agent_ids: List[str],
@@ -599,19 +604,21 @@ def fetch_active_counts(
     tracked_jobs: Dict[str, dict],
     agent_records: Dict[str, dict],
     previous_counts: Dict[str, int],
+    use_approach_counts: bool,
 ) -> (Dict[str, int], Dict[str, str]):
     counts = {agent_id: 0 for agent_id in agent_ids}
     errors = {}
-    try:
-        observed = approach.count_active_workers_per_agent()
-        if observed:
-            for agent_id in counts:
-                counts[agent_id] = int(observed.get(agent_id, 0))
-        else:
+    if use_approach_counts:
+        try:
+            observed = approach.count_active_workers_per_agent()
+            if observed:
+                for agent_id in counts:
+                    counts[agent_id] = int(observed.get(agent_id, 0))
+            else:
+                counts = dict(previous_counts)
+        except Exception as exc:  # pragma: no cover - defensive
             counts = dict(previous_counts)
-    except Exception as exc:  # pragma: no cover - defensive
-        counts = dict(previous_counts)
-        errors["count_active_workers"] = str(exc)
+            errors["count_active_workers"] = str(exc)
 
     sync_host_evidence(approach, agent_roots, states, tracked_jobs, agent_records)
     for agent_id, evidence_count in evidence_active_counts(agent_ids, tracked_jobs).items():
@@ -883,6 +890,7 @@ def control_loaded(
     tracked_jobs: Dict[str, dict],
     agent_records: Dict[str, dict],
     benchmark_duration_s: float,
+    use_approach_counts: bool,
 ) -> dict:
     start_time = time.monotonic()
     end_time = time.monotonic() + benchmark_duration_s
@@ -898,7 +906,14 @@ def control_loaded(
     while time.monotonic() < end_time:
         now = time.monotonic()
         counts, errors = fetch_active_counts(
-            approach, agent_ids, agent_roots, states, tracked_jobs, agent_records, last_counts
+            approach,
+            agent_ids,
+            agent_roots,
+            states,
+            tracked_jobs,
+            agent_records,
+            last_counts,
+            use_approach_counts,
         )
         last_counts = counts
         last_errors = errors
@@ -974,7 +989,14 @@ def control_loaded(
         time.sleep(args.control_interval_s)
 
     final_counts, final_errors = fetch_active_counts(
-        approach, agent_ids, agent_roots, states, tracked_jobs, agent_records, last_counts
+        approach,
+        agent_ids,
+        agent_roots,
+        states,
+        tracked_jobs,
+        agent_records,
+        last_counts,
+        use_approach_counts,
     )
     launch_bucket.refill(time.monotonic())
     return {
@@ -1000,6 +1022,7 @@ def control_plateau(
     states: Dict[str, AgentState],
     tracked_jobs: Dict[str, dict],
     agent_records: Dict[str, dict],
+    use_approach_counts: bool,
 ) -> dict:
     targets = args.plateau_workers_per_agent
     hold_s = args.plateau_hold_s
@@ -1017,7 +1040,14 @@ def control_plateau(
         target = targets[stage_index]
 
         counts, errors = fetch_active_counts(
-            approach, agent_ids, agent_roots, states, tracked_jobs, agent_records, last_counts
+            approach,
+            agent_ids,
+            agent_roots,
+            states,
+            tracked_jobs,
+            agent_records,
+            last_counts,
+            use_approach_counts,
         )
         last_counts = counts
         last_errors = errors
@@ -1080,7 +1110,14 @@ def control_plateau(
         time.sleep(args.control_interval_s)
 
     final_counts, final_errors = fetch_active_counts(
-        approach, agent_ids, agent_roots, states, tracked_jobs, agent_records, last_counts
+        approach,
+        agent_ids,
+        agent_roots,
+        states,
+        tracked_jobs,
+        agent_records,
+        last_counts,
+        use_approach_counts,
     )
     return {
         "control_samples": control_samples,
@@ -1099,6 +1136,7 @@ def control_idle(
     states: Dict[str, AgentState],
     tracked_jobs: Dict[str, dict],
     agent_records: Dict[str, dict],
+    use_approach_counts: bool,
 ) -> dict:
     start_time = time.monotonic()
     end_time = time.monotonic() + args.benchmark_duration_s
@@ -1107,7 +1145,14 @@ def control_idle(
     last_errors = {}
     while time.monotonic() < end_time:
         counts, errors = fetch_active_counts(
-            approach, agent_ids, agent_roots, states, tracked_jobs, agent_records, last_counts
+            approach,
+            agent_ids,
+            agent_roots,
+            states,
+            tracked_jobs,
+            agent_records,
+            last_counts,
+            use_approach_counts,
         )
         last_counts = counts
         last_errors = errors
@@ -1117,7 +1162,14 @@ def control_idle(
         })
         time.sleep(args.control_interval_s)
     final_counts, final_errors = fetch_active_counts(
-        approach, agent_ids, agent_roots, states, tracked_jobs, agent_records, last_counts
+        approach,
+        agent_ids,
+        agent_roots,
+        states,
+        tracked_jobs,
+        agent_records,
+        last_counts,
+        use_approach_counts,
     )
     return {
         "control_samples": control_samples,
@@ -1327,12 +1379,16 @@ def main():
             next_spawn_at = release_at + exponential_delay_s(rng, args.spawn_interval_mean_s)
             states[agent_id] = AgentState(rng, release_at, next_spawn_at)
 
+        use_approach_counts = args.job_dispatch != "worker-job"
+
         def collector_active_count():
+            evidence_total = sum(evidence_active_counts(agent_ids, tracked_jobs).values())
+            if not use_approach_counts:
+                return evidence_total
             try:
                 observed_total = int(approach.count_active_workers())
             except Exception:
                 observed_total = 0
-            evidence_total = sum(evidence_active_counts(agent_ids, tracked_jobs).values())
             return max(observed_total, evidence_total)
 
         running_collector = Collector(interval_ms=args.sample_interval_ms, phase="running")
@@ -1357,7 +1413,14 @@ def main():
 
         if args.mode == "idle":
             control_result = control_idle(
-                args, approach, agent_ids, agent_roots, states, tracked_jobs, agent_records
+                args,
+                approach,
+                agent_ids,
+                agent_roots,
+                states,
+                tracked_jobs,
+                agent_records,
+                use_approach_counts,
             )
         elif args.mode == "loaded":
             control_result = control_loaded(
@@ -1369,10 +1432,18 @@ def main():
                 tracked_jobs,
                 agent_records,
                 args.benchmark_duration_s,
+                use_approach_counts,
             )
         else:
             control_result = control_plateau(
-                args, approach, agent_ids, agent_roots, states, tracked_jobs, agent_records
+                args,
+                approach,
+                agent_ids,
+                agent_roots,
+                states,
+                tracked_jobs,
+                agent_records,
+                use_approach_counts,
             )
             params["plateau_start_offset_s"] = control_result.get("plateau_start_offset_s", 0.0)
             summary["plateau_start_offset_s"] = params["plateau_start_offset_s"]
@@ -1471,6 +1542,7 @@ def main():
             "trigger_to_cleanup": summarize_latency_ms(job_records, "worker_cleaned_at_epoch_s"),
         }
         summary["elapsed_s"] = round(time.time() - start_ts, 1)
+        write_summary(run_dir, summary)
 
     except Exception as exc:
         summary["error"] = str(exc)
@@ -1548,8 +1620,7 @@ def main():
     if (run_dir / "timeseries.jsonl").exists():
         summary.update(summarize_timeseries(run_dir, params, args.agents))
 
-    with open(run_dir / "summary.json", "w") as f:
-        json.dump(summary, f, indent=2)
+    write_summary(run_dir, summary)
 
     print(json.dumps({
         "run_dir": str(run_dir),
