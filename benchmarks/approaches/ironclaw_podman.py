@@ -18,18 +18,18 @@ containers.
 
 import subprocess
 import time
-import urllib.request
+import json
 from pathlib import Path
 from typing import Dict, List
 
 from approaches.base import Approach, BenchmarkConfig
 from approaches._ironclaw_helpers import (
+    BENCH_COMMAND_BEGIN,
+    BENCH_COMMAND_END,
     GATEWAY_AUTH_TOKEN,
     IRONCLAW_AGENT_IMAGE,
     IRONCLAW_SANDBOX_IMAGE,
     ironclaw_agent_env,
-    wait_for_gateway,
-    trigger_worker_spawn,
 )
 
 USER_PREFIX = "bench-ic-pm-"
@@ -67,7 +67,42 @@ class IronclawPodmanApproach(Approach):
         self._host_ports: Dict[str, int] = {}
         self._users: Dict[str, str] = {}   # agent_id → username
         self._uids: Dict[str, int] = {}    # agent_id → uid
+        self._agent_roots: Dict[str, Path] = {}
         self._run_id: str = "unknown"
+
+    def _container_name(self, agent_id: str) -> str:
+        return f"bench-ic-agent-{agent_id.split('-')[-1]}"
+
+    def _exec_in_agent(self, agent_id: str, cmd: List[str]) -> subprocess.CompletedProcess:
+        username = self._users[agent_id]
+        return _run_as_user(
+            username,
+            ["podman", "exec", self._container_name(agent_id)] + cmd,
+        )
+
+    def _wait_for_agent_ready(self, agent_id: str, timeout_s: float = 180.0) -> bool:
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            result = self._exec_in_agent(
+                agent_id,
+                ["curl", "-sf", "http://127.0.0.1:3000/api/health"],
+            )
+            if result.returncode == 0:
+                return True
+            time.sleep(1)
+        return False
+
+    def _render_benchmark_message(self, command: str | None, dispatch_mode: str) -> str:
+        if command:
+            prefix = (
+                "Please create benchmark job."
+                if dispatch_mode == "worker-job"
+                else "Please run benchmark command."
+            )
+            return "\n".join([prefix, BENCH_COMMAND_BEGIN, command, BENCH_COMMAND_END])
+        if dispatch_mode == "worker-job":
+            return "Please create benchmark job."
+        return "Please run: echo benchmark-worker-ok"
 
     @property
     def suite(self) -> str:
@@ -172,67 +207,94 @@ class IronclawPodmanApproach(Approach):
         self._host_ports = {}
         self._users = {}
         self._uids = {}
+        self._agent_roots = {}
 
         for i in range(n):
             agent_id = f"agent-{i}"
             username, uid = self._create_user(agent_id, i)
             self._users[agent_id] = username
             self._uids[agent_id] = uid
+            podman_root = Path("/tmp") / "ironclaw-bench-podman" / config.run_id / agent_id
+            host_dirs = {
+                "agent_root": podman_root,
+                "workspace_dir": podman_root / "workspace",
+                "base_dir": podman_root / "ironclaw",
+                "evidence_dir": podman_root / "evidence",
+            }
+            for path in host_dirs.values():
+                path.mkdir(parents=True, exist_ok=True)
+                path.chmod(0o777)
+            self._agent_roots[agent_id] = host_dirs["agent_root"]
 
             # Load images into user's Podman store
             print(f"[{self.name}] Loading images for {username}...")
             self._load_image_to_user(username, IRONCLAW_AGENT_IMAGE)
             self._load_image_to_user(username, IRONCLAW_SANDBOX_IMAGE)
 
-            # Start Podman API socket
-            _fire_as_user(username, [
-                "podman", "system", "service",
-                "--timeout=0",
-                f"unix:///run/user/{uid}/podman/podman.sock",
+            # Start Podman API socket via systemd socket activation.
+            result = _run_as_user(username, [
+                "systemctl", "--user", "enable", "--now", "podman.socket",
             ])
-            time.sleep(1)
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"Failed to start podman.socket for {username}: {result.stderr.strip()}"
+                )
 
             gateway_port = config.orchestrator_base_port + i
             podman_socket = SOCKET_TEMPLATE.format(uid=uid)
-            workspace_host = f"/home/{username}/workspace"
-
-            # Create workspace dir on host, writable by container uid 1000
-            _run_as_user(username, ["mkdir", "-p", workspace_host])
-            _run_as_user(username, ["chmod", "1777", workspace_host])
+            deadline = time.monotonic() + 10.0
+            while time.monotonic() < deadline:
+                if Path(podman_socket).exists():
+                    break
+                time.sleep(0.1)
+            else:
+                raise RuntimeError(
+                    f"Podman socket {podman_socket} did not appear for {username}"
+                )
 
             env = ironclaw_agent_env(config, agent_id, 3000)
-            # Workspace at host path so sandbox bind mounts work
-            env["WORKSPACE_DIR"] = workspace_host
+            env["WORKSPACE_DIR"] = str(host_dirs["workspace_dir"])
+            env["IRONCLAW_BASE_DIR"] = str(host_dirs["base_dir"])
+            env["BENCH_EVIDENCE_DIR"] = str(host_dirs["evidence_dir"])
             # Native Podman compat (SecurityOpt, no mem limits, no AutoRemove)
             env["SANDBOX_PODMAN_COMPAT"] = "true"
             # Image with localhost/ prefix required by Podman for local images
             env["SANDBOX_IMAGE"] = f"localhost/{IRONCLAW_SANDBOX_IMAGE}"
+            # Keep worker callback path inside the parent agent netns.
+            env["IRONCLAW_WORKER_ORCHESTRATOR_URL"] = "http://127.0.0.1:50051"
+            env["IRONCLAW_WORKER_NETWORK_MODE"] = f"container:bench-ic-agent-{i}"
 
             # Run agent container under user's Podman
             env_args = []
             for k, v in env.items():
                 env_args += ["-e", f"{k}={v}"]
 
-            _fire_as_user(username, [
+            result = _fire_as_user(username, [
                 "podman", "run", "-d",
                 "--name", f"bench-ic-agent-{i}",
+                "--replace",
                 "-p", f"{gateway_port}:3000",
                 # Mount Podman socket directly (no proxy needed with
                 # SANDBOX_PODMAN_COMPAT + localhost/ image prefix)
                 "-v", f"{podman_socket}:/var/run/docker.sock",
-                # Shared workspace: same path on host and in container
-                "-v", f"{workspace_host}:{workspace_host}:rw",
+                # Host-visible benchmark root mounted at the same absolute path
+                # inside the container so sibling workers can bind mount it.
+                "-v", f"{host_dirs['agent_root']}:{host_dirs['agent_root']}:rw",
             ] + env_args + [
                 f"localhost/{IRONCLAW_AGENT_IMAGE}",
             ])
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"Failed to start {agent_id} as {username}: {result.stderr.strip()}"
+                )
 
             self._agent_ids.append(agent_id)
             self._host_ports[agent_id] = gateway_port
             print(f"[{self.name}] Started {agent_id} as {username}")
 
         print(f"[{self.name}] Waiting for {n} agents...")
-        for agent_id, port in self._host_ports.items():
-            if wait_for_gateway(port, timeout_s=180, label=agent_id):
+        for agent_id in self._agent_ids:
+            if self._wait_for_agent_ready(agent_id, timeout_s=180):
                 print(f"[{self.name}] {agent_id} healthy")
             else:
                 print(f"[{self.name}] WARNING: {agent_id} not ready after 180s")
@@ -241,10 +303,40 @@ class IronclawPodmanApproach(Approach):
         return list(self._agent_ids)
 
     def start_benchmark(self) -> None:
-        for agent_id, port in self._host_ports.items():
-            ok = trigger_worker_spawn(port)
+        for agent_id in self._agent_ids:
+            ok = self.trigger_worker_spawn(agent_id)
             if not ok:
                 print(f"[{self.name}] WARNING: trigger failed for {agent_id}")
+
+    def trigger_worker_spawn(
+        self,
+        agent_id: str,
+        command: str | None = None,
+        dispatch_mode: str = "shell",
+    ) -> bool:
+        payload = json.dumps({
+            "content": self._render_benchmark_message(command, dispatch_mode),
+        })
+        result = self._exec_in_agent(agent_id, [
+            "curl",
+            "-sS",
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{http_code}",
+            "-X",
+            "POST",
+            "-H",
+            "Content-Type: application/json",
+            "-H",
+            f"Authorization: Bearer {GATEWAY_AUTH_TOKEN}",
+            "--data",
+            payload,
+            "http://127.0.0.1:3000/api/chat/send",
+        ])
+        if result.returncode != 0:
+            return False
+        return result.stdout.strip().endswith(("200", "202"))
 
     def get_agent_pids(self) -> Dict[str, int]:
         pids = {}
@@ -271,7 +363,7 @@ class IronclawPodmanApproach(Approach):
             count = 0
             try:
                 result = _run_as_user(username, [
-                    "podman", "ps", "-q", "--filter", "name=sandbox-",
+                    "podman", "ps", "-q", "--filter", "name=ironclaw-worker-",
                 ])
                 if result.returncode == 0 and result.stdout.strip():
                     count = len(result.stdout.strip().split("\n"))
@@ -282,6 +374,30 @@ class IronclawPodmanApproach(Approach):
 
     def get_agent_gateways(self) -> Dict[str, int]:
         return dict(self._host_ports)
+
+    def get_agent_roots(self) -> Dict[str, Path]:
+        return dict(self._agent_roots)
+
+    def verify_worker_absent(self, agent_id: str, job_id: str) -> bool | None:
+        username = self._users.get(agent_id)
+        if not username:
+            return None
+        result = _run_as_user(username, [
+            "podman", "ps", "-aq", "--filter", f"name=ironclaw-worker-{job_id}",
+        ])
+        if result.returncode != 0:
+            return None
+        return not result.stdout.strip()
+
+    def verify_agent_absent(self, agent_id: str) -> bool:
+        username = self._users.get(agent_id)
+        if not username:
+            return True
+        idx = agent_id.split("-")[-1]
+        result = _run_as_user(username, [
+            "podman", "inspect", f"bench-ic-agent-{idx}",
+        ])
+        return result.returncode != 0
 
     def collect_agent_logs(self, agent_ids: List[str], output_dir) -> None:
         output_dir = Path(output_dir)
@@ -312,7 +428,7 @@ class IronclawPodmanApproach(Approach):
             # Stop sandbox containers too
             _run_as_user(username, [
                 "sh", "-c",
-                "podman ps -q --filter name=sandbox- | xargs -r podman rm -f",
+                "podman ps -aq --filter name=ironclaw-worker- | xargs -r podman rm -f",
             ])
         print(f"[{self.name}] All agents stopped.")
 
@@ -322,4 +438,5 @@ class IronclawPodmanApproach(Approach):
         self._host_ports = {}
         self._users = {}
         self._uids = {}
+        self._agent_roots = {}
         print(f"[{self.name}] Cleanup complete.")

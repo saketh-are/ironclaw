@@ -22,9 +22,15 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BENCH_DIR="$(dirname "$SCRIPT_DIR")"
 WORKLOAD_DIR="$BENCH_DIR/workload"
 VM_IMAGE="$SCRIPT_DIR/ironclaw-agent.qcow2"
+if [ "${EUID}" -eq 0 ]; then
+    SUDO=""
+else
+    SUDO="sudo"
+fi
 
 IRONCLAW_BIN="$WORKLOAD_DIR/.ironclaw-bin"
 MOCK_LLM="$WORKLOAD_DIR/mock_llm_server.py"
+ENTRYPOINT="$WORKLOAD_DIR/ironclaw-bench-entrypoint.sh"
 SANDBOX_TAR="/tmp/ironclaw-bench-sandbox-vm.tar"
 
 echo "=== Building ironclaw benchmark VM image ==="
@@ -41,23 +47,29 @@ if [ ! -f "$MOCK_LLM" ]; then
     exit 1
 fi
 
+if [ ! -f "$ENTRYPOINT" ]; then
+    echo "ERROR: ironclaw-bench-entrypoint.sh not found at $ENTRYPOINT"
+    exit 1
+fi
+
 # Save sandbox image to tarball
 echo "--- Saving sandbox image to tarball ---"
 docker save -o "$SANDBOX_TAR" ironclaw-bench-sandbox:latest
 
 # Build the base VM image
 echo "--- Building base VM with virt-builder ---"
-sudo virt-builder debian-12 \
+${SUDO} virt-builder debian-12 \
     --output "$VM_IMAGE" \
     --format qcow2 \
     --size 8G \
+    --no-network \
     --root-password password:root \
-    --install "docker.io,python3,curl,ca-certificates" \
-    --run-command "systemctl enable docker" \
     --run-command "mkdir -p /opt/ironclaw" \
     --copy-in "$IRONCLAW_BIN:/usr/local/bin/" \
     --run-command "mv /usr/local/bin/.ironclaw-bin /usr/local/bin/ironclaw && chmod +x /usr/local/bin/ironclaw" \
-    --copy-in "$MOCK_LLM:/opt/ironclaw/" \
+    --copy-in "$MOCK_LLM:/opt/" \
+    --copy-in "$ENTRYPOINT:/usr/local/bin/" \
+    --run-command "chmod +x /usr/local/bin/ironclaw-bench-entrypoint.sh" \
     --copy-in "$SANDBOX_TAR:/opt/ironclaw/"
 
 # Create the systemd service and boot script
@@ -67,8 +79,8 @@ echo "--- Customizing VM with virt-customize ---"
 cat > /tmp/ironclaw-bench.service << 'SVCEOF'
 [Unit]
 Description=IronClaw Benchmark Agent
-After=docker.service
-Requires=docker.service
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -83,11 +95,37 @@ SVCEOF
 # Create boot script that sets up everything and starts ironclaw
 cat > /tmp/ironclaw-boot.sh << 'BOOTEOF'
 #!/bin/bash
-set -e
+set -euo pipefail
 
-# Create workspace directory (wiped on reboot since /tmp is tmpfs)
-mkdir -p /tmp/workspace
-chown 1000:1000 /tmp/workspace
+# Host-visible benchmark share (9p) and per-run env via cidata ISO.
+mkdir -p /mnt/benchshare /mnt/cidata
+mount -t 9p -o trans=virtio,version=9p2000.L benchshare /mnt/benchshare 2>/dev/null || true
+mount -L cidata /mnt/cidata 2>/dev/null || true
+
+if [ -f /mnt/cidata/agent-env ]; then
+    set -a
+    . /mnt/cidata/agent-env
+    set +a
+fi
+
+if mountpoint -q /mnt/benchshare; then
+    export WORKSPACE_DIR="${WORKSPACE_DIR:-/mnt/benchshare/workspace}"
+    export IRONCLAW_BASE_DIR="${IRONCLAW_BASE_DIR:-/mnt/benchshare/ironclaw}"
+    export BENCH_EVIDENCE_DIR="${BENCH_EVIDENCE_DIR:-/mnt/benchshare/evidence}"
+else
+    export WORKSPACE_DIR="${WORKSPACE_DIR:-/tmp/workspace}"
+    export IRONCLAW_BASE_DIR="${IRONCLAW_BASE_DIR:-/tmp/.ironclaw}"
+    export BENCH_EVIDENCE_DIR="${BENCH_EVIDENCE_DIR:-/tmp/.ironclaw/bench-evidence}"
+fi
+
+export DEBIAN_FRONTEND=noninteractive
+if ! command -v docker >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+    apt-get update
+    apt-get install -y docker.io python3 curl ca-certificates
+fi
+
+systemctl enable docker >/dev/null 2>&1 || true
+systemctl start docker
 
 # Load sandbox worker image into Docker
 SANDBOX_TAR="/opt/ironclaw/ironclaw-bench-sandbox-vm.tar"
@@ -99,7 +137,7 @@ fi
 
 # Start mock LLM server
 if ! curl -sf http://127.0.0.1:11434/v1/models >/dev/null 2>&1; then
-    python3 /opt/ironclaw/mock_llm_server.py --port 11434 --host 127.0.0.1 &
+    python3 /opt/mock_llm_server.py --port 11434 --host 127.0.0.1 &
     # Wait for it
     for i in $(seq 1 60); do
         if curl -sf http://127.0.0.1:11434/v1/models >/dev/null 2>&1; then
@@ -112,9 +150,8 @@ fi
 
 echo "[boot] Ready for ironclaw"
 
-# Start ironclaw (exec replaces this shell)
-cd /tmp/workspace
-exec /usr/local/bin/ironclaw
+# Start the shared benchmark entrypoint (writes host-visible evidence).
+exec /usr/local/bin/ironclaw-bench-entrypoint.sh
 BOOTEOF
 
 # Create default env file
@@ -147,7 +184,7 @@ AGENT_NAME=bench-vm
 RUST_LOG=ironclaw=debug
 ENVEOF
 
-sudo virt-customize -a "$VM_IMAGE" \
+${SUDO} virt-customize --no-network -a "$VM_IMAGE" \
     --copy-in /tmp/ironclaw-bench.service:/etc/systemd/system/ \
     --copy-in /tmp/ironclaw-boot.sh:/opt/ironclaw/ \
     --run-command "mv /opt/ironclaw/ironclaw-boot.sh /opt/ironclaw/boot.sh && chmod +x /opt/ironclaw/boot.sh" \

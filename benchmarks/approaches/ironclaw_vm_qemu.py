@@ -12,29 +12,23 @@ NOTE: Requires a custom VM image with ironclaw pre-installed.
 Run `make ironclaw-vm-image` to build it.
 """
 
-import json
 import os
+import json
 import shutil
 import subprocess
 import time
-import urllib.request
 from pathlib import Path
 from typing import Dict, List
 
 from approaches.base import Approach, BenchmarkConfig
-from approaches._ironclaw_helpers import (
-    GATEWAY_AUTH_TOKEN,
-    count_active_jobs,
-    ironclaw_agent_env,
-    wait_for_gateway,
-    trigger_worker_spawn,
-)
+from approaches._ironclaw_helpers import ironclaw_agent_env, wait_for_gateway
 
-BENCH_DIR = Path(__file__).resolve().parent.parent
-VM_DIR = BENCH_DIR / "vm"
-# The ironclaw VM image is separate from the synthetic benchmark's image.
-IRONCLAW_VM_IMAGE = VM_DIR / "ironclaw-agent.qcow2"
-LAUNCH_SCRIPT = VM_DIR / "launch.sh"
+APPROACH_DIR = Path(__file__).resolve().parent
+BENCH_DIR = APPROACH_DIR.parent
+VM_IMAGE_DIR = BENCH_DIR / "vm"
+VM_ASSETS_DIR = APPROACH_DIR / "vm_qemu_assets"
+IRONCLAW_VM_IMAGE = VM_IMAGE_DIR / "ironclaw-agent.qcow2"
+LAUNCH_SCRIPT = VM_ASSETS_DIR / "launch.sh"
 
 
 class IronclawVmQemuApproach(Approach):
@@ -43,6 +37,8 @@ class IronclawVmQemuApproach(Approach):
     def __init__(self):
         self._agent_ids: List[str] = []
         self._host_ports: Dict[str, int] = {}
+        self._agent_roots: Dict[str, Path] = {}
+        self._vm_base_dir: Path | None = None
         self._config: BenchmarkConfig = None
 
     @property
@@ -74,51 +70,56 @@ class IronclawVmQemuApproach(Approach):
                 "Run 'make ironclaw-vm-image' first."
             )
 
+        if not LAUNCH_SCRIPT.exists():
+            raise RuntimeError(f"VM launch script not found at {LAUNCH_SCRIPT}")
+
         print(f"[{self.name}] Setup complete.")
 
     def start_agents(self, n: int, config: BenchmarkConfig) -> List[str]:
         self._agent_ids = []
         self._host_ports = {}
+        self._agent_roots = {}
+        self._vm_base_dir = Path(config.run_dir) / "agents" if config.run_dir else Path("/tmp/ironclaw-bench-vms")
+        self._vm_base_dir.mkdir(parents=True, exist_ok=True)
 
         for i in range(n):
             agent_id = f"agent-{i}"
             gateway_port = config.orchestrator_base_port + i
 
             env = ironclaw_agent_env(config, agent_id, 3000)
+            agent_root = self._vm_base_dir / agent_id / "shared"
+            for path in (
+                agent_root,
+                agent_root / "workspace",
+                agent_root / "ironclaw",
+                agent_root / "evidence",
+            ):
+                path.mkdir(parents=True, exist_ok=True)
+                path.chmod(0o777)
+            self._agent_roots[agent_id] = agent_root
 
-            # Build env string for kernel command line
-            env_pairs = " ".join(f"{k}={v}" for k, v in env.items())
+            env["WORKSPACE_DIR"] = "/mnt/benchshare/workspace"
+            env["IRONCLAW_BASE_DIR"] = "/mnt/benchshare/ironclaw"
+            env["BENCH_EVIDENCE_DIR"] = "/mnt/benchshare/evidence"
 
-            # Create per-VM overlay disk
-            overlay_path = VM_DIR / f"overlay-{agent_id}.qcow2"
-            subprocess.run([
-                "qemu-img", "create", "-f", "qcow2",
-                "-b", str(IRONCLAW_VM_IMAGE), "-F", "qcow2",
-                str(overlay_path),
-            ], check=True, capture_output=True)
-
-            # Launch QEMU
-            vm_memory = max(config.agent_memory_mb, 2048)
+            env_pairs = [f"{k}={v}" for k, v in env.items()]
             cmd = [
-                "qemu-system-x86_64",
-                "-enable-kvm",
-                "-m", str(vm_memory),
-                "-smp", "2",
-                "-display", "none",
-                "-drive", f"file={overlay_path},format=qcow2,if=virtio",
-                # Port forwarding: host gateway_port → guest 3000
-                "-netdev", f"user,id=net0,hostfwd=tcp::{gateway_port}-:3000",
-                "-device", "virtio-net-pci,netdev=net0",
-                # Serial console to file for log collection
-                "-serial", f"file:{VM_DIR / f'{agent_id}.log'}",
-                "-daemonize",
-                "-pidfile", str(VM_DIR / f"{agent_id}.pid"),
-            ]
+                str(LAUNCH_SCRIPT),
+                "start",
+                agent_id,
+                str(max(config.agent_memory_mb, 2048)),
+                "2",
+                str(IRONCLAW_VM_IMAGE),
+            ] + env_pairs
 
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            launch_env = os.environ.copy()
+            launch_env["VM_BASE_DIR"] = str(self._vm_base_dir)
+            launch_env["ORCH_HOST_PORT"] = str(gateway_port)
+            launch_env["GATEWAY_GUEST_PORT"] = "3000"
+            result = subprocess.run(cmd, capture_output=True, text=True, env=launch_env)
             if result.returncode != 0:
                 raise RuntimeError(
-                    f"Failed to start VM for {agent_id}: {result.stderr.strip()}"
+                    f"Failed to start VM for {agent_id}: {result.stderr.strip() or result.stdout.strip()}"
                 )
 
             self._agent_ids.append(agent_id)
@@ -137,15 +138,14 @@ class IronclawVmQemuApproach(Approach):
         return list(self._agent_ids)
 
     def start_benchmark(self) -> None:
-        for agent_id, port in self._host_ports.items():
-            ok = trigger_worker_spawn(port)
-            if not ok:
-                print(f"[{self.name}] WARNING: trigger failed for {agent_id}")
+        pass
 
     def get_agent_pids(self) -> Dict[str, int]:
         pids = {}
         for agent_id in self._agent_ids:
-            pid_file = VM_DIR / f"{agent_id}.pid"
+            if self._vm_base_dir is None:
+                continue
+            pid_file = self._vm_base_dir / agent_id / "qemu.pid"
             try:
                 pid = int(pid_file.read_text().strip())
                 if pid > 0:
@@ -163,57 +163,98 @@ class IronclawVmQemuApproach(Approach):
 
     def count_active_workers_per_agent(self) -> Dict[str, int]:
         counts = {}
-        for agent_id, port in self._host_ports.items():
-            try:
-                counts[agent_id] = count_active_jobs(
-                    port, auth_token=GATEWAY_AUTH_TOKEN, timeout=5
-                )
-            except Exception:
-                counts[agent_id] = 0
+        for agent_id, agent_root in self._agent_roots.items():
+            evidence_dir = agent_root / "evidence"
+            created = {
+                path.stem.removeprefix("job-created-")
+                for path in evidence_dir.glob("job-created-*.json")
+            }
+            cleaned = {
+                path.stem.removeprefix("worker-cleaned-")
+                for path in evidence_dir.glob("worker-cleaned-*.json")
+            }
+            counts[agent_id] = len(created - cleaned)
         return counts
 
     def get_agent_gateways(self) -> Dict[str, int]:
         return dict(self._host_ports)
 
+    def get_agent_roots(self) -> Dict[str, Path]:
+        return dict(self._agent_roots)
+
+    def translate_agent_path(self, agent_id: str, path: str | Path | None) -> Path | None:
+        if path is None:
+            return None
+        raw = str(path)
+        if raw.startswith("/mnt/benchshare/"):
+            root = self._agent_roots.get(agent_id)
+            if root is None:
+                return None
+            return root / raw.removeprefix("/mnt/benchshare/")
+        return Path(raw)
+
+    def verify_worker_absent(self, agent_id: str, job_id: str) -> bool | None:
+        evidence = self._agent_roots.get(agent_id)
+        if evidence is None:
+            return None
+        payload_path = evidence / "evidence" / f"worker-cleaned-{job_id}.json"
+        if not payload_path.exists():
+            return None
+        try:
+            payload = json.loads(payload_path.read_text())
+            return bool(payload.get("container_removed"))
+        except Exception:
+            return None
+
+    def verify_agent_absent(self, agent_id: str) -> bool | None:
+        if self._vm_base_dir is None:
+            return None
+        pid_file = self._vm_base_dir / agent_id / "qemu.pid"
+        if not pid_file.exists():
+            return True
+        try:
+            pid = int(pid_file.read_text().strip())
+        except ValueError:
+            return True
+        return not Path(f"/proc/{pid}").exists()
+
     def collect_agent_logs(self, agent_ids: List[str], output_dir) -> None:
         output_dir = Path(output_dir)
         for agent_id in agent_ids:
-            src = VM_DIR / f"{agent_id}.log"
-            dst = output_dir / f"{agent_id}.log"
-            if src.exists():
-                shutil.copy2(src, dst)
-                print(f"[{self.name}] Collected logs for {agent_id}")
+            if self._vm_base_dir is None:
+                continue
+            for name in ("console.log", "qemu.log"):
+                src = self._vm_base_dir / agent_id / name
+                if src.exists():
+                    dst = output_dir / f"{agent_id}-{name}"
+                    shutil.copy2(src, dst)
+                    print(f"[{self.name}] Collected {name} for {agent_id}")
 
     def stop_agents(self) -> None:
+        if self._vm_base_dir is None:
+            return
+        env = os.environ.copy()
+        env["VM_BASE_DIR"] = str(self._vm_base_dir)
         for agent_id in self._agent_ids:
-            pid_file = VM_DIR / f"{agent_id}.pid"
-            try:
-                pid = int(pid_file.read_text().strip())
-                os.kill(pid, 15)  # SIGTERM
-            except (FileNotFoundError, ValueError, ProcessLookupError):
-                pass
-        # Wait briefly for graceful shutdown
-        time.sleep(3)
-        # Force kill any remaining
-        for agent_id in self._agent_ids:
-            pid_file = VM_DIR / f"{agent_id}.pid"
-            try:
-                pid = int(pid_file.read_text().strip())
-                os.kill(pid, 9)  # SIGKILL
-            except (FileNotFoundError, ValueError, ProcessLookupError):
-                pass
+            subprocess.run(
+                [str(LAUNCH_SCRIPT), "stop", agent_id],
+                capture_output=True,
+                env=env,
+            )
         print(f"[{self.name}] All VMs stopped.")
 
     def cleanup(self) -> None:
         self.stop_agents()
-        # Clean up overlay images, PID files, and logs
-        for agent_id in self._agent_ids:
-            for ext in [".qcow2", ".pid", ".log"]:
-                path = VM_DIR / f"{'overlay-' if ext == '.qcow2' else ''}{agent_id}{ext}"
-                try:
-                    path.unlink()
-                except FileNotFoundError:
-                    pass
+        if self._vm_base_dir is not None:
+            env = os.environ.copy()
+            env["VM_BASE_DIR"] = str(self._vm_base_dir)
+            for agent_id in self._agent_ids:
+                subprocess.run(
+                    [str(LAUNCH_SCRIPT), "clean", agent_id],
+                    capture_output=True,
+                    env=env,
+                )
         self._agent_ids = []
         self._host_ports = {}
+        self._agent_roots = {}
         print(f"[{self.name}] Cleanup complete.")

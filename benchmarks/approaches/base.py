@@ -161,9 +161,35 @@ class Approach(ABC):
         """Return agent_id -> host gateway port for host-side control."""
         return {}
 
+    def trigger_worker_spawn(
+        self,
+        agent_id: str,
+        command: str | None = None,
+        dispatch_mode: str = "shell",
+    ) -> bool:
+        """Trigger one benchmark job for a specific agent."""
+        from approaches._ironclaw_helpers import trigger_worker_spawn
+
+        port = self.get_agent_gateways().get(agent_id)
+        if port is None:
+            raise RuntimeError(
+                f"{self.name} does not expose a control route for {agent_id}"
+            )
+        return trigger_worker_spawn(
+            port,
+            command=command,
+            dispatch_mode=dispatch_mode,
+        )
+
     def get_agent_roots(self) -> Dict[str, Path]:
         """Return agent_id -> host-visible benchmark root for direct verification."""
         return {}
+
+    def translate_agent_path(self, agent_id: str, path: str | Path | None) -> Path | None:
+        """Map an agent-reported path into a host-visible path when needed."""
+        if path is None:
+            return None
+        return Path(path)
 
     def verify_worker_absent(self, agent_id: str, job_id: str) -> bool | None:
         """Return whether a worker container is absent after cleanup, if supported."""

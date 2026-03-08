@@ -63,8 +63,8 @@ IRONCLAW_BASE_DIR="${IRONCLAW_BASE_DIR:-/tmp/.ironclaw}"
 BENCH_EVIDENCE_DIR="${BENCH_EVIDENCE_DIR:-${IRONCLAW_BASE_DIR}/bench-evidence}"
 mkdir -p "$WORKSPACE_DIR"
 mkdir -p "$IRONCLAW_BASE_DIR" "$BENCH_EVIDENCE_DIR" "$WORKSPACE_DIR/.bench-evidence"
-chown 1000:1000 "$WORKSPACE_DIR"
-chmod 777 "$WORKSPACE_DIR" "$IRONCLAW_BASE_DIR" "$BENCH_EVIDENCE_DIR" "$WORKSPACE_DIR/.bench-evidence"
+chown 1000:1000 "$WORKSPACE_DIR" 2>/dev/null || true
+chmod 777 "$WORKSPACE_DIR" "$IRONCLAW_BASE_DIR" "$BENCH_EVIDENCE_DIR" "$WORKSPACE_DIR/.bench-evidence" 2>/dev/null || true
 
 AGENT_STORAGE_PROOF="$WORKSPACE_DIR/.bench-evidence/agent-storage-${BENCH_AGENT_ID:-unknown}.txt"
 printf 'agent-storage %s %s\n' "${BENCH_AGENT_ID:-unknown}" "$(date +%s)" > "$AGENT_STORAGE_PROOF"

@@ -42,9 +42,10 @@ start_vm() {
 
     # Build host port forwarding: SSH always, orchestrator if requested
     local ORCH_HOST_PORT="${ORCH_HOST_PORT:-}"
+    local GATEWAY_GUEST_PORT="${GATEWAY_GUEST_PORT:-8080}"
     local HOSTFWD="hostfwd=tcp::${SSH_PORT}-:22"
     if [ -n "$ORCH_HOST_PORT" ]; then
-        HOSTFWD="${HOSTFWD},hostfwd=tcp::${ORCH_HOST_PORT}-:8080"
+        HOSTFWD="${HOSTFWD},hostfwd=tcp::${ORCH_HOST_PORT}-:${GATEWAY_GUEST_PORT}"
     fi
 
     # Build cloud-init ISO with agent-env config file. The benchmark depends

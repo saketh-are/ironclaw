@@ -28,7 +28,6 @@ BENCH_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BENCH_DIR))
 
 from approaches.base import BenchmarkConfig, discover_approaches
-from approaches._ironclaw_helpers import trigger_worker_spawn
 from runner.collect import Collector, HOST_CPU_FIELDS
 from runner.orchestrate import build_plateau_summary, compute_drift_slope, compute_percentiles
 
@@ -245,9 +244,13 @@ def sync_host_evidence(
             elif event_name == "agent_storage_written":
                 agent_record["storage_logged"] = True
                 path_str = event.get("path")
-                agent_record["storage_path"] = path_str or agent_record.get("storage_path")
-                if path_str:
-                    proof_path = Path(path_str)
+                host_path = approach.translate_agent_path(agent_id, path_str)
+                if host_path is not None:
+                    agent_record["storage_path"] = str(host_path)
+                elif path_str:
+                    agent_record["storage_path"] = path_str
+                if host_path:
+                    proof_path = host_path
                     if proof_path.exists():
                         try:
                             content = proof_path.read_text().strip()
@@ -281,7 +284,11 @@ def sync_host_evidence(
                 "triggered_at_epoch_s": pending.get("triggered_at_epoch_s"),
                 "discovered_at_epoch_s": parse_unix_ms(payload.get("ts_unix_ms")) or now_epoch_s,
                 "proof_relpath": pending.get("proof_relpath"),
-                "project_dir": payload.get("project_dir"),
+                "project_dir": (
+                    str(approach.translate_agent_path(agent_id, payload.get("project_dir")))
+                    if payload.get("project_dir")
+                    else None
+                ),
                 "job_mode": payload.get("mode"),
                 "job_created_at_epoch_s": parse_unix_ms(payload.get("ts_unix_ms")) or now_epoch_s,
                 "worker_started_at_epoch_s": None,
@@ -616,7 +623,6 @@ def control_loaded(
     args,
     approach,
     agent_ids: List[str],
-    agent_ports: Dict[str, int],
     agent_roots: Dict[str, Path],
     states: Dict[str, AgentState],
     tracked_jobs: Dict[str, dict],
@@ -626,7 +632,7 @@ def control_loaded(
     start_time = time.monotonic()
     end_time = time.monotonic() + benchmark_duration_s
     control_samples = []
-    last_counts = {agent_id: 0 for agent_id in agent_ports}
+    last_counts = {agent_id: 0 for agent_id in agent_ids}
     last_errors = {}
     while time.monotonic() < end_time:
         now = time.monotonic()
@@ -642,7 +648,7 @@ def control_loaded(
             "active_workers": total_active,
         })
 
-        for agent_id, port in agent_ports.items():
+        for agent_id in agent_ids:
             state = states[agent_id]
             if now < state.release_at or now < state.next_spawn_at:
                 continue
@@ -669,8 +675,8 @@ def control_loaded(
                     args.job_memory_mb,
                 )
                 state.trigger_attempts += 1
-                ok = trigger_worker_spawn(
-                    port,
+                ok = approach.trigger_worker_spawn(
+                    agent_id,
                     command=command,
                     dispatch_mode=args.job_dispatch,
                 )
@@ -706,7 +712,6 @@ def control_plateau(
     args,
     approach,
     agent_ids: List[str],
-    agent_ports: Dict[str, int],
     agent_roots: Dict[str, Path],
     states: Dict[str, AgentState],
     tracked_jobs: Dict[str, dict],
@@ -718,7 +723,7 @@ def control_plateau(
     end_time = time.monotonic() + total_duration_s
     plateau_start = time.monotonic()
     control_samples = []
-    last_counts = {agent_id: 0 for agent_id in agent_ports}
+    last_counts = {agent_id: 0 for agent_id in agent_ids}
     last_errors = {}
 
     while time.monotonic() < end_time:
@@ -741,7 +746,7 @@ def control_plateau(
             "target_workers_per_agent": target,
         })
 
-        for agent_id, port in agent_ports.items():
+        for agent_id in agent_ids:
             state = states[agent_id]
             if now < state.release_at:
                 continue
@@ -768,8 +773,8 @@ def control_plateau(
                     args.job_memory_mb,
                 )
                 state.trigger_attempts += 1
-                ok = trigger_worker_spawn(
-                    port,
+                ok = approach.trigger_worker_spawn(
+                    agent_id,
                     command=command,
                     dispatch_mode=args.job_dispatch,
                 )
@@ -805,7 +810,6 @@ def control_idle(
     args,
     approach,
     agent_ids: List[str],
-    agent_ports: Dict[str, int],
     agent_roots: Dict[str, Path],
     states: Dict[str, AgentState],
     tracked_jobs: Dict[str, dict],
@@ -814,7 +818,7 @@ def control_idle(
     start_time = time.monotonic()
     end_time = time.monotonic() + args.benchmark_duration_s
     control_samples = []
-    last_counts = {agent_id: 0 for agent_id in agent_ports}
+    last_counts = {agent_id: 0 for agent_id in agent_ids}
     last_errors = {}
     while time.monotonic() < end_time:
         counts, errors = fetch_active_counts(
@@ -979,9 +983,6 @@ def main():
         summary["agent_start_elapsed_s"] = round(time.time() - start_ts, 1)
         agent_roots = approach.get_agent_roots()
 
-        agent_ports = approach.get_agent_gateways()
-        if set(agent_ports) != set(agent_ids):
-            raise RuntimeError("Approach did not expose gateway ports for all agents")
         if set(agent_roots) != set(agent_ids):
             raise RuntimeError("Approach did not expose host-visible roots for all agents")
 
@@ -1018,14 +1019,13 @@ def main():
 
         if args.mode == "idle":
             control_result = control_idle(
-                args, approach, agent_ids, agent_ports, agent_roots, states, tracked_jobs, agent_records
+                args, approach, agent_ids, agent_roots, states, tracked_jobs, agent_records
             )
         elif args.mode == "loaded":
             control_result = control_loaded(
                 args,
                 approach,
                 agent_ids,
-                agent_ports,
                 agent_roots,
                 states,
                 tracked_jobs,
@@ -1034,7 +1034,7 @@ def main():
             )
         else:
             control_result = control_plateau(
-                args, approach, agent_ids, agent_ports, agent_roots, states, tracked_jobs, agent_records
+                args, approach, agent_ids, agent_roots, states, tracked_jobs, agent_records
             )
             params["plateau_start_offset_s"] = control_result.get("plateau_start_offset_s", 0.0)
             summary["plateau_start_offset_s"] = params["plateau_start_offset_s"]
