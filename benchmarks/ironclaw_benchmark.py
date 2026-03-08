@@ -16,9 +16,7 @@ import argparse
 import json
 import os
 import random
-import re
 import shlex
-import subprocess as _subprocess
 import sys
 import textwrap
 import time
@@ -51,63 +49,6 @@ def emit_monitor_event(agent_root: Path, agent_id: str, event_name: str, **kwarg
     except OSError:
         pass
 
-
-_TUNNEL_URL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
-_CLOUDFLARED_BIN = "/tmp/cloudflared"
-
-
-def start_agent_tunnels(
-    gateways: Dict[str, int],
-    timeout_s: int = 30,
-) -> Dict[str, str]:
-    """Start a cloudflared quick tunnel per agent port, return {agent_id: url}."""
-    if not Path(_CLOUDFLARED_BIN).exists():
-        print("[tunnels] cloudflared not found, skipping", flush=True)
-        return {}
-
-    procs: Dict[str, tuple] = {}
-    for agent_id, port in gateways.items():
-        log_path = f"/tmp/cf-agent-{agent_id}.log"
-        proc = _subprocess.Popen(
-            [_CLOUDFLARED_BIN, "tunnel", "--protocol", "http2",
-             "--url", f"http://localhost:{port}"],
-            stdout=open(log_path, "w"),
-            stderr=_subprocess.STDOUT,
-        )
-        procs[agent_id] = (proc, log_path)
-
-    urls: Dict[str, str] = {}
-    deadline = time.monotonic() + timeout_s
-    while len(urls) < len(procs) and time.monotonic() < deadline:
-        time.sleep(2)
-        for agent_id, (proc, log_path) in procs.items():
-            if agent_id in urls:
-                continue
-            try:
-                text = Path(log_path).read_text()
-                m = _TUNNEL_URL_RE.search(text)
-                if m:
-                    urls[agent_id] = m.group(0)
-            except OSError:
-                pass
-
-    for agent_id in urls:
-        print(f"[tunnels] {agent_id}: {urls[agent_id]}", flush=True)
-    missing = set(procs) - set(urls)
-    if missing:
-        print(f"[tunnels] WARNING: no URL for {missing}", flush=True)
-    return urls
-
-
-def stop_agent_tunnels() -> None:
-    """Kill all cloudflared tunnel processes started for agents."""
-    try:
-        result = _subprocess.run(
-            ["pkill", "-f", "cloudflared tunnel"],
-            capture_output=True,
-        )
-    except _subprocess.SubprocessError:
-        pass
 
 
 IDLE_WARMUP_S = 30.0
@@ -1105,8 +1046,6 @@ def main():
                         help="Port for live monitor dashboard (0 = disabled)")
     parser.add_argument("--monitor-host", default="0.0.0.0",
                         help="Host for monitor dashboard")
-    parser.add_argument("--tunnels", action="store_true", default=False,
-                        help="Start cloudflared tunnels for each agent UI")
     args = parser.parse_args()
 
     if args.job_profile == "custom" and not args.job_command:
@@ -1216,11 +1155,6 @@ def main():
             gateways = approach.get_agent_gateways()
             if gateways:
                 monitor.state.set_agent_gateways(gateways)
-                if args.tunnels:
-                    print("[ironclaw-benchmark] starting cloudflared tunnels...", flush=True)
-                    tunnel_urls = start_agent_tunnels(gateways)
-                    if tunnel_urls:
-                        monitor.state.set_agent_tunnel_urls(tunnel_urls)
 
         if set(agent_roots) != set(agent_ids):
             raise RuntimeError("Approach did not expose host-visible roots for all agents")
@@ -1470,9 +1404,6 @@ def main():
         "agents_cleanup_verified": summary.get("agents_cleanup_verified", 0),
         "jobs_cleanup_verified": summary.get("jobs_cleanup_verified", 0),
     }, indent=2), flush=True)
-
-    if args.tunnels:
-        stop_agent_tunnels()
 
     if monitor:
         monitor.set_phase("done", "Benchmark complete")

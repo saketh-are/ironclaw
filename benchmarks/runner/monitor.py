@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import threading
 import time
+import urllib.request
+import urllib.error
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -271,12 +274,9 @@ function renderCompact(state) {
     for (let index = 0; index < maxSlots; index += 1) {
       dots.push(`<div class="compact-dot${index < agent.active_workers ? " filled" : ""}"></div>`);
     }
-    const agentUrl = agent.tunnel_url
-      ? `${agent.tunnel_url}/?token=bench-token`
-      : agent.gateway_port ? `http://localhost:${agent.gateway_port}/?token=bench-token` : null;
-    const click = agentUrl ? `onclick="window.open('${agentUrl}', '_blank')"` : "";
-    const tip = agent.tunnel_url ? `${agent.id} — click to open UI` : agent.gateway_port ? `${agent.id} — port ${agent.gateway_port}` : agent.id;
-    const hasGw = !!(agent.tunnel_url || agent.gateway_port);
+    const hasGw = !!agent.gateway_port;
+    const click = hasGw ? `onclick="window.open('/agent-loader/${agent.id}/', '_blank')"` : "";
+    const tip = hasGw ? `${agent.id} — click to open UI` : agent.id;
     return `
       <div class="compact-tile ${statusClass(agent)} ${healthClass(agent)}" title="${tip}" ${click}>
         <div class="compact-tile-header">
@@ -344,6 +344,42 @@ window.addEventListener("resize", () => {
 </script>
 </body>
 </html>
+"""
+
+_AGENT_PROXY_RE = re.compile(r"^/agent/(agent-\d+)(/.*)?$")
+
+# Service worker that intercepts all fetches within /agent/<id>/ scope
+# and rewrites absolute paths to include the proxy prefix.
+_SW_JS_TEMPLATE = """
+var BASE = "{base}";
+self.addEventListener("fetch", function(e) {{
+  var url = new URL(e.request.url);
+  if (url.origin === self.location.origin && !url.pathname.startsWith(BASE)) {{
+    var newUrl = new URL(BASE + url.pathname + url.search, url.origin);
+    e.respondWith(fetch(new Request(newUrl, e.request)));
+  }}
+}});
+"""
+
+# Loader page: registers the service worker then navigates to the real page
+_AGENT_LOADER_HTML = """<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>{agent_id}</title>
+<style>body{{background:#0f1117;color:#e1e4ed;font-family:monospace;display:flex;
+align-items:center;justify-content:center;height:100vh;margin:0}}
+</style></head><body><div>Loading {agent_id}...</div><script>
+if ("serviceWorker" in navigator) {{
+  navigator.serviceWorker.register("{base}/sw.js", {{scope: "{base}/"}})
+    .then(function(reg) {{
+      if (reg.active) {{ window.location.replace("{base}/?token=bench-token"); }}
+      else {{
+        var w = reg.installing || reg.waiting;
+        w.addEventListener("statechange", function() {{
+          if (w.state === "activated") window.location.replace("{base}/?token=bench-token");
+        }});
+      }}
+    }});
+}} else {{ window.location.replace("{base}/?token=bench-token"); }}
+</script></body></html>
 """
 
 
@@ -447,15 +483,6 @@ class MonitorState:
     def get_agent_gateways(self) -> Dict[str, int]:
         with self._lock:
             return dict(self._state.get("agent_gateways", {}))
-
-    def set_agent_tunnel_urls(self, urls: Dict[str, str]) -> None:
-        with self._lock:
-            self._state.setdefault("agent_tunnel_urls", {}).update(urls)
-            self._state["updated_at"] = time.time()
-
-    def get_agent_tunnel_urls(self) -> Dict[str, str]:
-        with self._lock:
-            return dict(self._state.get("agent_tunnel_urls", {}))
 
     def attach_agents(self, agent_ids: List[str]) -> None:
         with self._lock:
@@ -618,7 +645,6 @@ class MonitorState:
                     )
                 ]
                 gateways = state.get("agent_gateways", {})
-                tunnel_urls = state.get("agent_tunnel_urls", {})
                 agents.append(
                     {
                         "id": agent["id"],
@@ -637,7 +663,6 @@ class MonitorState:
                         "last_event_at": agent["last_event_at"],
                         "workers": workers,
                         "gateway_port": gateways.get(agent_id),
-                        "tunnel_url": tunnel_urls.get(agent_id),
                     }
                 )
 
@@ -835,7 +860,113 @@ class _MonitorHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        # /agent-loader/<id>/ — service worker loader page
+        loader_match = re.match(r"^/agent-loader/(agent-\d+)/?$", self.path)
+        if loader_match:
+            agent_id = loader_match.group(1)
+            base = f"/agent/{agent_id}"
+            body = _AGENT_LOADER_HTML.format(agent_id=agent_id, base=base).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        # /agent/<id>/sw.js — service worker script
+        sw_match = re.match(r"^/agent/(agent-\d+)/sw\.js$", self.path)
+        if sw_match:
+            agent_id = sw_match.group(1)
+            base = f"/agent/{agent_id}"
+            body = _SW_JS_TEMPLATE.format(base=base).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript")
+            self.send_header("Content-Length", str(len(body)))
+            # Service-Worker-Allowed header lets the SW control its scope
+            self.send_header("Service-Worker-Allowed", base + "/")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        # /agent/<id>/... — reverse proxy to agent gateway
+        if self._proxy_agent("GET"):
+            return
+
         self.send_error(404)
+
+    def do_POST(self) -> None:
+        if self._proxy_agent("POST"):
+            return
+        self.send_error(404)
+
+    def _proxy_agent(self, method: str) -> bool:
+        match = _AGENT_PROXY_RE.match(self.path)
+        if not match:
+            return False
+        agent_id = match.group(1)
+        inner_path = match.group(2) or "/"
+        gateways = self.server.monitor.state.get_agent_gateways()
+        port = gateways.get(agent_id)
+        if not port:
+            self.send_error(502, f"No gateway for {agent_id}")
+            return True
+
+        url = f"http://127.0.0.1:{port}{inner_path}"
+        body = None
+        if method == "POST":
+            cl = int(self.headers.get("Content-Length", 0))
+            if cl > 0:
+                body = self.rfile.read(cl)
+
+        req = urllib.request.Request(url, data=body, method=method)
+        for h in ("Authorization", "Content-Type", "Accept"):
+            v = self.headers.get(h)
+            if v:
+                req.add_header(h, v)
+
+        try:
+            resp = urllib.request.urlopen(req, timeout=15)
+            ct = resp.headers.get("Content-Type", "application/octet-stream")
+
+            # Stream SSE responses without buffering
+            if "text/event-stream" in ct:
+                self.send_response(resp.status)
+                self.send_header("Content-Type", ct)
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                try:
+                    while True:
+                        chunk = resp.read(4096)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+                return True
+
+            resp_body = resp.read()
+            self.send_response(resp.status)
+            self.send_header("Content-Type", ct)
+            self.send_header("Content-Length", str(len(resp_body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(resp_body)
+        except urllib.error.HTTPError as e:
+            rb = e.read()
+            self.send_response(e.code)
+            self.send_header("Content-Type", e.headers.get("Content-Type", "text/plain"))
+            self.send_header("Content-Length", str(len(rb)))
+            self.end_headers()
+            self.wfile.write(rb)
+        except Exception as e:
+            rb = f"Proxy error: {e}".encode()
+            self.send_response(502)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(rb)))
+            self.end_headers()
+            self.wfile.write(rb)
+        return True
 
     def log_message(self, format: str, *args) -> None:
         return

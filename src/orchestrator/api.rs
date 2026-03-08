@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, broadcast};
 use uuid::Uuid;
 
+use chrono::Utc;
+
 use crate::channels::web::types::SseEvent;
 use crate::db::Database;
 use crate::llm::{CompletionRequest, LlmProvider, ToolCompletionRequest};
@@ -235,6 +237,25 @@ async fn report_complete(
         report.success,
         report.message.as_deref(),
     );
+
+    // Persist the final status to the database so the web UI reflects completion.
+    if let Some(store) = state.store.as_ref() {
+        let status = if report.success { "completed" } else { "failed" };
+        let now = Utc::now();
+        if let Err(e) = store
+            .update_sandbox_job_status(
+                job_id,
+                status,
+                Some(report.success),
+                report.message.as_deref(),
+                None,
+                Some(now),
+            )
+            .await
+        {
+            tracing::error!(job_id = %job_id, "Failed to persist job status: {}", e);
+        }
+    }
 
     // Store the result and clean up the container asynchronously. The worker is
     // still in the middle of its /complete request, so trying to stop/remove
