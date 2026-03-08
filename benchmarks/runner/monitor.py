@@ -244,7 +244,7 @@ function renderSummary(state) {
   ];
   if (state.storage_validation_enabled) {
     stats.push(
-      ["Persisted Worker Writes", ratio(lifecycle.agent_storage_verified || 0, inactiveWorkers)],
+      ["Persisted Worker Writes", ratio(lifecycle.worker_storage_written || 0, launchedWorkers)],
     );
   }
   stats.push(

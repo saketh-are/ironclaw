@@ -401,7 +401,6 @@ def sync_host_evidence(
             record = tracked_jobs.get(job_id)
             if not record:
                 continue
-            already_checked_in = record.get("callback_at_epoch_s") is not None
             record["callback_at_epoch_s"] = (
                 parse_unix_ms(payload.get("ts_unix_ms")) or record.get("callback_at_epoch_s")
             )
@@ -409,10 +408,6 @@ def sync_host_evidence(
             record["result_success"] = payload.get("success")
             record["failure_reason"] = payload.get("message")
             record["state"] = "completed" if payload.get("success") else "failed"
-            if not already_checked_in:
-                emit_monitor_event(agent_root, agent_id, "checkin",
-                                   worker_id=job_id,
-                                   success=payload.get("success", False))
 
         for cleaned_path in sorted(evidence_dir.glob("worker-cleaned-*.json")):
             payload = read_json_file(cleaned_path)
@@ -449,6 +444,11 @@ def sync_host_evidence(
             if payload:
                 record["worker_started_at_epoch_s"] = parse_unix_ms(payload.get("ts_unix_ms"))
                 record["started_at"] = record.get("worker_started_at_epoch_s")
+                agent_id = record.get("agent_id")
+                agent_root = agent_roots.get(agent_id) if agent_id else None
+                if agent_root:
+                    emit_monitor_event(agent_root, agent_id, "checkin",
+                                       worker_id=job_id, success=True)
 
         evidence_dir = project_path / ".bench-evidence"
         worker_storage_candidates = [
@@ -470,6 +470,11 @@ def sync_host_evidence(
                     payload.get("ts_unix_ms")
                 )
                 record["worker_storage_path"] = payload.get("path")
+                agent_id = record.get("agent_id")
+                agent_root = agent_roots.get(agent_id) if agent_id else None
+                if agent_root:
+                    emit_monitor_event(agent_root, agent_id, "worker_storage_written",
+                                       worker_id=job_id)
                 break
 
         if record.get("proof_relpath") and record.get("proof_verified") is None:
