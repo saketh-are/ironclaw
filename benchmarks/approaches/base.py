@@ -227,6 +227,24 @@ class Approach(ABC):
         """
         return {}
 
+    def expected_live_event_log_paths(
+        self,
+        agent_ids: List[str],
+        output_dir: Path,
+    ) -> Dict[str, Path]:
+        """
+        Return the expected host-visible per-agent JSONL paths before startup.
+
+        Real IronClaw approaches write evidence into deterministic per-agent
+        directories, so the monitor can begin tailing these files immediately
+        and surface startup liveness as soon as each agent emits
+        ``agent_started``.
+        """
+        return {
+            agent_id: output_dir / "agents" / agent_id / "evidence" / "agent-events.jsonl"
+            for agent_id in agent_ids
+        }
+
     def start_benchmark(self) -> None:
         """Optional synchronization hook before the timed benchmark window begins."""
         pass

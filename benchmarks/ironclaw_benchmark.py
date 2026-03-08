@@ -1350,16 +1350,20 @@ def main():
     monitor = None
 
     if args.monitor_port:
+        expected_agent_ids = [f"agent-{i}" for i in range(args.agents)]
         monitor = BenchmarkMonitor(
             host=args.monitor_host, port=args.monitor_port,
             approach=args.approach, mode=args.mode, run_id=run_label,
-            expected_agents=[f"agent-{i}" for i in range(args.agents)],
+            expected_agents=expected_agent_ids,
             duration_s=int(args.benchmark_duration_s),
             max_worker_slots=args.max_concurrent_workers,
         )
         monitor.start()
         print(f"[ironclaw-benchmark] monitor: {monitor.url}", flush=True)
         monitor.set_phase("setup", f"Setting up {args.approach}")
+        expected_log_paths = approach.expected_live_event_log_paths(expected_agent_ids, run_dir)
+        if expected_log_paths:
+            monitor.attach_agents(expected_agent_ids, expected_log_paths)
         monitor.state.set_job_params({
             "profile": args.job_profile,
             "duration_min_s": args.job_duration_min_s,

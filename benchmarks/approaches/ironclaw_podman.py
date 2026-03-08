@@ -320,6 +320,17 @@ class IronclawPodmanApproach(Approach):
             if not ok:
                 print(f"[{self.name}] WARNING: trigger failed for {agent_id}")
 
+    def expected_live_event_log_paths(
+        self,
+        agent_ids: List[str],
+        output_dir: Path,
+    ) -> Dict[str, Path]:
+        base_dir = Path("/tmp") / "ironclaw-bench-podman" / self._run_id
+        return {
+            agent_id: base_dir / agent_id / "evidence" / "agent-events.jsonl"
+            for agent_id in agent_ids
+        }
+
     def trigger_worker_spawn(
         self,
         agent_id: str,
