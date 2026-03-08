@@ -193,6 +193,10 @@ python3 ironclaw_benchmark.py \
 
 This is useful when you want to keep many agents alive but deliberately avoid a thundering herd of worker launches.
 
+For large runs where you care about the measurements more than graceful agent exit, add:
+
+- `--skip-graceful-shutdown`: force-remove agents during teardown instead of waiting for clean shutdown
+
 ## Live Monitor
 
 The synthetic runner can serve a live webpage that shows one box per agent and

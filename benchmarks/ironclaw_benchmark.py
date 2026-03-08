@@ -877,6 +877,7 @@ def build_params(args, config, run_label: str, run_dir: Path) -> dict:
         "max_triggers_per_agent": args.max_triggers_per_agent,
         "global_launch_bucket_size": args.global_launch_bucket_size,
         "global_launch_refill_rate_per_s": args.global_launch_refill_rate_per_s,
+        "skip_graceful_shutdown": args.skip_graceful_shutdown,
         "pre_trigger_settle_s": args.pre_trigger_settle_s,
         "batch_size": args.batch_size,
         "batch_interval_s": args.batch_interval_s,
@@ -905,6 +906,7 @@ def build_params(args, config, run_label: str, run_dir: Path) -> dict:
             "job_dispatch": args.job_dispatch,
             "global_launch_bucket_size": args.global_launch_bucket_size,
             "global_launch_refill_rate_per_s": args.global_launch_refill_rate_per_s,
+            "skip_graceful_shutdown": args.skip_graceful_shutdown,
         },
     }
 
@@ -1232,6 +1234,8 @@ def main():
                         help="Collect zero-worker samples after agents start before control begins")
     parser.add_argument("--control-interval-s", type=float, default=1.0,
                         help="Host control-loop polling interval")
+    parser.add_argument("--skip-graceful-shutdown", action="store_true",
+                        help="Force-remove agents during teardown instead of waiting for graceful shutdown")
     parser.add_argument("--max-triggers-per-agent", type=int, default=0,
                         help="Maximum total job triggers per agent (0 = unlimited)")
     parser.add_argument("--global-launch-bucket-size", type=float, default=0.0,
@@ -1585,9 +1589,14 @@ def main():
             except Exception:
                 pass
 
+    teardown_used_force_cleanup = False
     print("[ironclaw-benchmark] stopping agents...", flush=True)
     try:
-        approach.stop_agents()
+        if args.skip_graceful_shutdown:
+            approach.force_cleanup()
+            teardown_used_force_cleanup = True
+        else:
+            approach.stop_agents()
     except Exception as exc:
         cleanup_error = exc
         print(f"[ironclaw-benchmark] stop error: {exc}", flush=True)
@@ -1604,7 +1613,8 @@ def main():
         monitor.set_phase("cleanup", "Removing containers")
     print("[ironclaw-benchmark] cleaning up...", flush=True)
     try:
-        approach.cleanup()
+        if not teardown_used_force_cleanup:
+            approach.cleanup()
     except Exception as exc:
         if cleanup_error is None:
             cleanup_error = exc

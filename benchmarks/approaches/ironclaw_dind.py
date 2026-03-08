@@ -302,6 +302,23 @@ class _IronclawDindBase(Approach):
             )
         print(f"[{self.name}] All agents stopped.")
 
+    def force_cleanup(self) -> None:
+        result = subprocess.run(
+            ["docker", "ps", "-aq",
+             "--filter", f"label=bench_run_id={self._run_id}"],
+            capture_output=True, text=True,
+        )
+        ids = result.stdout.strip().splitlines() if result.returncode == 0 else []
+        if ids:
+            subprocess.run(
+                ["docker", "rm", "-f"] + ids,
+                capture_output=True,
+            )
+        self._agent_ids = []
+        self._host_ports = {}
+        self._agent_roots = {}
+        print(f"[{self.name}] Force cleanup complete.")
+
     def cleanup(self) -> None:
         self.stop_agents()
         result = subprocess.run(

@@ -444,6 +444,23 @@ class IronclawPodmanApproach(Approach):
             ])
         print(f"[{self.name}] All agents stopped.")
 
+    def force_cleanup(self) -> None:
+        for agent_id, username in self._users.items():
+            idx = agent_id.split("-")[-1]
+            _run_as_user(username, [
+                "podman", "rm", "-f", f"bench-ic-agent-{idx}",
+            ])
+            _run_as_user(username, [
+                "sh", "-c",
+                "podman ps -aq --filter name=ironclaw-worker- | xargs -r podman rm -f",
+            ])
+        self._agent_ids = []
+        self._host_ports = {}
+        self._users = {}
+        self._uids = {}
+        self._agent_roots = {}
+        print(f"[{self.name}] Force cleanup complete.")
+
     def cleanup(self) -> None:
         self.stop_agents()
         self._agent_ids = []

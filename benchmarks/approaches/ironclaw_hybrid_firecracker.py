@@ -236,7 +236,22 @@ class IronclawHybridFirecrackerApproach(Approach):
         self._agent_ids = []
         self._host_ports = {}
 
+    def force_cleanup(self) -> None:
+        result = subprocess.run(
+            ["docker", "ps", "-aq",
+             "--filter", f"label=bench_run_id={self._run_id}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            ids = result.stdout.strip().splitlines()
+            subprocess.run(["docker", "rm", "-f"] + ids, capture_output=True)
+        self._agent_ids = []
+        self._host_ports = {}
+        self._agent_roots = {}
+        print(f"[{self.name}] Force cleanup complete.")
+
     def cleanup(self) -> None:
         self.stop_agents()
         for i in range(0, 512):
             subprocess.run(["docker", "rm", "-f", f"bench-ic-agent-{i}"], capture_output=True)
+        self._agent_roots = {}

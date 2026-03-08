@@ -236,6 +236,15 @@ class Approach(ABC):
         """Stop all agents and clean up their workers."""
         ...
 
+    def force_cleanup(self) -> None:
+        """
+        Remove benchmark agents without waiting for graceful shutdown.
+
+        Approaches that can cheaply kill/remove their agents should override
+        this. The default falls back to the regular cleanup path.
+        """
+        self.cleanup()
+
     def cleanup(self) -> None:
         """Optional: remove build artifacts (images, VM disks, etc.)."""
         pass

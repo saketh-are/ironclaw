@@ -274,6 +274,37 @@ class IronclawDockerApproach(Approach):
             pass
         print(f"[{self.name}] All agents stopped.")
 
+    def force_cleanup(self) -> None:
+        result = subprocess.run(
+            ["docker", "ps", "-aq",
+             "--filter", f"label=bench_run_id={self._run_id}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            ids = result.stdout.strip().split("\n")
+            subprocess.run(["docker", "rm", "-f"] + ids, capture_output=True)
+        try:
+            result = subprocess.run(
+                ["docker", "ps", "-aq", "--filter", "name=ironclaw-worker-"],
+                capture_output=True, text=True,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                ids = result.stdout.strip().split("\n")
+                subprocess.run(["docker", "rm", "-f"] + ids, capture_output=True)
+        except subprocess.SubprocessError:
+            pass
+        import shutil
+        for _agent_id, ws_dir in self._workspace_dirs.items():
+            try:
+                shutil.rmtree(ws_dir, ignore_errors=True)
+            except Exception:
+                pass
+        self._agent_ids = []
+        self._host_ports = {}
+        self._workspace_dirs = {}
+        self._agent_roots = {}
+        print(f"[{self.name}] Force cleanup complete.")
+
     def cleanup(self) -> None:
         self.stop_agents()
         # Remove agent containers
