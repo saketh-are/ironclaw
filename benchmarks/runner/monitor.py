@@ -438,7 +438,7 @@ function renderCompact(state) {
       if (w.checkin_emoji && !p.checkin_emoji) {
         emitFloatEvent(tile, "callback " + w.checkin_emoji, "");
       } else if (w.storage_written && !p.storage_written) {
-        emitFloatEvent(tile, "storage write", "storage");
+        emitFloatEvent(tile, "storage write " + (w.checkin_emoji || ""), "storage");
       }
       prev[w.id] = { checkin_emoji: w.checkin_emoji, storage_written: w.storage_written };
     }
