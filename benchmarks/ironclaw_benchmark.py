@@ -372,6 +372,23 @@ def sync_host_evidence(
         state.expire_pending(now_epoch_s)
 
 
+def evidence_active_counts(
+    agent_ids: List[str],
+    tracked_jobs: Dict[str, dict],
+) -> Dict[str, int]:
+    counts = {agent_id: 0 for agent_id in agent_ids}
+    for record in tracked_jobs.values():
+        agent_id = record.get("agent_id")
+        if agent_id not in counts:
+            continue
+        if record.get("job_created_at_epoch_s") is None:
+            continue
+        if record.get("worker_cleaned_at_epoch_s") is not None:
+            continue
+        counts[agent_id] += 1
+    return counts
+
+
 def fetch_active_counts(
     approach,
     agent_ids: List[str],
@@ -395,6 +412,8 @@ def fetch_active_counts(
         errors["count_active_workers"] = str(exc)
 
     sync_host_evidence(approach, agent_roots, states, tracked_jobs, agent_records)
+    for agent_id, evidence_count in evidence_active_counts(agent_ids, tracked_jobs).items():
+        counts[agent_id] = max(int(counts.get(agent_id, 0)), evidence_count)
     return counts, errors
 
 
@@ -986,12 +1005,6 @@ def main():
         if set(agent_roots) != set(agent_ids):
             raise RuntimeError("Approach did not expose host-visible roots for all agents")
 
-        def collector_active_count():
-            try:
-                return approach.count_active_workers()
-            except Exception:
-                return 0
-
         states = {}
         control_start_ref = time.monotonic() + args.pre_trigger_settle_s
         for agent_id in agent_ids:
@@ -999,6 +1012,14 @@ def main():
             release_at = control_start_ref + ramp_delay_s(agent_id, args.batch_size, args.batch_interval_s)
             next_spawn_at = release_at + exponential_delay_s(rng, args.spawn_interval_mean_s)
             states[agent_id] = AgentState(rng, release_at, next_spawn_at)
+
+        def collector_active_count():
+            try:
+                observed_total = int(approach.count_active_workers())
+            except Exception:
+                observed_total = 0
+            evidence_total = sum(evidence_active_counts(agent_ids, tracked_jobs).values())
+            return max(observed_total, evidence_total)
 
         running_collector = Collector(interval_ms=args.sample_interval_ms, phase="running")
         running_thread = running_collector.run_in_thread(
