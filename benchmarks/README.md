@@ -1,8 +1,8 @@
 # Agent Isolation Benchmarks
 
-Synthetic benchmark for isolation strategies in multi-agent deployments with sub-agent spawning.
+Benchmark suite for isolation strategies in multi-agent deployments with sub-agent spawning.
 
-A trivial "agent" is deployed which spawns sandboxed "workers" on a random basis. Both the agents and workers use some RAM and confirm they can write to storage. Workers check-in with their parent agent after spawn via network callback, mimicking IronClaw's architecture.
+The repo now supports a real IronClaw benchmark mode with host-verified worker lifecycle evidence, alongside the older synthetic benchmark used for the committed reference dataset and decomposition sweeps.
 
 Setup, reproduction steps, and output-format details live in [USAGE.md](USAGE.md).
 

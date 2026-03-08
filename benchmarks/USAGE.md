@@ -1,239 +1,305 @@
 # Benchmark Usage
 
-This document covers setup, reproducibility, output format, and benchmark internals. For the approach summary and the current benchmark results, see [README.md](README.md).
+This document defaults to the real IronClaw benchmark path in [ironclaw_benchmark.py](/home/saketh/ironclaw/benchmarks/ironclaw_benchmark.py). The legacy synthetic runner is still available, but it is now secondary and mainly useful for reproducing the older reference dataset and decomposition sweeps.
 
-The committed reference dataset is organized under `results/baremetal-xeon6554s/`. The analysis commands recurse through nested result folders, so `make compare` and `make decompose` work against that consolidated layout.
+For the approach summary and current comparison tables, see [README.md](/home/saketh/ironclaw/benchmarks/README.md).
+
+## Default Path
+
+The default benchmark flow is:
+
+1. Build the real IronClaw benchmark images.
+2. Run `ironclaw_benchmark.py` against one of the `ironclaw-*` approaches.
+3. Verify success from host-visible evidence written under the run directory.
+
+The real benchmark now verifies these events from disk rather than trusting IronClaw job APIs:
+
+- agent started
+- agent wrote storage
+- worker job created
+- worker started
+- worker wrote storage
+- worker callback received
+- worker cleanup logged and absence verified
+- agent cleanup verified
 
 ## Quick Start
 
 ```bash
-# Build Docker images (required for all approaches)
-make images
+# Build the real benchmark images
+make ironclaw-images
 
-# Run the container approach with 5 agents (stochastic workload)
-make run APPROACH=container-docker AGENTS=5
+# Smoke test on shared Docker
+make ironclaw-benchmark \
+  APPROACH=ironclaw-docker \
+  AGENTS=2 \
+  EXTRA_ARGS="--mode loaded --max-triggers-per-agent 1 --job-profile sleep --job-duration-min-s 2 --job-duration-max-s 2"
 
-# Run idle mode (no workers; measures pure isolation overhead)
-make run-idle APPROACH=container-docker AGENTS=50
+# Staggered Sysbox run with one long-lived worker per agent
+make ironclaw-benchmark \
+  APPROACH=ironclaw-sysbox-dind \
+  AGENTS=50 \
+  EXTRA_ARGS='--mode loaded --max-concurrent-workers 1 --max-triggers-per-agent 1 --batch-size 10 --batch-interval-s 5 --job-profile sleep --job-duration-min-s 600 --job-duration-max-s 600'
 
-# Run an idle sweep at multiple scales
-make run-sweep APPROACH=container-docker
-
-# Compare results
+# Compare older committed reference results
 make compare
-
-# Generate charts (requires matplotlib)
-make plot
 ```
 
-## Approach-Specific Setup
-
-### gVisor DinD (requires runsc)
+You can also run the real benchmark directly:
 
 ```bash
-# Each agent runs in its own gVisor sandbox with a private Docker daemon
-make run APPROACH=container-gvisor-dind AGENTS=3
+python3 ironclaw_benchmark.py \
+  --approach ironclaw-docker \
+  --agents 5 \
+  --mode loaded
 ```
 
-Requires `runsc` runtime registered in `/etc/docker/daemon.json` with `--net-raw` and `--allow-packet-socket-write` flags for the DinD variant.
-
-### Sysbox DinD (requires sysbox-runc)
+Available real approaches:
 
 ```bash
-# Each agent runs in its own Sysbox container with a private Docker daemon
-make run APPROACH=container-sysbox-dind AGENTS=3
+python3 bench.py list --suite ironclaw
 ```
 
-Requires `sysbox-runc` runtime registered in `/etc/docker/daemon.json`. Uses `overlay2` and native iptables, which boots faster than the gVisor DinD variant.
+## Real Approaches
 
-### Podman Rootless (requires podman + systemd-container)
+### `ironclaw-docker`
+
+Shared host Docker daemon. This is the simplest real benchmark topology.
+
+```bash
+make ironclaw-benchmark APPROACH=ironclaw-docker AGENTS=5
+```
+
+### `ironclaw-gvisor-dind`
+
+Each agent runs in an outer gVisor sandbox with a private inner Docker daemon.
+
+```bash
+make ironclaw-benchmark APPROACH=ironclaw-gvisor-dind AGENTS=3
+```
+
+Requires `runsc` registered in the host Docker daemon config.
+
+### `ironclaw-sysbox-dind`
+
+Each agent runs in an outer Sysbox container with a private inner Docker daemon.
+
+```bash
+make ironclaw-benchmark APPROACH=ironclaw-sysbox-dind AGENTS=5
+```
+
+Requires `sysbox-runc` registered in the host Docker daemon config.
+
+### `ironclaw-podman`
+
+Each agent gets its own rootless Podman user and user-scoped Podman service.
 
 ```bash
 make podman-setup
-make run APPROACH=podman-rootless AGENTS=3
+make ironclaw-benchmark APPROACH=ironclaw-podman AGENTS=3
 ```
 
-Creates ephemeral OS users per agent. Requires `podman`, `uidmap`, and `systemd-container` for `machinectl` / `systemd-run --machine`.
+Requires `podman`, `uidmap`, and `systemd-container`.
 
-### VM Approach (requires KVM + libguestfs)
+### `ironclaw-vm-qemu`
+
+Each agent runs inside its own QEMU/KVM VM with an inner Docker daemon.
 
 ```bash
-# Build the VM image (one time)
-make vm-image
+# One-time image build
+sudo env LIBGUESTFS_BACKEND=direct bash vm/build-vm-image.sh
 
-# Run
-make run APPROACH=vm-qemu AGENTS=5
+# Benchmark run
+make ironclaw-benchmark APPROACH=ironclaw-vm-qemu AGENTS=3
 ```
 
-### Firecracker Hybrid (requires firecracker + KVM)
+Requires `qemu-system-x86_64`, `/dev/kvm`, `virt-builder`, `virt-customize`, and `genisoimage` or `mkisofs`.
 
-```bash
-make fc-setup
-make run APPROACH=hybrid-firecracker AGENTS=3
-```
-
-Agents run in Docker containers with `/dev/kvm` passthrough. Workers are Firecracker microVMs spawned directly by the agent.
-
-## Prerequisites
-
-- All approaches: Linux, Docker daemon, Python 3.8+, `docker` Python SDK
-- gVisor DinD: `runsc` runtime registered in Docker daemon config
-- Sysbox DinD: `sysbox-runc` runtime registered in Docker daemon config
-- Podman rootless: `podman`, `uidmap`, `systemd-container`
-- VM approach: QEMU (`qemu-system-x86_64`), KVM (`/dev/kvm` accessible to the benchmark user or run as `root`), `libguestfs-tools`, `genisoimage` or `mkisofs`
-- Firecracker hybrid: `firecracker` binary, KVM (`/dev/kvm`)
-- Charts: `pip install matplotlib`
+On this host, `LIBGUESTFS_BACKEND=direct` was needed to avoid a broken libguestfs `passt` path during image build.
 
 ## Modes
 
+The real benchmark supports the same three top-level modes:
+
 | Mode | Description | Use case |
-|------|-------------|----------|
-| `loaded` | Stochastic workload; agents spawn workers randomly (default) | Realistic memory profile under load |
-| `idle` | No workers; agents sit idle | Measure pure isolation overhead per agent |
-| `plateau` | Deterministic steady-state worker plateaus | Isolate per-worker overhead from per-agent overhead |
+| --- | --- | --- |
+| `loaded` | host-driven stochastic triggering of real worker jobs | realistic callback-path and runtime behavior |
+| `idle` | agents only, no worker jobs | fixed per-agent overhead |
+| `plateau` | host-driven worker target plateaus per agent | per-worker steady-state overhead |
+
+Examples:
 
 ```bash
-# Explicit mode selection
-make run APPROACH=container-docker AGENTS=5 MODE=loaded
-make run APPROACH=container-docker AGENTS=100 MODE=idle
-make run-plateau APPROACH=container-docker AGENTS=5 \
-  PLATEAU_WORKERS_PER_AGENT=0,1,2,3,4,5 \
-  PLATEAU_HOLD_S=60 PLATEAU_SETTLE_S=20
+# Idle
+python3 ironclaw_benchmark.py \
+  --approach ironclaw-docker \
+  --agents 20 \
+  --mode idle
+
+# Loaded
+python3 ironclaw_benchmark.py \
+  --approach ironclaw-sysbox-dind \
+  --agents 50 \
+  --mode loaded \
+  --max-concurrent-workers 1 \
+  --batch-size 10 \
+  --batch-interval-s 5
+
+# Plateau
+python3 ironclaw_benchmark.py \
+  --approach ironclaw-docker \
+  --agents 5 \
+  --mode plateau \
+  --plateau-workers-per-agent 0,1,2,3,4,5 \
+  --plateau-hold-s 60 \
+  --plateau-settle-s 20
 ```
 
-## Configuration
+## Job Profiles
 
-Edit `config.env` to tune parameters:
+Real mode can inject arbitrary benchmark jobs.
 
-```dotenv
-RNG_SEED=42                   # Base seed for reproducible randomness
-BENCHMARK_DURATION_S=300      # How long to run (seconds)
-SPAWN_INTERVAL_MEAN_S=30      # Mean time between worker spawns per agent
-MAX_CONCURRENT_WORKERS=5      # Max workers per agent
-WORKER_MEMORY_MB=500          # Memory each worker allocates
-WORKER_DURATION_MIN_S=30      # Min worker lifetime
-WORKER_DURATION_MAX_S=120     # Max worker lifetime
-WORKER_LIFETIME_MODE=timed    # timed (default) or hold
-PLATEAU_WORKERS_PER_AGENT=    # e.g. 0,1,2,3,4,5 for plateau mode
-PLATEAU_HOLD_S=60             # Seconds per plateau
-PLATEAU_SETTLE_S=20           # Seconds to discard at plateau start
-```
+Built-in profiles:
 
-## Host Tuning
+| Profile | What it does |
+| --- | --- |
+| `sleep` | writes a proof file, then sleeps for the requested duration |
+| `memory-touch` | writes a proof file, allocates and touches resident memory, then holds it |
+| `custom` | runs your own command template |
 
-For accurate measurements, apply:
+Examples:
 
 ```bash
-# Disable transparent huge pages
-echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+# Built-in memory pressure job
+python3 ironclaw_benchmark.py \
+  --approach ironclaw-sysbox-dind \
+  --agents 5 \
+  --mode plateau \
+  --job-profile memory-touch \
+  --job-memory-mb 256
 
-# Disable kernel same-page merging
-echo 0 | sudo tee /sys/kernel/mm/ksm/run
-
-# Disable swap
-sudo swapoff -a
-
-# Drop page caches
-echo 3 | sudo tee /proc/sys/vm/drop_caches
+# Fully custom job payload
+python3 ironclaw_benchmark.py \
+  --approach ironclaw-docker \
+  --agents 5 \
+  --mode loaded \
+  --job-profile custom \
+  --job-command "mkdir -p {proof_dir} && echo hi > {proof_file} && sleep {duration_s}"
 ```
 
-The orchestrator warns at startup if swap is enabled and reports whether any swap activity occurred during the benchmark.
+Template variables for `--job-command`:
+
+- `{agent_id}`
+- `{trigger_index}`
+- `{duration_s}`
+- `{memory_mb}`
+- `{proof_dir}`
+- `{proof_file}`
 
 ## Output Format
 
-Each run creates a directory under `results/`. For the committed reference data in this repo, those run directories live under `results/baremetal-xeon6554s/`:
+Each real benchmark run writes a directory under `results/`:
 
 ```text
-results/baremetal-xeon6554s/container-docker-loaded-n5-20260306T014541/
-├── params.json        # Full configuration for reproducibility
-├── timeseries.jsonl   # Memory samples (one JSON object per line)
-├── summary.json       # Aggregated statistics
-├── agent-0.jsonl      # Agent event log (worker_start/worker_end events)
-├── agent-1.jsonl      # ...
-└── ...
+results/ironclaw-docker-loaded-n5-20260308T010000/
+├── params.json
+├── timeseries.jsonl
+├── summary.json
+└── agents/
+    ├── agent-0/
+    │   ├── evidence/
+    │   │   ├── agent-events.jsonl
+    │   │   ├── job-created-<job>.json
+    │   │   ├── worker-callback-<job>.json
+    │   │   └── worker-cleaned-<job>.json
+    │   ├── workspace/
+    │   │   └── .bench-evidence/
+    │   └── ironclaw/
+    │       └── projects/<job-id>/
+    └── ...
 ```
 
-### What's in the JSONL
+Important files:
 
-Each sample includes:
-- Host memory consumed (`MemTotal - MemAvailable`)
-- Full `/proc/meminfo` breakdown (`Cached`, `Slab`, `AnonPages`, `Shmem`, `Swap`, etc.)
-- Per-agent RSS and PSS from `/proc/<pid>/smaps_rollup`
-- Daemon (`dockerd`, `containerd`) RSS and PSS
-- Host CPU counters from `/proc/stat` (cumulative jiffies)
-- Per-agent and per-daemon CPU counters from `/proc/<pid>/stat` (`utime` / `stime`)
-- Active worker count
-- Swap activity counters (`pswpin` / `pswpout`)
-- Memory pressure (PSI) if available
+- `params.json`: exact benchmark inputs
+- `timeseries.jsonl`: memory and CPU samples
+- `summary.json`: aggregated resource stats plus evidence-derived lifecycle stats
+- `agents/<agent>/evidence/agent-events.jsonl`: agent start/storage/exit events
+- `agents/<agent>/ironclaw/projects/<job-id>/.bench-evidence/worker-started-<job>.json`: worker-start marker
+- `agents/<agent>/ironclaw/projects/<job-id>/bench-test/output-...txt`: worker proof output
 
-### Summary Statistics
+### Summary Fields
 
-`summary.json` includes:
-- Baseline-subtracted mean, peak, and p50 / p95 / p99
-- Per-agent mean overhead
-- Memory drift slope (KiB/s) to detect leaks
-- Daemon overhead breakdown (with baseline delta to isolate agent-caused growth)
-- Host CPU utilization, per-agent CPU seconds, and per-daemon CPU seconds
-- Total workers spawned and max concurrent
-- Plateau-mode zero-point, first-worker tax, steady-worker slope, and per-stage points
+The real benchmark `summary.json` includes:
 
-## Decomposing Agent vs Worker Overhead
+- host memory stats: `steady_state_mean_mib`, `peak_mib`, `p95_mib`
+- CPU stats: `host_cpu_pct`, `per_agent_cpu_s`
+- control stats: `workers_spawned`, `avg_workers`, `final_active_workers`
+- evidence stats:
+  - `agents_started`
+  - `agents_with_storage`
+  - `jobs_discovered`
+  - `jobs_started`
+  - `jobs_with_callback_event`
+  - `jobs_with_proof`
+  - `jobs_cleaned`
+  - `jobs_cleanup_verified`
+  - `jobs_succeeded`
+  - `agents_cleanup_verified`
+- latency breakdowns:
+  - `trigger_to_job_created`
+  - `trigger_to_started`
+  - `trigger_to_proof`
+  - `trigger_to_callback`
+  - `trigger_to_cleanup`
 
-Use two runs, not one:
+## Legacy Synthetic Runner
 
-1. Run an `idle` sweep to fit fixed per-agent overhead.
-2. Run a `plateau` benchmark to fit marginal per-worker overhead at steady state.
+The synthetic runner is still present:
 
-Recommended sequence:
+- [runner/orchestrate.py](/home/saketh/ironclaw/benchmarks/runner/orchestrate.py)
+- `make run`
+- `make run-idle`
+- `make run-plateau`
+- `make run-sweep`
+
+Use it when you specifically need:
+
+- compatibility with the older committed bare-metal reference dataset
+- the historical synthetic decomposition sweeps in [results/baremetal-xeon6554s](/home/saketh/ironclaw/benchmarks/results/baremetal-xeon6554s)
+- legacy container-vs-VM-vs-Firecracker comparisons that are still summarized in [README.md](/home/saketh/ironclaw/benchmarks/README.md)
+
+The synthetic decomposition workflow remains:
 
 ```bash
-# Fixed per-agent overhead
+# Fixed per-agent slope
 for n in 1 5 10 20; do
   make run-idle APPROACH=container-docker AGENTS=$n BENCHMARK_DURATION_S=60
 done
 
-# Per-worker steady-state overhead
+# Plateau worker slope
 make run-plateau APPROACH=container-docker AGENTS=5 \
   PLATEAU_WORKERS_PER_AGENT=0,1,2,3,4,5 \
   PLATEAU_HOLD_S=60 PLATEAU_SETTLE_S=20
 
-# Optional: isolation/runtime tax without worker payload
+# Optional 0 MB worker tax
 make run-plateau APPROACH=container-docker AGENTS=5 \
   PLATEAU_WORKERS_PER_AGENT=0,1,2,3,4,5 \
   PLATEAU_HOLD_S=60 PLATEAU_SETTLE_S=20 \
   WORKER_MEMORY_MB=0
 
-# Fit the decomposition from results/
 make decompose
 ```
 
-Notes:
-- `plateau` schedules must start at `0` and be non-decreasing.
-- `plateau` forces `WORKER_LIFETIME_MODE=hold` so workers stay alive for the full stage.
-- The orchestrator releases all agents into plateau mode through the agent HTTP control endpoint after collection starts, so the stages align across backends.
-- `loaded` remains the realism benchmark. Use `plateau` for decomposition, not for headline density numbers.
-- The headline `Agent Mem` figure comes from the idle-fit slope, not from a single run.
-- The headline `Worker Mem` figure comes from the `WORKER_MEMORY_MB=0` plateau slope.
-- The committed sweep used for the headline decomposition lives at `results/baremetal-xeon6554s/sweep-20260306T030235/`.
+## Host Tuning
 
-## Worker Lifecycle
+For stable measurements:
 
-The agent uses the Docker Python SDK to match IronClaw's `ContainerJobManager` path:
-
-```text
-create -> start -> wait (background) -> remove
+```bash
+echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+echo 0 | sudo tee /sys/kernel/mm/ksm/run
+sudo swapoff -a
+echo 3 | sudo tee /proc/sys/vm/drop_caches
 ```
 
-Each worker container gets labels for tracking and cleanup:
-- `bench_run_id`: unique per benchmark run
-- `bench_role`: `agent` or `worker`
-- `bench_agent_id`: which agent spawned it
-- `bench_approach`: which approach is running
-
-## Adding New Approaches
-
-1. Create `approaches/my_approach.py`.
-2. Implement a class extending `approaches.base.Approach`.
-3. Run `make run APPROACH=my-approach AGENTS=5`.
-
-See `approaches/base.py` for the interface and `approaches/container_docker.py` for a reference implementation.
+The collectors record swap and PSI when available, but the cleanest runs still come from a quiet host.
