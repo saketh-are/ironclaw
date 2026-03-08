@@ -216,6 +216,8 @@ body {
   background: var(--green);
 }
 .compact-dot.emoji-dot {
+  background: var(--surface);
+  border: 1.5px solid var(--green);
   font-size: 10px;
   line-height: 8px;
   text-align: center;
@@ -226,7 +228,8 @@ body {
   font-size: 7px;
   line-height: 8px;
   text-align: center;
-  color: var(--green);
+  color: #000;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   overflow: hidden;
 }
