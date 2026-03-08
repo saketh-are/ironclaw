@@ -178,6 +178,17 @@ def sync_workspace_image(image_path: Path, project_dir: Path):
     )
 
 
+def load_worker_exit_code(project_dir: Path, job_id: str) -> int | None:
+    exit_path = project_dir / ".bench-evidence" / f"worker-exit-{job_id}.json"
+    if not exit_path.exists():
+        return None
+    try:
+        payload = json.loads(exit_path.read_text())
+        return int(payload["exit_code"])
+    except Exception:
+        return None
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--command-b64", required=True)
@@ -273,12 +284,17 @@ def main():
 
         proc.wait(timeout=None)
         sync_workspace_image(workspace_image, project_dir)
-        success = proc.returncode == 0
-        message = (
-            "Firecracker benchmark command completed successfully"
-            if success
-            else f"Firecracker benchmark command exited with status {proc.returncode}"
-        )
+        worker_exit_code = load_worker_exit_code(project_dir, job_id)
+        if worker_exit_code is None:
+            success = False
+            message = "Firecracker worker did not write exit-status evidence"
+        else:
+            success = worker_exit_code == 0
+            message = (
+                "Firecracker benchmark command completed successfully"
+                if success
+                else f"Firecracker benchmark command exited with status {worker_exit_code}"
+            )
         report_completion(local_orchestrator_url, job_id, worker_token, success, message)
         completion_reported = True
     except Exception as exc:

@@ -13,6 +13,12 @@ SOURCE_FILES=(
     "${SCRIPT_DIR}/build-ironclaw-rootfs.sh"
 )
 
+rootfs_has_required_files() {
+    local image_path="$1"
+    debugfs -R 'stat /sbin/init' "$image_path" >/dev/null 2>&1 &&
+        debugfs -R 'stat /bin/sh' "$image_path" >/dev/null 2>&1
+}
+
 if [ -f "$ROOTFS_FILE" ]; then
     if [ "$FORCE" = "1" ]; then
         rm -f "$ROOTFS_FILE"
@@ -24,9 +30,12 @@ if [ -f "$ROOTFS_FILE" ]; then
                 break
             fi
         done
-        if [ "$up_to_date" -eq 1 ]; then
+        if [ "$up_to_date" -eq 1 ] && rootfs_has_required_files "$ROOTFS_FILE"; then
             echo "[build-ironclaw-rootfs] Rootfs already up to date at ${ROOTFS_FILE}"
             exit 0
+        fi
+        if ! rootfs_has_required_files "$ROOTFS_FILE"; then
+            echo "[build-ironclaw-rootfs] Cached rootfs is missing required guest files; rebuilding"
         fi
         rm -f "$ROOTFS_FILE"
     fi
@@ -43,16 +52,25 @@ docker exec "$BUILD_TAG" bash -lc 'apt-get update >/dev/null && apt-get install 
 docker stop "$BUILD_TAG" >/dev/null 2>&1 || true
 
 TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"; docker rm -f "$BUILD_TAG" >/dev/null 2>&1 || true' EXIT
+ROOTFS_TMP="${ROOTFS_FILE}.tmp.$$"
+MOUNT_DIR="${TMPDIR}/mnt"
+cleanup() {
+    if mountpoint -q "$MOUNT_DIR" 2>/dev/null; then
+        umount "$MOUNT_DIR" >/dev/null 2>&1 || true
+    fi
+    rm -f "$ROOTFS_TMP"
+    rm -rf "$TMPDIR"
+    docker rm -f "$BUILD_TAG" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
 
 docker export "$BUILD_TAG" > "${TMPDIR}/rootfs.tar"
 
-dd if=/dev/zero of="$ROOTFS_FILE" bs=1M count="$ROOTFS_SIZE_MB" status=none
-mkfs.ext4 -F -q "$ROOTFS_FILE"
+dd if=/dev/zero of="$ROOTFS_TMP" bs=1M count="$ROOTFS_SIZE_MB" status=none
+mkfs.ext4 -F -q "$ROOTFS_TMP"
 
-MOUNT_DIR="${TMPDIR}/mnt"
 mkdir -p "$MOUNT_DIR"
-mount -o loop "$ROOTFS_FILE" "$MOUNT_DIR"
+mount -o loop "$ROOTFS_TMP" "$MOUNT_DIR"
 
 tar -xf "${TMPDIR}/rootfs.tar" -C "$MOUNT_DIR"
 cp "${BENCH_DIR}/workload/.ironclaw-bin" "${MOUNT_DIR}/usr/local/bin/ironclaw"
@@ -62,5 +80,13 @@ cp "${SCRIPT_DIR}/init-ironclaw" "${MOUNT_DIR}/sbin/init"
 chmod 755 "${MOUNT_DIR}/sbin/init"
 mkdir -p "${MOUNT_DIR}/proc" "${MOUNT_DIR}/sys" "${MOUNT_DIR}/dev" "${MOUNT_DIR}/tmp" "${MOUNT_DIR}/workspace"
 umount "$MOUNT_DIR"
+
+if ! rootfs_has_required_files "$ROOTFS_TMP"; then
+    echo "[build-ironclaw-rootfs] ERROR: built rootfs is missing required guest files" >&2
+    exit 1
+fi
+
+mv "$ROOTFS_TMP" "$ROOTFS_FILE"
+ROOTFS_TMP=""
 
 echo "[build-ironclaw-rootfs] Rootfs created at ${ROOTFS_FILE}"

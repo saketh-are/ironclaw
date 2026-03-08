@@ -55,6 +55,22 @@ else
     /usr/local/bin/ironclaw worker --job-id "${IRONCLAW_JOB_ID}" --orchestrator-url "${IRONCLAW_ORCHESTRATOR_URL}"
     WORKER_RC=$?
 fi
+
+if [ -n "${IRONCLAW_JOB_ID:-}" ]; then
+    TS_MS="$(date +%s%3N)"
+    cat > "/workspace/.bench-evidence/worker-exit-${IRONCLAW_JOB_ID}.json" <<EOF_JSON
+{"event":"worker_exit","job_id":"${IRONCLAW_JOB_ID}","ts_unix_ms":${TS_MS},"exit_code":${WORKER_RC}}
+EOF_JSON
+fi
+
 sync || true
-reboot -f
+
+if [ -w /proc/sys/kernel/sysrq ]; then
+    echo 1 > /proc/sys/kernel/sysrq 2>/dev/null || true
+fi
+if [ -w /proc/sysrq-trigger ]; then
+    echo o > /proc/sysrq-trigger 2>/dev/null || true
+    sleep 2
+fi
+
 exit "$WORKER_RC"
