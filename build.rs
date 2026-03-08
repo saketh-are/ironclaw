@@ -16,11 +16,17 @@ use std::process::Command;
 fn main() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let root = PathBuf::from(&manifest_dir);
+    let skip_telegram_wasm = env::var_os("IRONCLAW_SKIP_TELEGRAM_WASM_BUILD").is_some();
 
     // ── Embed registry manifests ────────────────────────────────────────
     embed_registry_catalog(&root);
 
     // ── Build Telegram channel WASM ─────────────────────────────────────
+    if skip_telegram_wasm {
+        println!("cargo:warning=Skipping Telegram channel WASM build");
+        return;
+    }
+
     let channel_dir = root.join("channels-src/telegram");
     let wasm_out = channel_dir.join("telegram.wasm");
 
