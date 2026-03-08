@@ -2,7 +2,7 @@
 
 Benchmark suite for isolation strategies in multi-agent deployments with sub-agent spawning.
 
-The repo now supports a real IronClaw benchmark mode with host-verified worker lifecycle evidence, alongside the older synthetic benchmark used for the committed reference dataset and decomposition sweeps.
+The repo now supports a real IronClaw benchmark mode with host-verified worker lifecycle evidence, alongside the older synthetic benchmark used for the reference tables below and the decomposition workflow.
 
 Setup, reproduction steps, and output-format details live in [USAGE.md](USAGE.md).
 

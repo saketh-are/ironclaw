@@ -311,8 +311,8 @@ The synthetic runner is still present:
 
 Use it when you specifically need:
 
-- compatibility with the older committed bare-metal reference dataset
-- the historical synthetic decomposition sweeps in [results/baremetal-xeon6554s](/home/saketh/ironclaw/benchmarks/results/baremetal-xeon6554s)
+- compatibility with the older synthetic reference methodology summarized in [README.md](/home/saketh/ironclaw/benchmarks/README.md)
+- the historical synthetic decomposition workflow (`idle` sweep plus `plateau` runs)
 - legacy container-vs-VM-vs-Firecracker comparisons that are still summarized in [README.md](/home/saketh/ironclaw/benchmarks/README.md)
 
 The synthetic decomposition workflow remains:
