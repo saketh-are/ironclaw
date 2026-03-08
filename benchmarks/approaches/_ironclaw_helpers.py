@@ -107,12 +107,6 @@ def ironclaw_agent_env(config, agent_id, gateway_port):
         "RUST_LOG": "ironclaw=debug",
     }
 
-    # Allow sandbox workers to reach the benchmark monitor through the
-    # network proxy for emoji check-in POSTs.
-    extra_domains = getattr(config, "sandbox_extra_domains", "")
-    if extra_domains:
-        env["SANDBOX_EXTRA_DOMAINS"] = extra_domains
-
     if os.environ.get("MOCK_WORKER_COMMAND"):
         env["MOCK_WORKER_COMMAND"] = os.environ["MOCK_WORKER_COMMAND"]
 

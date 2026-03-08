@@ -372,21 +372,20 @@ class PodmanRootlessApproach(Approach):
             ]
 
             # Storage validation: shared Podman daemon needs host-path indirection
-            if config.storage_validation:
-                host_dir = f"/home/{user}/bench-workspaces"
-                subprocess.run(
-                    ["sudo", "mkdir", "-p", host_dir], check=True,
-                )
-                subprocess.run(
-                    ["sudo", "chown", f"{user}:{user}", host_dir],
-                    check=True,
-                )
-                create_cmd += [
-                    "-v", f"{host_dir}:/tmp/bench-workspaces",
-                    "-e", "STORAGE_VALIDATION=1",
-                    "-e", "WORKSPACE_BASE=/tmp/bench-workspaces",
-                    "-e", f"WORKSPACE_HOST_BASE={host_dir}",
-                ]
+            host_dir = f"/home/{user}/bench-workspaces"
+            subprocess.run(
+                ["sudo", "mkdir", "-p", host_dir], check=True,
+            )
+            subprocess.run(
+                ["sudo", "chown", f"{user}:{user}", host_dir],
+                check=True,
+            )
+            create_cmd += [
+                "-v", f"{host_dir}:/tmp/bench-workspaces",
+                "-e", "STORAGE_VALIDATION=1",
+                "-e", "WORKSPACE_BASE=/tmp/bench-workspaces",
+                "-e", f"WORKSPACE_HOST_BASE={host_dir}",
+            ]
 
             create_cmd += [
                 "-v", f"{self._host_log_dir}:/bench-output",

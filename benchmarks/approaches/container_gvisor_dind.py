@@ -170,11 +170,10 @@ class ContainerGvisorDindApproach(Approach):
                 ]
 
             # Storage validation: inner dockerd resolves paths locally, no host-path indirection
-            if config.storage_validation:
-                cmd += [
-                    "-e", "STORAGE_VALIDATION=1",
-                    "-e", "WORKSPACE_BASE=/tmp/bench-workspaces",
-                ]
+            cmd += [
+                "-e", "STORAGE_VALIDATION=1",
+                "-e", "WORKSPACE_BASE=/tmp/bench-workspaces",
+            ]
 
             cmd.append(self._agent_image)
 

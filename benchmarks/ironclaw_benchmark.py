@@ -38,28 +38,6 @@ LAUNCH_VISIBILITY_TIMEOUT_S = 30.0
 BASELINE_DURATION_S = 10.0
 
 
-def _detect_docker_host_ip() -> str:
-    """Detect the IP address of the Docker bridge gateway on the host.
-
-    This is the IP that containers can use to reach the host.  Falls back
-    to 172.17.0.1 (the Docker default) if detection fails.
-    """
-    import subprocess as _sp
-    try:
-        out = _sp.run(
-            ["ip", "-4", "addr", "show", "docker0"],
-            capture_output=True, text=True, timeout=5,
-        )
-        if out.returncode == 0:
-            for line in out.stdout.splitlines():
-                line = line.strip()
-                if line.startswith("inet "):
-                    # e.g. "inet 172.20.0.1/16 brd ..."
-                    return line.split()[1].split("/")[0]
-    except Exception:
-        pass
-    return "172.17.0.1"
-
 
 def emit_monitor_event(agent_root: Path, agent_id: str, event_name: str, **kwargs) -> None:
     """Append a monitor-compatible JSONL event to the agent's evidence log."""
@@ -126,7 +104,6 @@ def render_job_command(
     trigger_index: int,
     duration_s: int,
     memory_mb: int,
-    checkin_url: str = "",
 ) -> str:
     proof_dir = "/workspace/bench-test"
     proof_file = f"{proof_dir}/output-{agent_id}-{trigger_index}.txt"
@@ -142,17 +119,14 @@ def render_job_command(
         "alloc_file": alloc_file,
     }
 
-    # Emoji check-in: worker picks a random emoji and POSTs it through the
-    # sandbox network proxy to the benchmark monitor, proving end-to-end
-    # network connectivity between the sandbox container and the host.
-    checkin_snippet = ""
-    if checkin_url:
-        # The heredoc is single-quoted ('CHECKIN') so the shell passes
-        # content through verbatim.  The f-string injects agent_id and
-        # checkin_url; double braces {{ }} become literal braces for Python.
-        checkin_snippet = textwrap.dedent(f"""\
-            python3 - <<'CHECKIN'
-import json, random, uuid, urllib.request, os
+    # Worker callback: pick a random emoji and POST it through the native
+    # IronClaw orchestrator /worker/{job_id}/event endpoint with Bearer auth,
+    # proving the full worker→orchestrator callback path works.  Also write
+    # an evidence file so the host-side sync can emit a monitor event.
+    checkin_snippet = textwrap.dedent(f"""\
+        python3 - <<'CALLBACK'
+import json, os, random, time, urllib.request
+
 EMOJIS = [chr(c) for c in [
     0x1f980, 0x1f40d, 0x1f40b, 0x1f525, 0x26a1, 0x1f31f, 0x1f48e,
     0x1f680, 0x1f3af, 0x1f6e1, 0x1f527, 0x2699, 0x1f9ea, 0x1f3b2,
@@ -160,23 +134,58 @@ EMOJIS = [chr(c) for c in [
     0x1f33b, 0x1f52e, 0x1f3b5, 0x1f3d4,
 ]]
 emoji = random.choice(EMOJIS)
-job_id = os.environ.get("IRONCLAW_JOB_ID") or str(uuid.uuid4())[:12]
-payload = json.dumps({{
+
+# Read orchestrator credentials from container env (shell.rs env_clear
+# scrubs them from subprocess env, but they're in /proc/1/environ).
+def read_container_env(name):
+    try:
+        env = open("/proc/1/environ", "rb").read()
+        for entry in env.split(b"\\x00"):
+            kv = entry.decode("utf-8", errors="replace")
+            if kv.startswith(name + "="):
+                return kv[len(name) + 1:]
+    except Exception:
+        pass
+    return os.environ.get(name, "")
+
+token = read_container_env("IRONCLAW_WORKER_TOKEN")
+orch_url = read_container_env("IRONCLAW_ORCHESTRATOR_URL")
+job_id = read_container_env("IRONCLAW_JOB_ID")
+
+# POST to orchestrator event endpoint (native callback with Bearer auth).
+if token and orch_url and job_id:
+    payload = json.dumps({{
+        "event_type": "benchmark_checkin",
+        "data": {{"agent_id": "{agent_id}", "emoji": emoji}},
+    }}).encode()
+    req = urllib.request.Request(
+        f"{{orch_url}}/worker/{{job_id}}/event",
+        data=payload,
+        headers={{
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {{token}}",
+        }},
+    )
+    try:
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        pass
+
+# Write evidence file for host-side sync.
+evidence_dir = "/workspace/.bench-evidence"
+os.makedirs(evidence_dir, exist_ok=True)
+evidence = {{
+    "event": "worker_callback",
     "agent_id": "{agent_id}",
-    "job_id": job_id,
+    "job_id": job_id or "unknown",
     "emoji": emoji,
-}}).encode()
-req = urllib.request.Request(
-    "{checkin_url}",
-    data=payload,
-    headers={{"Content-Type": "application/json"}},
-)
-try:
-    urllib.request.urlopen(req, timeout=5)
-except Exception:
-    pass
-CHECKIN
-        """).strip()
+    "ts_unix_ms": int(time.time() * 1000),
+}}
+path = os.path.join(evidence_dir, f"worker-callback-{{job_id or 'unknown'}}.json")
+with open(path, "w") as f:
+    json.dump(evidence, f)
+CALLBACK
+    """).strip()
 
     if custom_command:
         base_command = custom_command.format(**context)
@@ -191,10 +200,31 @@ CHECKIN
             f"echo proof-{agent_id}-{trigger_index} > {proof_file}",
         ]
 
-        # Emit the emoji check-in right after proof file write, before the
-        # long sleep/workload.  This gives early visibility on the dashboard.
+        # Emit the emoji check-in right after proof file write.
         if checkin_snippet:
             parts.append(checkin_snippet)
+
+        # Storage evidence write — before sleep so the dashboard sees it early.
+        parts.append(textwrap.dedent(f"""\
+            if [ -f {shlex.quote(proof_file)} ]; then
+                mkdir -p /workspace/.bench-evidence
+                python3 - "/workspace/.bench-evidence/worker-storage-written-${{IRONCLAW_JOB_ID:-unknown}}.json" "${{IRONCLAW_JOB_ID:-unknown}}" {shlex.quote(proof_file)} <<'PY'
+            import json
+            import sys
+            import time
+
+            output_path, job_id, proof_path = sys.argv[1:]
+            payload = {{
+                "event": "worker_storage_written",
+                "job_id": job_id,
+                "ts_unix_ms": int(time.time() * 1000),
+                "path": proof_path,
+            }}
+            with open(output_path, "w") as f:
+                json.dump(payload, f)
+            PY
+            fi
+        """).strip())
 
         if profile == "custom":
             raise ValueError("custom job profile requires --job-command")
@@ -219,30 +249,10 @@ CHECKIN
             parts.append(f"sleep {duration_s}")
         base_command = "\n".join(parts)
 
-    emit_storage_event = textwrap.dedent(f"""\
-        if [ -f {shlex.quote(proof_file)} ]; then
-            mkdir -p /workspace/.bench-evidence
-            python3 - "/workspace/.bench-evidence/worker-storage-written-${{IRONCLAW_JOB_ID:-unknown}}.json" "${{IRONCLAW_JOB_ID:-unknown}}" {shlex.quote(proof_file)} <<'PY'
-        import json
-        import sys
-        import time
-
-        output_path, job_id, proof_path = sys.argv[1:]
-        payload = {{
-            "event": "worker_storage_written",
-            "job_id": job_id,
-            "ts_unix_ms": int(time.time() * 1000),
-            "path": proof_path,
-        }}
-        with open(output_path, "w") as f:
-            json.dump(payload, f)
-        PY
-        fi
-    """).strip()
     # For custom commands, inject checkin before the custom command if available.
     if custom_command and checkin_snippet:
-        return f"{checkin_snippet}\n{base_command}\n{emit_storage_event}"
-    return f"{base_command}\n{emit_storage_event}"
+        return f"{checkin_snippet}\n{base_command}"
+    return base_command
 
 
 def proof_relpath(agent_id: str, trigger_index: int) -> str:
@@ -447,6 +457,9 @@ def sync_host_evidence(
                 "worker_storage_at_epoch_s": None,
                 "worker_storage_logged": False,
                 "worker_storage_path": None,
+                "checkin_logged": False,
+                "checkin_emoji": None,
+                "checkin_at_epoch_s": None,
                 "callback_at_epoch_s": None,
                 "worker_cleaned_at_epoch_s": None,
                 "proof_verified": None,
@@ -516,8 +529,23 @@ def sync_host_evidence(
             if payload:
                 record["worker_started_at_epoch_s"] = parse_unix_ms(payload.get("ts_unix_ms"))
                 record["started_at"] = record.get("worker_started_at_epoch_s")
-                # Note: checkin events are now emitted by the worker itself
-                # via HTTP POST through the sandbox network proxy, not here.
+
+        # Scan for worker callback evidence (emoji checkin via orchestrator).
+        if not record.get("checkin_logged"):
+            callback_path = project_path / ".bench-evidence" / f"worker-callback-{job_id}.json"
+            if callback_path.exists():
+                payload = read_json_file(callback_path)
+                if payload and payload.get("emoji"):
+                    record["checkin_logged"] = True
+                    record["checkin_emoji"] = payload.get("emoji")
+                    record["checkin_at_epoch_s"] = parse_unix_ms(payload.get("ts_unix_ms"))
+                    agent_id = record.get("agent_id")
+                    agent_root = agent_roots.get(agent_id) if agent_id else None
+                    if agent_root:
+                        emit_monitor_event(
+                            agent_root, agent_id, "checkin",
+                            worker_id=job_id, emoji=payload.get("emoji"),
+                        )
 
         evidence_dir = project_path / ".bench-evidence"
         worker_storage_candidates = [
@@ -961,7 +989,6 @@ def control_loaded(
                     state.trigger_index,
                     duration_s,
                     args.job_memory_mb,
-                    checkin_url=getattr(args, "checkin_url", ""),
                 )
                 state.trigger_attempts += 1
                 ok = approach.trigger_worker_spawn(
@@ -1085,7 +1112,6 @@ def control_plateau(
                     state.trigger_index,
                     duration_s,
                     args.job_memory_mb,
-                    checkin_url=getattr(args, "checkin_url", ""),
                 )
                 state.trigger_attempts += 1
                 ok = approach.trigger_worker_spawn(
@@ -1325,16 +1351,13 @@ def main():
         monitor.start()
         print(f"[ironclaw-benchmark] monitor: {monitor.url}", flush=True)
         monitor.set_phase("setup", f"Setting up {args.approach}")
-        # Build a checkin URL that sandbox workers can reach through the
-        # network proxy.  Detect the Docker bridge gateway IP so this works
-        # regardless of Docker network configuration.
-        _, monitor_port = monitor.address
-        docker_host_ip = _detect_docker_host_ip()
-        args.checkin_url = f"http://{docker_host_ip}:{monitor_port}/api/checkin"
-        # Allow sandbox workers to reach the monitor host through the proxy.
-        config.sandbox_extra_domains = docker_host_ip
-    else:
-        args.checkin_url = ""
+        monitor.state.set_job_params({
+            "profile": args.job_profile,
+            "duration_min_s": args.job_duration_min_s,
+            "duration_max_s": args.job_duration_max_s,
+            "memory_mb": args.job_memory_mb,
+            "checkin": True,
+        })
 
     try:
         print(f"[ironclaw-benchmark] setup {args.approach}", flush=True)

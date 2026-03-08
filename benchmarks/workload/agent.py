@@ -99,8 +99,6 @@ PLATEAU_WORKERS_PER_AGENT = [
 PLATEAU_HOLD_S = int(os.environ.get("PLATEAU_HOLD_S", "60"))
 PLATEAU_SETTLE_S = int(os.environ.get("PLATEAU_SETTLE_S", "20"))
 
-# Storage validation: opt-in via STORAGE_VALIDATION=1
-STORAGE_VALIDATION = os.environ.get("STORAGE_VALIDATION", "").lower() in ("1", "true", "yes")
 WORKSPACE_BASE = os.environ.get("WORKSPACE_BASE", "/tmp/bench-workspaces")
 WORKSPACE_HOST_BASE = os.environ.get("WORKSPACE_HOST_BASE", "")  # host-visible prefix for shared-daemon approaches
 
@@ -318,12 +316,8 @@ def get_storage_summary() -> dict:
 def prepare_worker_workspace(worker_name: str):
     """Create a per-worker workspace dir with a challenge file.
 
-    Returns (local_path, host_path, token) or (None, None, None) if
-    storage validation is disabled.
+    Returns (local_path, host_path, token).
     """
-    if not STORAGE_VALIDATION:
-        return None, None, None
-
     import secrets as _secrets
     token = _secrets.token_hex(16)
     local_path = os.path.join(WORKSPACE_BASE, worker_name)
@@ -829,22 +823,21 @@ def spawn_worker_firecracker(rng: random.Random) -> bool:
     # Prepare workspace ext4 image for storage validation
     ws_token = None
     ws_img_path = None
-    if STORAGE_VALIDATION:
-        import secrets as _secrets
-        ws_token = _secrets.token_hex(16)
+    import secrets as _secrets
+    ws_token = _secrets.token_hex(16)
+    try:
+        ws_img_path = _create_workspace_ext4(vm_dir, ws_token)
+    except Exception as e:
+        log(f"Failed to create workspace ext4 for {worker_name}: {e}")
+        if tap_name:
+            _cleanup_tap_device(tap_name)
+        _release_fc_network_slot(net_slot)
         try:
-            ws_img_path = _create_workspace_ext4(vm_dir, ws_token)
-        except Exception as e:
-            log(f"Failed to create workspace ext4 for {worker_name}: {e}")
-            if tap_name:
-                _cleanup_tap_device(tap_name)
-            _release_fc_network_slot(net_slot)
-            try:
-                import shutil
-                shutil.rmtree(vm_dir, ignore_errors=True)
-            except Exception:
-                pass
-            return False
+            import shutil
+            shutil.rmtree(vm_dir, ignore_errors=True)
+        except Exception:
+            pass
+        return False
 
     # Launch the Firecracker VMM process
     t0 = time.monotonic()
@@ -1074,8 +1067,7 @@ def status_emitter(stop_event: threading.Event):
                        workers_spawned=_worker_counter,
                        checkins_received=checkins,
                        checkins_ok=checkins == _worker_counter)
-        # Emit periodic storage_summary when storage validation is active
-        if STORAGE_VALIDATION and _worker_counter > 0:
+        if _worker_counter > 0:
             emit_event("storage_summary", **get_storage_summary())
         stop_event.wait(timeout=STATUS_INTERVAL_S)
 
@@ -1263,7 +1255,6 @@ def main():
                max_concurrent_workers=MAX_CONCURRENT_WORKERS,
                duration_s=BENCHMARK_DURATION_S,
                rng_seed=AGENT_SEED,
-               storage_validation=STORAGE_VALIDATION,
                worker_runtime=WORKER_RUNTIME or "default",
                worker_backend=WORKER_BACKEND,
                worker_lifetime_mode=WORKER_LIFETIME_MODE,
@@ -1290,10 +1281,9 @@ def main():
         sys.exit(1)
 
     # Create workspace base directory for storage validation
-    if STORAGE_VALIDATION:
-        os.makedirs(WORKSPACE_BASE, exist_ok=True)
-        log(f"Storage validation enabled: base={WORKSPACE_BASE}, "
-            f"host_base={WORKSPACE_HOST_BASE or '(same)'}")
+    os.makedirs(WORKSPACE_BASE, exist_ok=True)
+    log(f"Storage validation enabled: base={WORKSPACE_BASE}, "
+        f"host_base={WORKSPACE_HOST_BASE or '(same)'}")
 
     # Start orchestrator HTTP server if configured
     _server = None
@@ -1344,7 +1334,7 @@ def main():
                    checkins_received=checkins,
                    checkins_ok=checkins == _worker_counter)
 
-    if STORAGE_VALIDATION and _worker_counter > 0:
+    if _worker_counter > 0:
         emit_event("storage_summary", **get_storage_summary())
 
     if WORKER_BACKEND == "firecracker":

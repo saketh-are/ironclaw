@@ -53,12 +53,6 @@ class BenchmarkConfig:
     # Networking
     orchestrator_base_port: int = 50100  # Starting host port for container approaches
 
-    # Storage validation
-    storage_validation: bool = False
-
-    # Extra domains to allow through the sandbox network proxy (comma-separated).
-    sandbox_extra_domains: str = ""
-
     # Run metadata
     run_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     run_dir: str = ""
@@ -96,7 +90,6 @@ class BenchmarkConfig:
             plateau_hold_s=int(e.get("PLATEAU_HOLD_S", "60")),
             plateau_settle_s=int(e.get("PLATEAU_SETTLE_S", "20")),
             orchestrator_base_port=int(e.get("ORCHESTRATOR_BASE_PORT", "50100")),
-            storage_validation=e.get("STORAGE_VALIDATION", "").lower() in ("1", "true", "yes"),
             run_dir=e.get("RUN_DIR", ""),
             rng_seed=int(e.get("RNG_SEED", "42")),
         )

@@ -217,6 +217,29 @@ body {
   font-style: italic;
   padding: 4px 0;
 }
+.lifecycle-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 9px;
+  color: var(--text-dim);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.lifecycle-bar:empty { display: none; }
+.lifecycle-step {
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--border);
+  color: var(--text);
+  font-weight: 500;
+}
+.lifecycle-arrow { color: var(--text-dim); }
 @media (max-width: 600px) {
   .header { flex-direction: column; align-items: flex-start; }
 }
@@ -234,11 +257,15 @@ body {
 </div>
 
 <div class="summary-strip" id="summary-strip"></div>
+<div class="lifecycle-bar" id="lifecycle-bar"></div>
 <div id="main-area"></div>
 
 <script>
 const STATE_URL = "/api/state";
 const POLL_MS = 800;
+
+// Stable slot assignments: agentId -> { workerId -> slotIndex }
+const slotMap = {};
 
 function formatTime(seconds) {
   const whole = Math.max(0, Math.floor(seconds || 0));
@@ -252,8 +279,8 @@ function gridColumns(agentCount) {
   const n = agentCount || 1;
   const width = document.getElementById("main-area").clientWidth || window.innerWidth;
   const maxCols = Math.floor((width + 4) / 104);
-  // Prefer a squarish layout: ceil(sqrt(n)) columns, capped by screen width.
-  const sqrtCols = Math.ceil(Math.sqrt(n));
+  // Prefer fewer columns for wider tiles: round(sqrt(n)), capped by screen width.
+  const sqrtCols = Math.max(1, Math.round(Math.sqrt(n)));
   return Math.max(1, Math.min(sqrtCols, maxCols));
 }
 
@@ -280,7 +307,7 @@ function renderSummary(state) {
     ["Active Agents", ratio(state.started_agents || 0, expectedAgents)],
     ["Active Workers", String(state.active_workers || 0)],
     ["Cumulative Workers", String(launchedWorkers)],
-    ["Worker Check-ins", String(lifecycle.successful_checkins || 0)],
+    ["Worker Callbacks", String(lifecycle.successful_checkins || 0)],
     ["Persisted Worker Writes", String(lifecycle.worker_storage_written || 0)],
     ["Clean Exits", ratio(lifecycle.workers_finished || 0, inactiveWorkers)],
   ];
@@ -305,30 +332,44 @@ function renderCompact(state) {
   const cols = gridColumns(state.num_agents);
   const cards = agents.map(agent => {
     const now = Date.now() / 1000;
-    // Active workers: have started_at but no emoji (real job IDs).
-    // Checked-in workers: have emoji (checkin-generated IDs).
-    // We fill slots with: emojis from most recent checkins, then timers
-    // for active-but-waiting workers, then empty slots.
     const allWorkers = agent.workers || [];
-    const waiting = allWorkers.filter(w => w.started_at && !w.checkin_emoji)
-      .sort((a, b) => a.started_at - b.started_at);
-    const withEmoji = allWorkers.filter(w => w.checkin_emoji);
-    const recentEmojis = withEmoji.slice(-maxSlots);
-    const dots = [];
-    // Fill slots: waiting workers first (with timers), then recent emojis, then empty
-    const numWaiting = Math.min(waiting.length, maxSlots);
-    const emojiSlots = Math.min(recentEmojis.length, maxSlots - numWaiting);
-    for (let i = 0; i < numWaiting; i++) {
-      const w = waiting[i];
-      const elapsed = Math.round(now - w.started_at);
-      dots.push(`<div class="compact-dot filled timer-dot" title="${w.id} waiting for checkin">${elapsed}s</div>`);
+
+    // Maintain stable slot assignments for this agent.
+    if (!slotMap[agent.id]) slotMap[agent.id] = {};
+    const slots = slotMap[agent.id];
+    const currentIds = new Set(allWorkers.map(w => w.id));
+
+    // Free slots for workers no longer present.
+    for (const [wid, _] of Object.entries(slots)) {
+      if (!currentIds.has(wid)) delete slots[wid];
     }
-    for (let i = recentEmojis.length - emojiSlots; i < recentEmojis.length; i++) {
-      dots.push(`<div class="compact-dot filled emoji-dot" title="${recentEmojis[i].id} checked in">${recentEmojis[i].checkin_emoji}</div>`);
+
+    // Assign slots to new workers (lowest available index).
+    const usedSlots = new Set(Object.values(slots));
+    for (const w of allWorkers) {
+      if (slots[w.id] == null) {
+        for (let s = 0; s < maxSlots; s++) {
+          if (!usedSlots.has(s)) { slots[w.id] = s; usedSlots.add(s); break; }
+        }
+      }
     }
-    for (let i = dots.length; i < maxSlots; i++) {
-      dots.push(`<div class="compact-dot"></div>`);
+
+    // Build a slot array: each index holds the worker (or null).
+    const slotArr = new Array(maxSlots).fill(null);
+    for (const w of allWorkers) {
+      const s = slots[w.id];
+      if (s != null && s < maxSlots) slotArr[s] = w;
     }
+
+    const dots = slotArr.map((w, i) => {
+      if (!w) return `<div class="compact-dot"></div>`;
+      if (w.checkin_emoji) return `<div class="compact-dot filled emoji-dot" title="${w.id} callback">${w.checkin_emoji}</div>`;
+      if (w.started_at) {
+        const elapsed = Math.round(now - w.started_at);
+        return `<div class="compact-dot filled timer-dot" title="${w.id} waiting for checkin">${elapsed}s</div>`;
+      }
+      return `<div class="compact-dot filled"></div>`;
+    });
     const hasGw = !!agent.gateway_port;
     const click = hasGw ? `onclick="window.open('/agent-loader/${agent.id}/', '_blank')"` : "";
     const tip = hasGw ? `${agent.id} — click to open UI` : agent.id;
@@ -378,7 +419,28 @@ function update(state) {
   document.getElementById("progress-text").textContent = progressText(state);
 
   renderSummary(state);
+  renderLifecycle(state);
   renderCompact(state);
+}
+
+function renderLifecycle(state) {
+  const bar = document.getElementById("lifecycle-bar");
+  const p = state.job_params || {};
+  if (!p.profile) { bar.innerHTML = ""; return; }
+  const steps = ["start"];
+  if (p.checkin) steps.push("worker callback");
+  steps.push("storage write");
+  const dur = p.duration_min_s === p.duration_max_s
+    ? `sleep ${p.duration_min_s}s`
+    : `sleep ${p.duration_min_s}-${p.duration_max_s}s`;
+  if (p.profile === "memory-touch") {
+    steps.push(`alloc ${p.memory_mb}MB + ${dur}`);
+  } else if (p.duration_min_s > 0) {
+    steps.push(dur);
+  }
+  steps.push("exit");
+  bar.innerHTML = '<span style="margin-right:2px">Worker lifecycle:</span>' +
+    steps.map(s => `<span class="lifecycle-step">${s}</span>`).join('<span class="lifecycle-arrow">\u2192</span>');
 }
 
 async function tick() {
@@ -465,6 +527,7 @@ def _blank_worker(worker_id: str) -> dict:
         "checkin_emoji": None,
         "cold_start_ms": None,
         "storage_written": False,
+        "exited": False,
         "rss_kb": -1,
     }
 
@@ -475,7 +538,6 @@ def _blank_agent(agent_id: str) -> dict:
         "index": _agent_index(agent_id),
         "status": "pending",
         "benchmark_started": False,
-        "storage_validation": False,
         "active_workers": 0,
         "total_spawned": 0,
         "total_checkins": 0,
@@ -523,7 +585,12 @@ class MonitorState:
             "expected_agents": len(expected_agents),
             "agent_order": list(expected_agents),
             "agents": {agent_id: _blank_agent(agent_id) for agent_id in expected_agents},
+            "job_params": {},
         }
+
+    def set_job_params(self, params: dict) -> None:
+        with self._lock:
+            self._state["job_params"] = dict(params)
 
     def set_phase(self, phase: str, detail: str = "") -> None:
         with self._lock:
@@ -556,6 +623,18 @@ class MonitorState:
         "agent_exiting": "agent_stop",
     }
 
+    def _maybe_count_clean(self, agent: dict, worker_id: str, worker: dict) -> None:
+        """Count a worker as a clean exit if all conditions are met."""
+        if not worker["exited"]:
+            return
+        if not worker["checked_in"]:
+            return
+        if not worker["storage_written"]:
+            return
+        if worker_id not in agent["_completed_ids"]:
+            agent["_completed_ids"].add(worker_id)
+            agent["total_completed"] += 1
+
     def ingest_event(self, agent_id: str, event: dict) -> None:
         event_name = event.get("event")
         if not event_name:
@@ -579,7 +658,6 @@ class MonitorState:
                 agent["status"] = "running"
                 agent["worker_backend"] = event.get("worker_backend")
                 agent["worker_runtime"] = event.get("worker_runtime")
-                agent["storage_validation"] = bool(event.get("storage_validation"))
                 max_workers = event.get("max_concurrent_workers")
                 if isinstance(max_workers, int):
                     self._state["max_worker_slots"] = max(
@@ -648,6 +726,9 @@ class MonitorState:
                 if worker_id not in agent["_checkin_ids"]:
                     agent["_checkin_ids"].add(worker_id)
                     agent["total_checkins"] += 1
+                # Late checkin for an already-exited worker.
+                if worker["exited"]:
+                    self._maybe_count_clean(agent, worker["id"], worker)
                 return
 
             if event_name == "worker_storage_written":
@@ -657,6 +738,8 @@ class MonitorState:
                 worker = agent["workers"].get(worker_id)
                 if worker is not None:
                     worker["storage_written"] = True
+                    if worker["exited"]:
+                        self._maybe_count_clean(agent, worker_id, worker)
                 if worker_id not in agent["_worker_storage_ids"]:
                     agent["_worker_storage_ids"].add(worker_id)
                     agent["total_worker_storage_written"] += 1
@@ -674,14 +757,13 @@ class MonitorState:
             if event_name == "worker_end":
                 worker_id = event.get("worker_id")
                 if worker_id:
-                    worker = agent["workers"].pop(worker_id, None)
-                    if worker is not None \
-                            and worker["checked_in"] \
-                            and (worker["storage_written"] or not agent["storage_validation"]) \
-                            and worker_id not in agent["_completed_ids"]:
-                        agent["_completed_ids"].add(worker_id)
-                        agent["total_completed"] += 1
-                agent["active_workers"] = len(agent["workers"])
+                    worker = agent["workers"].get(worker_id)
+                    if worker is not None:
+                        worker["exited"] = True
+                        self._maybe_count_clean(agent, worker_id, worker)
+                agent["active_workers"] = sum(
+                    1 for w in agent["workers"].values() if not w["exited"]
+                )
                 return
 
             if event_name == "status":
@@ -689,8 +771,9 @@ class MonitorState:
 
             if event_name == "agent_stop":
                 agent["status"] = "stopped"
-                agent["workers"] = {}
-                agent["active_workers"] = len(agent["workers"])
+                for w in agent["workers"].values():
+                    w["exited"] = True
+                agent["active_workers"] = 0
 
     def snapshot(self) -> dict:
         with self._lock:
@@ -717,6 +800,7 @@ class MonitorState:
                         agent["workers"].values(),
                         key=lambda worker: worker["index"],
                     )
+                    if not worker["exited"]
                 ]
                 gateways = state.get("agent_gateways", {})
                 agents.append(
@@ -725,7 +809,6 @@ class MonitorState:
                         "index": agent["index"],
                         "status": agent["status"],
                         "benchmark_started": agent["benchmark_started"],
-                        "storage_validation": agent["storage_validation"],
                         "active_workers": agent["active_workers"],
                         "total_spawned": agent["total_spawned"],
                         "total_checkins": agent["total_checkins"],
@@ -759,13 +842,6 @@ class MonitorState:
             total_agent_storage_verified = sum(
                 agent["total_agent_storage_verified"] for agent in agents
             )
-            storage_validation_enabled = any(
-                agent["storage_validation"]
-                or agent["total_worker_storage_written"] > 0
-                or agent["total_agent_storage_verified"] > 0
-                for agent in agents
-            )
-
             return {
                 "approach": state["approach"],
                 "mode": state["mode"],
@@ -785,7 +861,6 @@ class MonitorState:
                 "total_spawned": total_spawned,
                 "total_checkins": total_checkins,
                 "total_completed": total_completed,
-                "storage_validation_enabled": storage_validation_enabled,
                 "lifecycle": {
                     "agents_started": started_agents,
                     "benchmark_started": benchmark_started_agents,
@@ -798,6 +873,7 @@ class MonitorState:
                     "active_workers": active_workers,
                 },
                 "agents": agents,
+                "job_params": state["job_params"],
             }
 
     def _ensure_agent(self, agent_id: str) -> dict:
@@ -969,34 +1045,6 @@ class _MonitorHandler(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def do_POST(self) -> None:
-        if self.path == "/api/checkin":
-            cl = int(self.headers.get("Content-Length", 0))
-            raw = self.rfile.read(cl) if cl > 0 else b""
-            try:
-                data = json.loads(raw)
-            except (json.JSONDecodeError, ValueError):
-                self.send_error(400, "invalid JSON")
-                return
-            agent_id = data.get("agent_id", "")
-            worker_id = data.get("job_id", "")
-            emoji = data.get("emoji", "")
-            if not agent_id or not worker_id:
-                self.send_error(400, "missing agent_id or job_id")
-                return
-            self.server.monitor.state.ingest_event(agent_id, {
-                "event": "checkin",
-                "worker_id": worker_id,
-                "emoji": emoji,
-                "t": time.time(),
-            })
-            body = b'{"ok":true}'
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-
         if self._proxy_agent("POST"):
             return
         self.send_error(404)

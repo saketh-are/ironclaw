@@ -136,9 +136,6 @@ class HybridFirecrackerApproach(Approach):
             # Orchestrator port: base + agent index
             orch_port = config.orchestrator_base_port + i
 
-            # Use config.storage_validation (already parsed as bool)
-            storage_val = "1" if config.storage_validation else ""
-
             cmd = [
                 "docker", "run", "-d",
                 "--name", container_name,
@@ -186,7 +183,7 @@ class HybridFirecrackerApproach(Approach):
                 # Orchestrator HTTP server inside the agent container
                 "-e", f"ORCHESTRATOR_PORT={orch_port}",
                 # Storage validation
-                "-e", f"STORAGE_VALIDATION={storage_val}",
+                "-e", "STORAGE_VALIDATION=1",
                 "-e", "WORKSPACE_BASE=/tmp/bench-workspaces",
                 self._agent_image,
             ]
