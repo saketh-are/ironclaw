@@ -233,13 +233,15 @@ function renderSummary(state) {
     ["Active Agents", ratio(state.started_agents || 0, expectedAgents)],
     ["Active Workers", String(state.active_workers || 0)],
     ["Successful Check-ins", ratio(lifecycle.successful_checkins || 0, launchedWorkers)],
-    ["Clean Worker Exits", ratio(lifecycle.workers_finished || 0, inactiveWorkers)],
   ];
   if (state.storage_validation_enabled) {
     stats.push(
       ["Persisted Worker Writes", ratio(lifecycle.agent_storage_verified || 0, inactiveWorkers)],
     );
   }
+  stats.push(
+    ["Clean Worker Exits", ratio(lifecycle.workers_finished || 0, inactiveWorkers)],
+  );
   document.getElementById("summary-strip").innerHTML = stats.map(([label, value]) => `
     <div class="summary-card">
       <span class="summary-label">${label}</span>
