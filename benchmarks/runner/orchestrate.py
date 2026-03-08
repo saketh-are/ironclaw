@@ -25,6 +25,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 # Add parent directory to path so we can import approaches/runner modules
 BENCH_DIR = Path(__file__).resolve().parent.parent
@@ -32,6 +33,7 @@ sys.path.insert(0, str(BENCH_DIR))
 
 from approaches.base import Approach, BenchmarkConfig, discover_approaches as _discover_approaches
 from runner.collect import Collector, read_meminfo, read_vmstat_swap, HOST_CPU_FIELDS
+from runner.monitor import BenchmarkMonitor
 
 # Registry of available approaches
 APPROACHES = {}
@@ -581,10 +583,12 @@ def run_benchmark(
     output_dir: Path,
     sample_interval_ms: int,
     mode: str,
+    monitor_host: Optional[str] = None,
+    monitor_port: Optional[int] = None,
 ) -> Path:
     """Execute a single benchmark run."""
     timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    run_dir = output_dir / f"{approach.name}-{mode}-n{num_agents}-{timestamp}"
+    run_dir = (output_dir / f"{approach.name}-{mode}-n{num_agents}-{timestamp}").resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
     config.run_output_dir = str(run_dir)
 
@@ -639,6 +643,22 @@ def run_benchmark(
     # Create collector
     collector = Collector(interval_ms=sample_interval_ms)
     agent_ids = []
+    monitor = None
+    if monitor_port is not None:
+        expected_agent_ids = [f"agent-{i}" for i in range(num_agents)]
+        monitor = BenchmarkMonitor(
+            host=monitor_host or "127.0.0.1",
+            port=monitor_port,
+            approach=approach.name,
+            mode=mode,
+            run_id=config.run_id,
+            expected_agents=expected_agent_ids,
+            duration_s=config.benchmark_duration_s,
+            max_worker_slots=max(config.max_concurrent_workers, 0),
+        )
+        monitor.start()
+        monitor.set_phase("baseline", "Recording host baseline memory.")
+        print(f"Live monitor: {monitor.url}")
 
     try:
         # Phase 1: Baseline (10s, no agents)
@@ -657,8 +677,13 @@ def run_benchmark(
         collector_thread.join(timeout=5)
 
         print(f"Starting {num_agents} agents...")
+        if monitor is not None:
+            monitor.set_phase("starting_agents", f"Launching {num_agents} agents.")
         agent_ids = approach.start_agents(num_agents, config)
         print(f"Agents started: {agent_ids}")
+        if monitor is not None:
+            monitor.attach_agents(agent_ids, approach.live_event_log_paths(agent_ids, run_dir))
+            monitor.set_phase("running", "Agents are healthy; benchmark barrier released.")
 
         # Start new collector with agent PIDs
         collector = Collector(interval_ms=sample_interval_ms, phase="running")
@@ -689,10 +714,14 @@ def run_benchmark(
 
         # Phase 4: Stop agents gracefully (SIGTERM allows cleanup + checkin_summary)
         print("Stopping agents...")
+        if monitor is not None:
+            monitor.set_phase("stopping", "Stopping agents and draining workers.")
         approach.stop_agents()
 
         # Phase 5: Collect agent logs (from stopped but not yet removed containers)
         print("Collecting agent logs...")
+        if monitor is not None:
+            monitor.set_phase("collecting_logs", "Collecting per-agent logs.")
         approach.collect_agent_logs(agent_ids, run_dir)
 
         # Phase 6: Remove containers and settle (10s)
@@ -701,8 +730,14 @@ def run_benchmark(
         # Phase 7: Approach-specific cleanup (e.g. Podman user deletion, VM dir removal)
         approach.cleanup()
         print("Waiting for memory to settle (10s)...")
+        if monitor is not None:
+            monitor.set_phase("settling", "Waiting for memory to settle.")
         time.sleep(10)
 
+    except Exception as exc:
+        if monitor is not None:
+            monitor.set_phase("failed", str(exc))
+        raise
     finally:
         collector.stop()
         collector_thread.join(timeout=5)
@@ -793,6 +828,10 @@ def run_benchmark(
         if cs:
             print(f"  Post-start checkin: p50={cs.get('p50', 0):.0f}ms "
                   f"p95={cs.get('p95', 0):.0f}ms max={cs.get('max', 0):.0f}ms")
+
+    if monitor is not None:
+        monitor.set_phase("finished", "Benchmark complete.")
+        monitor.stop()
 
     return run_dir
 
@@ -1093,6 +1132,23 @@ def main():
         default=None,
         help="Collection interval in ms (default: from config.env or 500)",
     )
+    parser.add_argument(
+        "--monitor",
+        action="store_true",
+        help="Serve a live monitor webpage for agents and workers while the benchmark runs",
+    )
+    parser.add_argument(
+        "--monitor-host",
+        type=str,
+        default="127.0.0.1",
+        help="Host interface for the live monitor (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--monitor-port",
+        type=int,
+        default=None,
+        help="Port for the live monitor (default: 8765 when enabled)",
+    )
     args = parser.parse_args()
 
     # Load config
@@ -1173,9 +1229,22 @@ def main():
         sys.exit(1)
 
     approach = APPROACHES[args.approach]
+    monitor_enabled = args.monitor or args.monitor_port is not None
+    monitor_port = args.monitor_port if args.monitor_port is not None else (
+        8765 if monitor_enabled else None
+    )
 
     # Run
-    run_dir = run_benchmark(approach, num_agents, config, output_dir, sample_interval, args.mode)
+    run_dir = run_benchmark(
+        approach,
+        num_agents,
+        config,
+        output_dir,
+        sample_interval,
+        args.mode,
+        monitor_host=args.monitor_host if monitor_enabled else None,
+        monitor_port=monitor_port,
+    )
 
     # Exit non-zero if checkin or storage validation failed
     summary_path = run_dir / "summary.json"

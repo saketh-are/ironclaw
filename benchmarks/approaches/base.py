@@ -60,6 +60,7 @@ class BenchmarkConfig:
     run_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     run_dir: str = ""
     rng_seed: int = 42
+    run_output_dir: str = ""
 
     @classmethod
     def from_env(cls, env: Optional[Dict[str, str]] = None) -> "BenchmarkConfig":
@@ -206,6 +207,19 @@ class Approach(ABC):
         Default is a no-op.
         """
         pass
+
+    def live_event_log_paths(
+        self,
+        agent_ids: List[str],
+        output_dir: Path,
+    ) -> Dict[str, Path]:
+        """
+        Return host-visible per-agent JSONL paths while the benchmark is running.
+
+        Approaches that expose live structured agent logs should override this so
+        the monitor can tail worker_start/worker_end events in real time.
+        """
+        return {}
 
     def start_benchmark(self) -> None:
         """Optional synchronization hook before the timed benchmark window begins."""

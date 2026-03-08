@@ -41,6 +41,12 @@ make ironclaw-benchmark \
   AGENTS=50 \
   EXTRA_ARGS='--mode loaded --max-concurrent-workers 1 --max-triggers-per-agent 1 --batch-size 10 --batch-interval-s 5 --job-profile sleep --job-duration-min-s 600 --job-duration-max-s 600'
 
+# Run with the live topology monitor enabled
+make run APPROACH=container-docker AGENTS=5 MONITOR=1
+
+# Run idle mode (no workers; measures pure isolation overhead)
+make run-idle APPROACH=container-docker AGENTS=50
+
 # Compare older committed reference results
 make compare
 ```
@@ -168,6 +174,26 @@ python3 ironclaw_benchmark.py \
   --plateau-hold-s 60 \
   --plateau-settle-s 20
 ```
+
+## Live Monitor
+
+The synthetic runner can serve a live webpage that shows one box per agent and
+fixed worker-slot indicators per agent in a single compact view.
+
+```bash
+# Default monitor URL: http://127.0.0.1:8765/
+make run APPROACH=container-docker AGENTS=5 MONITOR=1
+
+# Custom host/port
+python3 bench.py synthetic \
+  --approach container-docker \
+  --agents 5 \
+  --monitor \
+  --monitor-host 0.0.0.0 \
+  --monitor-port 9000
+```
+
+The orchestrator prints the exact monitor URL when the run starts.
 
 ## Job Profiles
 

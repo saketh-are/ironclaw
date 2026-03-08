@@ -27,7 +27,7 @@ import subprocess
 import time
 import urllib.request
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from approaches.base import Approach, BenchmarkConfig
 
@@ -45,6 +45,7 @@ class HybridFirecrackerApproach(Approach):
         self._host_ports: Dict[str, int] = {}
         self._agent_image = "bench-agent-fc:latest"
         self._run_id: str = "unknown"
+        self._host_log_dir: Optional[Path] = None
 
     @property
     def name(self) -> str:
@@ -120,10 +121,17 @@ class HybridFirecrackerApproach(Approach):
         self._agent_ids = []
         self._host_ports = {}
         fc_bin = self._find_firecracker()
+        run_output_dir = getattr(config, "run_output_dir", "")
+        self._host_log_dir = Path(run_output_dir) if run_output_dir else None
 
         for i in range(n):
             agent_id = f"agent-{i}"
             container_name = f"bench-agent-{i}"
+            host_log_file = None
+            if self._host_log_dir is not None:
+                host_log_file = self._host_log_dir / f"{agent_id}.jsonl"
+                host_log_file.touch()
+                host_log_file.chmod(0o666)
 
             # Orchestrator port: base + agent index
             orch_port = config.orchestrator_base_port + i
@@ -182,6 +190,11 @@ class HybridFirecrackerApproach(Approach):
                 "-e", "WORKSPACE_BASE=/tmp/bench-workspaces",
                 self._agent_image,
             ]
+            if host_log_file is not None:
+                cmd[-1:-1] = [
+                    "-v", f"{self._host_log_dir}:/bench-output",
+                    "-e", f"EVENT_LOG_PATH=/bench-output/{agent_id}.jsonl",
+                ]
 
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:
@@ -303,6 +316,9 @@ class HybridFirecrackerApproach(Approach):
         for i, agent_id in enumerate(agent_ids):
             container_name = f"bench-agent-{i}"
             log_file = output_dir / f"{agent_id}.jsonl"
+            if log_file.exists() and log_file.stat().st_size > 0:
+                print(f"[{self.name}] Reusing direct host log for {agent_id}")
+                continue
             try:
                 result = subprocess.run(
                     ["docker", "logs", container_name],
@@ -314,6 +330,18 @@ class HybridFirecrackerApproach(Approach):
                     print(f"[{self.name}] Collected logs for {agent_id}")
             except subprocess.SubprocessError as e:
                 print(f"[{self.name}] Failed to collect logs for {agent_id}: {e}")
+
+    def live_event_log_paths(
+        self,
+        agent_ids: List[str],
+        output_dir: Path,
+    ) -> Dict[str, Path]:
+        if self._host_log_dir is None:
+            return {}
+        return {
+            agent_id: self._host_log_dir / f"{agent_id}.jsonl"
+            for agent_id in agent_ids
+        }
 
     def stop_agents(self) -> None:
         """Gracefully stop agent containers (SIGTERM with timeout).

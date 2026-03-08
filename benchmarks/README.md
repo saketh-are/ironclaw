@@ -6,6 +6,9 @@ The repo now supports a real IronClaw benchmark mode with host-verified worker l
 
 Setup, reproduction steps, and output-format details live in [USAGE.md](USAGE.md).
 
+For live topology monitoring during a synthetic run, pass `MONITOR=1` to the
+`make run` targets or `--monitor` / `--monitor-port` to `bench.py synthetic`.
+
 ## Approaches
 
 | Approach | Agent-to-Host isolation | Worker-to-Host isolation | Worker-to-Parent-Agent isolation |

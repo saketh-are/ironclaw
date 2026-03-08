@@ -13,6 +13,9 @@ APPROACH ?= container-docker
 AGENTS ?= 5
 MODE ?= loaded
 EXTRA_ARGS ?=
+MONITOR ?=
+MONITOR_HOST ?=
+MONITOR_PORT ?=
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -113,13 +116,16 @@ podman-setup: images ## Install podman + deps for podman-rootless approach
 bench-list: ## List all approaches: make bench-list [SUITE=synthetic|ironclaw]
 	@python3 bench.py list $(if $(SUITE),--suite $(SUITE),)
 
-bench: ## Unified entry: make bench SUITE=synthetic APPROACH=container-docker AGENTS=5 [MODE=loaded]
+bench: ## Unified entry: make bench SUITE=synthetic APPROACH=container-docker AGENTS=5 [MODE=loaded] [MONITOR=1]
 	@if [ "$(SUITE)" = "ironclaw" ]; then \
 		python3 bench.py ironclaw $(if $(APPROACH),--approach $(APPROACH),) $(if $(AGENTS),--agents $(AGENTS),); \
 	elif [ "$(SUITE)" = "ironclaw-benchmark" ]; then \
 		python3 bench.py ironclaw-benchmark --approach $(APPROACH) $(if $(AGENTS),--agents $(AGENTS),); \
 	elif [ "$(SUITE)" = "synthetic" ]; then \
-		python3 bench.py synthetic --approach $(APPROACH) --agents $(AGENTS) $(if $(MODE),--mode $(MODE),); \
+		python3 bench.py synthetic --approach $(APPROACH) --agents $(AGENTS) $(if $(MODE),--mode $(MODE),) \
+			$(if $(filter 1 true yes on,$(MONITOR)),--monitor,) \
+			$(if $(MONITOR_HOST),--monitor-host $(MONITOR_HOST),) \
+			$(if $(MONITOR_PORT),--monitor-port $(MONITOR_PORT),); \
 	else \
 		echo "Usage: make bench SUITE=synthetic|ironclaw|ironclaw-benchmark APPROACH=<name> AGENTS=<n>"; \
 		echo "  make bench SUITE=ironclaw                              # all ironclaw approaches"; \
@@ -133,14 +139,23 @@ bench: ## Unified entry: make bench SUITE=synthetic APPROACH=container-docker AG
 
 # --- Run benchmarks (legacy, still works) ---
 
-run: images ## Run synthetic benchmark: make run APPROACH=container-docker AGENTS=5 [MODE=loaded|idle|plateau]
-	python3 -m runner.orchestrate --approach $(APPROACH) --agents $(AGENTS) --mode $(MODE)
+run: images ## Run synthetic benchmark: make run APPROACH=container-docker AGENTS=5 [MODE=loaded|idle|plateau] [MONITOR=1]
+	python3 -m runner.orchestrate --approach $(APPROACH) --agents $(AGENTS) --mode $(MODE) \
+		$(if $(filter 1 true yes on,$(MONITOR)),--monitor,) \
+		$(if $(MONITOR_HOST),--monitor-host $(MONITOR_HOST),) \
+		$(if $(MONITOR_PORT),--monitor-port $(MONITOR_PORT),)
 
-run-idle: images ## Run idle benchmark (no workers): make run-idle APPROACH=container-docker AGENTS=50
-	python3 -m runner.orchestrate --approach $(APPROACH) --agents $(AGENTS) --mode idle
+run-idle: images ## Run idle benchmark (no workers): make run-idle APPROACH=container-docker AGENTS=50 [MONITOR=1]
+	python3 -m runner.orchestrate --approach $(APPROACH) --agents $(AGENTS) --mode idle \
+		$(if $(filter 1 true yes on,$(MONITOR)),--monitor,) \
+		$(if $(MONITOR_HOST),--monitor-host $(MONITOR_HOST),) \
+		$(if $(MONITOR_PORT),--monitor-port $(MONITOR_PORT),)
 
-run-plateau: images ## Run plateau benchmark: make run-plateau APPROACH=container-docker AGENTS=5 PLATEAU_WORKERS_PER_AGENT=0,1,2,3,4,5
-	python3 -m runner.orchestrate --approach $(APPROACH) --agents $(AGENTS) --mode plateau
+run-plateau: images ## Run plateau benchmark: make run-plateau APPROACH=container-docker AGENTS=5 PLATEAU_WORKERS_PER_AGENT=0,1,2,3,4,5 [MONITOR=1]
+	python3 -m runner.orchestrate --approach $(APPROACH) --agents $(AGENTS) --mode plateau \
+		$(if $(filter 1 true yes on,$(MONITOR)),--monitor,) \
+		$(if $(MONITOR_HOST),--monitor-host $(MONITOR_HOST),) \
+		$(if $(MONITOR_PORT),--monitor-port $(MONITOR_PORT),)
 
 run-sweep: images ## Run idle sweep at multiple N: make run-sweep APPROACH=container-docker
 	@for n in 1 5 10 50 100; do \

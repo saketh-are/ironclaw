@@ -10,7 +10,7 @@ import subprocess
 import time
 import urllib.request
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from approaches.base import Approach, BenchmarkConfig
 
@@ -23,6 +23,7 @@ class ContainerDockerApproach(Approach):
         self._host_ports: Dict[str, int] = {}
         self._agent_image = "bench-agent:latest"
         self._run_id: str = "unknown"
+        self._host_log_dir: Optional[Path] = None
 
     @property
     def name(self) -> str:
@@ -46,11 +47,18 @@ class ContainerDockerApproach(Approach):
         """Start N agent containers, each with Docker socket access."""
         self._agent_ids = []
         self._host_ports = {}
+        run_output_dir = getattr(config, "run_output_dir", "")
+        self._host_log_dir = Path(run_output_dir) if run_output_dir else None
 
         for i in range(n):
             agent_id = f"agent-{i}"
             container_name = f"bench-agent-{i}"
             host_port = config.orchestrator_base_port + i
+            host_log_file = None
+            if self._host_log_dir is not None:
+                host_log_file = self._host_log_dir / f"{agent_id}.jsonl"
+                host_log_file.touch()
+                host_log_file.chmod(0o666)
 
             cmd = [
                 "docker", "run", "-d",
@@ -88,6 +96,11 @@ class ContainerDockerApproach(Approach):
                 "-e", "ORCHESTRATOR_PORT=8080",
                 "-e", f"ORCHESTRATOR_HOST_PORT={host_port}",
             ]
+            if host_log_file is not None:
+                cmd += [
+                    "-v", f"{self._host_log_dir}:/bench-output",
+                    "-e", f"EVENT_LOG_PATH=/bench-output/{agent_id}.jsonl",
+                ]
 
             # Storage validation: shared daemon needs host-path indirection
             if config.storage_validation:
@@ -201,6 +214,9 @@ class ContainerDockerApproach(Approach):
         for i, agent_id in enumerate(agent_ids):
             container_name = f"bench-agent-{i}"
             log_file = output_dir / f"{agent_id}.jsonl"
+            if log_file.exists() and log_file.stat().st_size > 0:
+                print(f"[{self.name}] Reusing direct host log for {agent_id}")
+                continue
             try:
                 result = subprocess.run(
                     ["docker", "logs", container_name],
@@ -215,6 +231,18 @@ class ContainerDockerApproach(Approach):
                           f"rc={result.returncode} stderr={result.stderr.strip()}")
             except subprocess.SubprocessError as e:
                 print(f"[{self.name}] Failed to collect logs for {agent_id}: {e}")
+
+    def live_event_log_paths(
+        self,
+        agent_ids: List[str],
+        output_dir: Path,
+    ) -> Dict[str, Path]:
+        if self._host_log_dir is None:
+            return {}
+        return {
+            agent_id: self._host_log_dir / f"{agent_id}.jsonl"
+            for agent_id in agent_ids
+        }
 
     def start_benchmark(self) -> None:
         for agent_id, port in self._host_ports.items():

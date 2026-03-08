@@ -55,6 +55,12 @@ def cmd_synthetic(args):
         cmd += ["--agents", str(args.agents)]
     if args.mode:
         cmd += ["--mode", args.mode]
+    if args.monitor:
+        cmd += ["--monitor"]
+    if args.monitor_host:
+        cmd += ["--monitor-host", args.monitor_host]
+    if args.monitor_port is not None:
+        cmd += ["--monitor-port", str(args.monitor_port)]
     # Pass through extra args
     cmd += args.extra
     sys.exit(subprocess.call(cmd, cwd=str(BENCH_DIR)))
@@ -109,6 +115,12 @@ def main():
                          help="Number of agents")
     p_synth.add_argument("--mode", choices=["loaded", "idle", "plateau"],
                          default="loaded", help="Benchmark mode")
+    p_synth.add_argument("--monitor", action="store_true",
+                         help="Serve a live monitor webpage for the synthetic run")
+    p_synth.add_argument("--monitor-host", default=None,
+                         help="Host interface for the live monitor")
+    p_synth.add_argument("--monitor-port", type=int, default=None,
+                         help="Port for the live monitor (default: 8765)")
     p_synth.add_argument("extra", nargs=argparse.REMAINDER,
                          help="Extra args passed to runner/orchestrate.py")
     p_synth.set_defaults(func=cmd_synthetic)

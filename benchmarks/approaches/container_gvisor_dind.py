@@ -23,7 +23,7 @@ import subprocess
 import time
 import urllib.request
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from approaches.base import Approach, BenchmarkConfig
 
@@ -38,6 +38,7 @@ class ContainerGvisorDindApproach(Approach):
         self._host_ports: Dict[str, int] = {}  # agent_id → host port
         self._agent_image = "bench-agent-dind:latest"
         self._run_id: str = "unknown"
+        self._host_log_dir: Optional[Path] = None
 
     @property
     def name(self) -> str:
@@ -108,11 +109,19 @@ class ContainerGvisorDindApproach(Approach):
     def start_agents(self, n: int, config: BenchmarkConfig) -> List[str]:
         """Start N gVisor DinD agent containers, each with its own Docker daemon."""
         self._agent_ids = []
+        self._host_ports = {}
+        run_output_dir = getattr(config, "run_output_dir", "")
+        self._host_log_dir = Path(run_output_dir) if run_output_dir else None
 
         for i in range(n):
             agent_id = f"agent-{i}"
             container_name = f"bench-agent-{i}"
             host_port = config.orchestrator_base_port + i
+            host_log_file = None
+            if self._host_log_dir is not None:
+                host_log_file = self._host_log_dir / f"{agent_id}.jsonl"
+                host_log_file.touch()
+                host_log_file.chmod(0o666)
 
             cmd = [
                 "docker", "run", "-d",
@@ -154,6 +163,11 @@ class ContainerGvisorDindApproach(Approach):
                 # No Docker socket mount — each agent has its own daemon
                 # No WORKER_RUNTIME — inner daemon uses default (runc inside gVisor)
             ]
+            if host_log_file is not None:
+                cmd += [
+                    "-v", f"{self._host_log_dir}:/bench-output",
+                    "-e", f"EVENT_LOG_PATH=/bench-output/{agent_id}.jsonl",
+                ]
 
             # Storage validation: inner dockerd resolves paths locally, no host-path indirection
             if config.storage_validation:
@@ -275,6 +289,9 @@ class ContainerGvisorDindApproach(Approach):
         for i, agent_id in enumerate(agent_ids):
             container_name = f"bench-agent-{i}"
             log_file = output_dir / f"{agent_id}.jsonl"
+            if log_file.exists() and log_file.stat().st_size > 0:
+                print(f"[{self.name}] Reusing direct host log for {agent_id}")
+                continue
             try:
                 result = subprocess.run(
                     ["docker", "logs", container_name],
@@ -289,6 +306,18 @@ class ContainerGvisorDindApproach(Approach):
                           f"rc={result.returncode} stderr={result.stderr.strip()}")
             except subprocess.SubprocessError as e:
                 print(f"[{self.name}] Failed to collect logs for {agent_id}: {e}")
+
+    def live_event_log_paths(
+        self,
+        agent_ids: List[str],
+        output_dir: Path,
+    ) -> Dict[str, Path]:
+        if self._host_log_dir is None:
+            return {}
+        return {
+            agent_id: self._host_log_dir / f"{agent_id}.jsonl"
+            for agent_id in agent_ids
+        }
 
     def stop_agents(self) -> None:
         """Gracefully stop agent containers (SIGTERM with timeout).

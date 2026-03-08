@@ -263,6 +263,17 @@ class VmQemuApproach(Approach):
                 except Exception as e:
                     print(f"[{self.name}] Failed to collect log for {agent_id}: {e}")
 
+    def live_event_log_paths(
+        self,
+        agent_ids: List[str],
+        output_dir: Path,
+    ) -> Dict[str, Path]:
+        vm_base = Path(os.environ.get("VM_BASE_DIR", "/tmp/bench-vms"))
+        return {
+            agent_id: vm_base / agent_id / "shared" / "agent.jsonl"
+            for agent_id in agent_ids
+        }
+
     def stop_agents(self) -> None:
         """Stop all VMs."""
         result = subprocess.run(

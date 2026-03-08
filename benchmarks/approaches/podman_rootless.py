@@ -13,9 +13,10 @@ No persistent daemon runs. Podman's API is socket-activated (transient
 import subprocess
 import time
 import json
+import shutil
 import urllib.request
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from approaches.base import Approach, BenchmarkConfig
 
@@ -171,8 +172,10 @@ class PodmanRootlessApproach(Approach):
         self._host_ports: Dict[str, int] = {}
         self._agent_pids: Dict[str, int] = {}
         self._last_worker_counts: Dict[str, int] = {}
+        self._event_log_paths: Dict[str, Path] = {}
         self._agent_image = "bench-agent:latest"
         self._run_id: str = "unknown"
+        self._host_log_dir: Optional[Path] = None
 
     @property
     def name(self) -> str:
@@ -229,6 +232,10 @@ class PodmanRootlessApproach(Approach):
         self._host_ports = {}
         self._agent_pids = {}
         self._last_worker_counts = {}
+        self._event_log_paths = {}
+        self._host_log_dir = Path("/tmp") / f"bench-podman-logs-{config.run_id}"
+        self._host_log_dir.mkdir(parents=True, exist_ok=True)
+        self._host_log_dir.chmod(0o777)
 
         images_to_load = [self._agent_image, config.worker_image]
 
@@ -238,6 +245,9 @@ class PodmanRootlessApproach(Approach):
             uid = BASE_UID + i
             container_name = f"bench-agent-{i}"
             socket_path = SOCKET_TEMPLATE.format(uid=uid)
+            host_log_file = self._host_log_dir / f"{agent_id}.jsonl"
+            host_log_file.touch()
+            host_log_file.chmod(0o666)
 
             # 1. Create unprivileged user
             subprocess.run(
@@ -348,6 +358,11 @@ class PodmanRootlessApproach(Approach):
                 ]
 
             create_cmd += [
+                "-v", f"{self._host_log_dir}:/bench-output",
+                "-e", f"EVENT_LOG_PATH=/bench-output/{agent_id}.jsonl",
+            ]
+
+            create_cmd += [
                 # Labels for identification
                 "--label", f"bench_run_id={config.run_id}",
                 "--label", "bench_role=agent",
@@ -375,6 +390,7 @@ class PodmanRootlessApproach(Approach):
             self._agent_ids.append(agent_id)
             self._users.append(user)
             self._host_ports[agent_id] = host_port
+            self._event_log_paths[agent_id] = host_log_file
             print(f"[{self.name}] Started {container_name} as user {user}")
 
         health_timeout_s = max(60, 5 * n)
@@ -496,6 +512,12 @@ class PodmanRootlessApproach(Approach):
             uid = BASE_UID + i
             log_file = output_dir / f"{agent_id}.jsonl"
             log_data = ""
+            live_log = self._event_log_paths.get(agent_id)
+
+            if live_log is not None and live_log.exists() and live_log.stat().st_size > 0:
+                shutil.copy2(live_log, log_file)
+                print(f"[{self.name}] Reused direct host log for {agent_id}")
+                continue
 
             # Try systemd-run first (works when user session is active)
             try:
@@ -528,6 +550,17 @@ class PodmanRootlessApproach(Approach):
             else:
                 print(f"[{self.name}] No logs for {agent_id}")
 
+    def live_event_log_paths(
+        self,
+        agent_ids: List[str],
+        output_dir: Path,
+    ) -> Dict[str, Path]:
+        return {
+            agent_id: self._event_log_paths[agent_id]
+            for agent_id in agent_ids
+            if agent_id in self._event_log_paths
+        }
+
     # ------------------------------------------------------------------
     # teardown
     # ------------------------------------------------------------------
@@ -550,6 +583,7 @@ class PodmanRootlessApproach(Approach):
         self._host_ports = {}
         self._agent_pids = {}
         self._last_worker_counts = {}
+        self._event_log_paths = {}
         print(f"[{self.name}] All containers removed.")
 
     def cleanup(self) -> None:
@@ -576,5 +610,9 @@ class PodmanRootlessApproach(Approach):
         self._host_ports = {}
         self._agent_pids = {}
         self._last_worker_counts = {}
+        self._event_log_paths = {}
+        if self._host_log_dir is not None:
+            shutil.rmtree(self._host_log_dir, ignore_errors=True)
+            self._host_log_dir = None
 
         print(f"[{self.name}] Cleanup complete (users removed).")

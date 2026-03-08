@@ -333,6 +333,18 @@ class ContainerSysboxDindApproach(Approach):
             except subprocess.SubprocessError as e:
                 print(f"[{self.name}] Failed to collect logs for {agent_id}: {e}")
 
+    def live_event_log_paths(
+        self,
+        agent_ids: List[str],
+        output_dir: Path,
+    ) -> Dict[str, Path]:
+        if self._host_log_dir is None:
+            return {}
+        return {
+            agent_id: self._host_log_dir / f"{agent_id}.jsonl"
+            for agent_id in agent_ids
+        }
+
     def stop_agents(self) -> None:
         """Gracefully stop agent containers (SIGTERM with timeout).
 
