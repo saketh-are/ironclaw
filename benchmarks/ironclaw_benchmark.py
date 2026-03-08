@@ -152,6 +152,8 @@ token = read_container_env("IRONCLAW_WORKER_TOKEN")
 orch_url = read_container_env("IRONCLAW_ORCHESTRATOR_URL")
 job_id = read_container_env("IRONCLAW_JOB_ID")
 
+time.sleep(3)
+
 # POST to orchestrator event endpoint (native callback with Bearer auth).
 if token and orch_url and job_id:
     payload = json.dumps({{
@@ -203,6 +205,9 @@ CALLBACK
         # Emit the emoji check-in right after proof file write.
         if checkin_snippet:
             parts.append(checkin_snippet)
+
+        # Brief pause so the callback and storage write appear as distinct events.
+        parts.append("sleep 3")
 
         # Storage evidence write — before sleep so the dashboard sees it early.
         parts.append(textwrap.dedent(f"""\

@@ -63,6 +63,7 @@ body {
   border-radius: 6px;
 }
 .header-left { display: flex; align-items: center; gap: 10px; z-index: 1; min-width: 0; }
+.header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 .header h1 { font-size: 13px; font-weight: 600; white-space: nowrap; }
 .badge {
   display: inline-block;
@@ -133,7 +134,26 @@ body {
   min-width: 0;
   transition: border-color 0.3s, opacity 0.3s;
   cursor: pointer;
+  position: relative;
+  overflow: visible;
 }
+@keyframes float-up {
+  0%   { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-28px); }
+}
+.float-event {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--green);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: float-up 1.6s ease-out forwards;
+}
+.float-event.storage { color: var(--accent); }
 .compact-tile:hover {
   border-color: var(--accent);
   opacity: 1 !important;
@@ -254,6 +274,10 @@ body {
     <span class="badge badge-phase" id="badge-phase">setup</span>
     <span class="progress-text" id="progress-text"></span>
   </div>
+  <div class="header-right">
+    <span class="stat"><span class="stat-label">Agents</span> <span class="stat-value" id="hdr-agents">-</span></span>
+    <span class="stat"><span class="stat-label">Workers</span> <span class="stat-value" id="hdr-workers">-</span></span>
+  </div>
 </div>
 
 <div class="summary-strip" id="summary-strip"></div>
@@ -266,9 +290,21 @@ const POLL_MS = 800;
 
 // Stable slot assignments: agentId -> { workerId -> slotIndex }
 const slotMap = {};
+// Previous worker state snapshot for detecting transitions.
+const prevWorkerState = {};
+
+function emitFloatEvent(tileEl, text, cls) {
+  const el = document.createElement("span");
+  el.className = "float-event" + (cls ? " " + cls : "");
+  el.textContent = text;
+  tileEl.appendChild(el);
+  el.addEventListener("animationend", () => el.remove());
+}
 
 function formatTime(seconds) {
-  const whole = Math.max(0, Math.floor(seconds || 0));
+  const s = Math.max(0, seconds || 0);
+  if (s < 10) return `${s.toFixed(1)}s`;
+  const whole = Math.floor(s);
   if (whole < 60) return `${whole}s`;
   const minutes = Math.floor(whole / 60);
   const remaining = whole % 60;
@@ -303,9 +339,9 @@ function renderSummary(state) {
   const expectedAgents = state.expected_agents || state.num_agents || 0;
   const launchedWorkers = lifecycle.workers_launched || 0;
   const inactiveWorkers = launchedWorkers - (state.active_workers || 0);
+  document.getElementById("hdr-agents").textContent = ratio(state.started_agents || 0, expectedAgents);
+  document.getElementById("hdr-workers").textContent = String(state.active_workers || 0);
   const stats = [
-    ["Active Agents", ratio(state.started_agents || 0, expectedAgents)],
-    ["Active Workers", String(state.active_workers || 0)],
     ["Cumulative Workers", String(launchedWorkers)],
     ["Worker Callbacks", String(lifecycle.successful_checkins || 0)],
     ["Persisted Worker Writes", String(lifecycle.worker_storage_written || 0)],
@@ -386,6 +422,30 @@ function renderCompact(state) {
 
   const sizeClass = cols <= 2 ? 'size-lg' : cols <= 5 ? 'size-md' : '';
   area.innerHTML = `<div class="compact-grid ${sizeClass}" style="--cols:${cols}">${cards}</div>`;
+
+  // Detect worker state transitions and emit floating event labels.
+  const tiles = area.querySelectorAll(".compact-tile");
+  agents.forEach((agent, ai) => {
+    const tile = tiles[ai];
+    if (!tile) return;
+    const workers = agent.workers || [];
+    if (!prevWorkerState[agent.id]) prevWorkerState[agent.id] = {};
+    const prev = prevWorkerState[agent.id];
+    for (const w of workers) {
+      const p = prev[w.id] || {};
+      if (w.checkin_emoji && !p.checkin_emoji) {
+        emitFloatEvent(tile, "callback " + w.checkin_emoji, "");
+      } else if (w.storage_written && !p.storage_written) {
+        emitFloatEvent(tile, "storage write", "storage");
+      }
+      prev[w.id] = { checkin_emoji: w.checkin_emoji, storage_written: w.storage_written };
+    }
+    // Clean up old entries.
+    const currentIds = new Set(workers.map(w => w.id));
+    for (const wid of Object.keys(prev)) {
+      if (!currentIds.has(wid)) delete prev[wid];
+    }
+  });
 }
 
 function phaseClass(phase) {
@@ -428,7 +488,7 @@ function renderLifecycle(state) {
   const p = state.job_params || {};
   if (!p.profile) { bar.innerHTML = ""; return; }
   const steps = ["start"];
-  if (p.checkin) steps.push("worker callback");
+  if (p.checkin) steps.push("sleep 3s", "worker callback (random emoji)", "sleep 3s");
   steps.push("storage write");
   const dur = p.duration_min_s === p.duration_max_s
     ? `sleep ${p.duration_min_s}s`
@@ -685,7 +745,9 @@ class MonitorState:
                 if worker_id not in agent["_spawned_ids"]:
                     agent["_spawned_ids"].add(worker_id)
                     agent["total_spawned"] += 1
-                agent["active_workers"] = len(agent["workers"])
+                agent["active_workers"] = sum(
+                    1 for w in agent["workers"].values() if not w["exited"]
+                )
                 if agent["status"] == "pending":
                     agent["status"] = "running"
                 return
@@ -793,6 +855,7 @@ class MonitorState:
                         "checked_in": worker["checked_in"],
                         "checkin_at": worker["checkin_at"],
                         "checkin_emoji": worker["checkin_emoji"],
+                        "storage_written": worker["storage_written"],
                         "cold_start_ms": worker["cold_start_ms"],
                         "rss_kb": worker["rss_kb"],
                     }
@@ -832,7 +895,7 @@ class MonitorState:
             stopped_agents = sum(
                 1 for agent in agents if agent["status"] == "stopped"
             )
-            active_workers = sum(len(agent["workers"]) for agent in agents)
+            active_workers = sum(agent["active_workers"] for agent in agents)
             total_spawned = sum(agent["total_spawned"] for agent in agents)
             total_checkins = sum(agent["total_checkins"] for agent in agents)
             total_completed = sum(agent["total_completed"] for agent in agents)
