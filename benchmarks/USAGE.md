@@ -166,6 +166,16 @@ python3 ironclaw_benchmark.py \
   --batch-size 10 \
   --batch-interval-s 5
 
+# Loaded with a shared global launch bucket:
+# allow a burst of 10 launches, then refill at 2 launches/sec across all agents
+python3 ironclaw_benchmark.py \
+  --approach ironclaw-sysbox-dind \
+  --agents 50 \
+  --mode loaded \
+  --max-concurrent-workers 1 \
+  --global-launch-bucket-size 10 \
+  --global-launch-refill-rate-per-s 2
+
 # Plateau
 python3 ironclaw_benchmark.py \
   --approach ironclaw-docker \
@@ -175,6 +185,13 @@ python3 ironclaw_benchmark.py \
   --plateau-hold-s 60 \
   --plateau-settle-s 20
 ```
+
+`loaded` mode also supports an optional shared launch-rate limiter across all agents:
+
+- `--global-launch-bucket-size`: maximum burst of launches the benchmark may trigger at once
+- `--global-launch-refill-rate-per-s`: refill rate for that shared bucket
+
+This is useful when you want to keep many agents alive but deliberately avoid a thundering herd of worker launches.
 
 ## Live Monitor
 

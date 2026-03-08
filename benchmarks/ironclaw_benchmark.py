@@ -784,6 +784,7 @@ class AgentState:
         self.trigger_ok = 0
         self.trigger_failed = 0
         self.skipped_due_to_limit = 0
+        self.skipped_due_to_global_bucket = 0
         self.pending_timeouts = 0
 
     def effective_active(self, observed_active: int) -> int:
@@ -795,6 +796,35 @@ class AgentState:
         ) > LAUNCH_VISIBILITY_TIMEOUT_S:
             self.pending_triggers.popleft()
             self.pending_timeouts += 1
+
+
+class GlobalLaunchBucket:
+    def __init__(self, capacity: float, refill_rate_per_s: float):
+        self.capacity = max(0.0, float(capacity))
+        self.refill_rate_per_s = max(0.0, float(refill_rate_per_s))
+        self.tokens = self.capacity
+        self.last_refill_at = time.monotonic()
+
+    @property
+    def enabled(self) -> bool:
+        return self.capacity > 0.0
+
+    def refill(self, now: float) -> None:
+        if not self.enabled:
+            return
+        elapsed = max(0.0, now - self.last_refill_at)
+        if elapsed > 0 and self.refill_rate_per_s > 0:
+            self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_rate_per_s)
+        self.last_refill_at = now
+
+    def try_take(self, now: float, amount: float = 1.0) -> bool:
+        if not self.enabled:
+            return True
+        self.refill(now)
+        if self.tokens + 1e-9 < amount:
+            return False
+        self.tokens = max(0.0, self.tokens - amount)
+        return True
 
 
 def build_params(args, config, run_label: str, run_dir: Path) -> dict:
@@ -810,6 +840,8 @@ def build_params(args, config, run_label: str, run_dir: Path) -> dict:
         "sample_interval_ms": args.sample_interval_ms,
         "control_interval_s": args.control_interval_s,
         "max_triggers_per_agent": args.max_triggers_per_agent,
+        "global_launch_bucket_size": args.global_launch_bucket_size,
+        "global_launch_refill_rate_per_s": args.global_launch_refill_rate_per_s,
         "pre_trigger_settle_s": args.pre_trigger_settle_s,
         "batch_size": args.batch_size,
         "batch_interval_s": args.batch_interval_s,
@@ -836,6 +868,8 @@ def build_params(args, config, run_label: str, run_dir: Path) -> dict:
             "job_profile": args.job_profile,
             "job_command": args.job_command,
             "job_dispatch": args.job_dispatch,
+            "global_launch_bucket_size": args.global_launch_bucket_size,
+            "global_launch_refill_rate_per_s": args.global_launch_refill_rate_per_s,
         },
     }
 
@@ -855,6 +889,12 @@ def control_loaded(
     control_samples = []
     last_counts = {agent_id: 0 for agent_id in agent_ids}
     last_errors = {}
+    launch_bucket = GlobalLaunchBucket(
+        args.global_launch_bucket_size,
+        args.global_launch_refill_rate_per_s,
+    )
+    bucket_deferred = 0
+    agent_cursor = 0
     while time.monotonic() < end_time:
         now = time.monotonic()
         counts, errors = fetch_active_counts(
@@ -869,7 +909,12 @@ def control_loaded(
             "active_workers": total_active,
         })
 
-        for agent_id in agent_ids:
+        if launch_bucket.enabled and agent_ids:
+            ordered_agent_ids = agent_ids[agent_cursor:] + agent_ids[:agent_cursor]
+        else:
+            ordered_agent_ids = agent_ids
+
+        for agent_id in ordered_agent_ids:
             state = states[agent_id]
             if now < state.release_at or now < state.next_spawn_at:
                 continue
@@ -880,6 +925,13 @@ def control_loaded(
                 continue
             observed = counts[agent_id]
             if state.effective_active(observed) < args.max_concurrent_workers:
+                if not launch_bucket.try_take(now):
+                    state.skipped_due_to_global_bucket += 1
+                    bucket_deferred += 1
+                    state.next_spawn_at = now + exponential_delay_s(
+                        state.rng, args.spawn_interval_mean_s
+                    )
+                    continue
                 duration_s = sampled_duration_s(
                     state.rng,
                     args.job_duration_min_s,
@@ -911,6 +963,8 @@ def control_loaded(
                         "proof_relpath": proof_relpath(agent_id, state.trigger_index),
                     })
                     state.trigger_index += 1
+                    if launch_bucket.enabled and agent_ids:
+                        agent_cursor = (agent_ids.index(agent_id) + 1) % len(agent_ids)
                 else:
                     state.trigger_failed += 1
             else:
@@ -922,11 +976,19 @@ def control_loaded(
     final_counts, final_errors = fetch_active_counts(
         approach, agent_ids, agent_roots, states, tracked_jobs, agent_records, last_counts
     )
+    launch_bucket.refill(time.monotonic())
     return {
         "control_samples": control_samples,
         "last_errors": last_errors,
         "final_errors": final_errors,
         "final_counts": final_counts,
+        "global_launch_bucket": {
+            "enabled": launch_bucket.enabled,
+            "capacity": launch_bucket.capacity,
+            "refill_rate_per_s": launch_bucket.refill_rate_per_s,
+            "tokens_remaining": round(launch_bucket.tokens, 3),
+            "deferred": bucket_deferred,
+        },
     }
 
 
@@ -1094,6 +1156,10 @@ def main():
                         help="Host control-loop polling interval")
     parser.add_argument("--max-triggers-per-agent", type=int, default=0,
                         help="Maximum total job triggers per agent (0 = unlimited)")
+    parser.add_argument("--global-launch-bucket-size", type=float, default=0.0,
+                        help="Shared loaded-mode launch burst budget across all agents (0 = disabled)")
+    parser.add_argument("--global-launch-refill-rate-per-s", type=float, default=0.0,
+                        help="Shared loaded-mode launch token refill rate across all agents")
     parser.add_argument("--sample-interval-ms", type=int, default=1000,
                         help="Collector sampling interval")
     parser.add_argument("--agent-memory-mb", type=int, default=2048,
@@ -1126,6 +1192,14 @@ def main():
 
     if args.job_profile == "custom" and not args.job_command:
         parser.error("--job-profile custom requires --job-command")
+    if args.global_launch_bucket_size < 0 or args.global_launch_refill_rate_per_s < 0:
+        parser.error("--global-launch-bucket-size and --global-launch-refill-rate-per-s must be >= 0")
+    if args.mode != "loaded" and (
+        args.global_launch_bucket_size > 0 or args.global_launch_refill_rate_per_s > 0
+    ):
+        parser.error("--global-launch-bucket-* only applies to loaded mode")
+    if args.global_launch_refill_rate_per_s > 0 and args.global_launch_bucket_size <= 0:
+        parser.error("--global-launch-bucket-size must be > 0 when --global-launch-refill-rate-per-s is set")
     if args.mode == "plateau":
         args.plateau_workers_per_agent = parse_int_list(args.plateau_workers_per_agent)
         if not args.plateau_workers_per_agent:
@@ -1323,9 +1397,17 @@ def main():
         summary["workers_spawned"] = sum(state.trigger_ok for state in states.values())
         summary["trigger_attempts"] = sum(state.trigger_attempts for state in states.values())
         summary["trigger_failed"] = sum(state.trigger_failed for state in states.values())
+        summary["global_launch_bucket_deferred"] = sum(
+            state.skipped_due_to_global_bucket for state in states.values()
+        )
         summary["per_agent_triggers_ok"] = {agent_id: state.trigger_ok for agent_id, state in states.items()}
         summary["per_agent_trigger_attempts"] = {agent_id: state.trigger_attempts for agent_id, state in states.items()}
         summary["per_agent_pending_timeouts"] = {agent_id: state.pending_timeouts for agent_id, state in states.items()}
+        summary["per_agent_global_launch_bucket_deferred"] = {
+            agent_id: state.skipped_due_to_global_bucket for agent_id, state in states.items()
+        }
+        if "global_launch_bucket" in control_result:
+            summary["global_launch_bucket"] = control_result["global_launch_bucket"]
         job_records = sorted(
             tracked_jobs.values(),
             key=lambda record: (
