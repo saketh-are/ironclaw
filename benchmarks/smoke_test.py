@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-Smoke test for real-ironclaw benchmark approaches.
+Smoke test for real IronClaw benchmark approaches.
 
-Runs 2 IronClaw agents per approach, sends each a message that triggers
-a shell tool call via the mock LLM, and verifies that each agent
-successfully processed the message and executed the command.
-
-Usage:
-    python3 smoke_test.py                          # All ironclaw approaches
-    python3 smoke_test.py --approach ironclaw-docker  # Single approach
-    python3 smoke_test.py --list                      # List available approaches
-
-Exit code:
-    0  All tested approaches passed
-    1  At least one approach failed
+Runs a short host-driven benchmark for each approach and verifies that the
+host-visible evidence proves the full worker lifecycle:
+  - agent started
+  - agent bootstrap storage write
+  - native agent workspace write
+  - job created
+  - worker started
+  - worker storage write logged
+  - proof file verified
+  - worker callback received
+  - worker cleanup logged and host absence verified
+  - agent exited and cleanup verified
 """
 
 import argparse
@@ -27,336 +27,326 @@ from pathlib import Path
 BENCH_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BENCH_DIR))
 
-from approaches.base import BenchmarkConfig, discover_approaches
-from approaches._ironclaw_helpers import (
-    GATEWAY_AUTH_TOKEN,
-    trigger_worker_spawn,
-    wait_for_gateway,
-)
-
-# Smoke test parameters
-NUM_AGENTS = 2
-COMMAND_WAIT_S = 15        # Time to wait for shell commands to execute
-TOTAL_TIMEOUT_S = 300      # Max total time per approach
+from approaches.base import discover_approaches
 
 
-# ---------------------------------------------------------------------------
-# Verification helpers
-# ---------------------------------------------------------------------------
+DEFAULT_AGENTS = 1
+DEFAULT_TIMEOUT_S = 1800
+DEFAULT_PORT_BASE = 52000
+BENCHMARK_DURATION_S = 25
+JOB_DURATION_S = 3
 
-def check_tool_execution_in_logs(agent_index):
-    """Check agent container logs for evidence of sandboxed shell tool execution.
 
-    Parses the structured tool-result JSON from ironclaw's debug logs to verify
-    the shell command actually ran inside a sandbox container and exited cleanly.
+def build_benchmark_command(approach_name: str, num_agents: int, port_base: int, run_dir: Path) -> list[str]:
+    return [
+        sys.executable,
+        str(BENCH_DIR / "ironclaw_benchmark.py"),
+        "--approach",
+        approach_name,
+        "--agents",
+        str(num_agents),
+        "--mode",
+        "loaded",
+        "--benchmark-duration-s",
+        str(BENCHMARK_DURATION_S),
+        "--spawn-interval-mean-s",
+        "0.1",
+        "--max-concurrent-workers",
+        "1",
+        "--max-triggers-per-agent",
+        "1",
+        "--pre-trigger-settle-s",
+        "1",
+        "--control-interval-s",
+        "0.5",
+        "--sample-interval-ms",
+        "500",
+        "--job-dispatch",
+        "worker-job",
+        "--job-duration-min-s",
+        str(JOB_DURATION_S),
+        "--job-duration-max-s",
+        str(JOB_DURATION_S),
+        "--agent-memory-mb",
+        "2048",
+        "--orchestrator-base-port",
+        str(port_base),
+        "--output-dir",
+        str(run_dir),
+    ]
 
-    Returns (executed: bool, details: str).
-    """
-    container_name = f"bench-ic-agent-{agent_index}"
+
+def load_summary(run_dir: Path) -> dict:
+    summary_path = run_dir / "summary.json"
+    if not summary_path.exists():
+        raise FileNotFoundError(f"summary.json not found in {run_dir}")
+    return json.loads(summary_path.read_text())
+
+
+def require_equal(failures: list[str], summary: dict, field: str, expected: int) -> None:
+    actual = summary.get(field)
+    if actual != expected:
+        failures.append(f"{field}: expected {expected}, got {actual}")
+
+
+def require_true(failures: list[str], record_id: str, field: str, value) -> None:
+    if value is not True:
+        failures.append(f"{record_id}: expected {field}=true, got {value!r}")
+
+
+def require_present(failures: list[str], record_id: str, field: str, value) -> None:
+    if value in (None, "", []):
+        failures.append(f"{record_id}: missing {field}")
+
+
+def verify_summary(summary: dict, expected_agents: int, expected_jobs: int) -> list[str]:
+    failures: list[str] = []
+
+    if summary.get("error"):
+        failures.append(f"benchmark error: {summary['error']}")
+    if summary.get("cleanup_error"):
+        failures.append(f"cleanup error: {summary['cleanup_error']}")
+
+    control_errors = summary.get("control_errors") or {}
+    during_errors = control_errors.get("during_run") or {}
+    final_errors = control_errors.get("final") or {}
+    if during_errors:
+        failures.append(f"control_errors.during_run: {during_errors}")
+    if final_errors:
+        failures.append(f"control_errors.final: {final_errors}")
+
+    require_equal(failures, summary, "agents_started", expected_agents)
+    require_equal(failures, summary, "agents_with_storage", expected_agents)
+    require_equal(failures, summary, "agents_with_workspace_write", expected_agents)
+    require_equal(failures, summary, "workers_spawned", expected_jobs)
+    require_equal(failures, summary, "jobs_discovered", expected_jobs)
+    require_equal(failures, summary, "jobs_started", expected_jobs)
+    require_equal(failures, summary, "jobs_with_storage_event", expected_jobs)
+    require_equal(failures, summary, "jobs_with_callback_event", expected_jobs)
+    require_equal(failures, summary, "jobs_with_proof", expected_jobs)
+    require_equal(failures, summary, "jobs_cleaned", expected_jobs)
+    require_equal(failures, summary, "jobs_cleanup_verified", expected_jobs)
+    require_equal(failures, summary, "jobs_completed", expected_jobs)
+    require_equal(failures, summary, "jobs_succeeded", expected_jobs)
+    require_equal(failures, summary, "jobs_failed", 0)
+    require_equal(failures, summary, "agents_exited_logged", expected_agents)
+    require_equal(failures, summary, "agents_cleanup_verified", expected_agents)
+
+    agent_records = summary.get("agent_records") or []
+    if len(agent_records) != expected_agents:
+        failures.append(
+            f"agent_records: expected {expected_agents}, got {len(agent_records)}"
+        )
+    for record in agent_records:
+        agent_id = record.get("agent_id") or "<unknown-agent>"
+        require_true(failures, agent_id, "started_logged", record.get("started_logged"))
+        require_true(failures, agent_id, "storage_logged", record.get("storage_logged"))
+        require_true(failures, agent_id, "storage_verified", record.get("storage_verified"))
+        require_true(
+            failures,
+            agent_id,
+            "workspace_write_logged",
+            record.get("workspace_write_logged"),
+        )
+        require_true(
+            failures,
+            agent_id,
+            "workspace_write_verified",
+            record.get("workspace_write_verified"),
+        )
+        require_true(failures, agent_id, "exited_logged", record.get("exited_logged"))
+        require_true(failures, agent_id, "absent_verified", record.get("absent_verified"))
+        require_present(failures, agent_id, "storage_path", record.get("storage_path"))
+        require_present(
+            failures,
+            agent_id,
+            "workspace_write_path",
+            record.get("workspace_write_path"),
+        )
+
+    job_records = summary.get("job_records") or []
+    if len(job_records) != expected_jobs:
+        failures.append(f"job_records: expected {expected_jobs}, got {len(job_records)}")
+    for record in job_records:
+        job_id = record.get("job_id") or "<unknown-job>"
+        require_present(failures, job_id, "project_dir", record.get("project_dir"))
+        require_present(failures, job_id, "job_created_at_epoch_s", record.get("job_created_at_epoch_s"))
+        require_present(
+            failures,
+            job_id,
+            "worker_started_at_epoch_s",
+            record.get("worker_started_at_epoch_s"),
+        )
+        require_true(
+            failures,
+            job_id,
+            "worker_storage_logged",
+            record.get("worker_storage_logged"),
+        )
+        require_present(
+            failures,
+            job_id,
+            "worker_storage_at_epoch_s",
+            record.get("worker_storage_at_epoch_s"),
+        )
+        require_true(failures, job_id, "proof_verified", record.get("proof_verified"))
+        require_present(
+            failures,
+            job_id,
+            "proof_verified_at_epoch_s",
+            record.get("proof_verified_at_epoch_s"),
+        )
+        require_present(
+            failures,
+            job_id,
+            "callback_at_epoch_s",
+            record.get("callback_at_epoch_s"),
+        )
+        require_true(failures, job_id, "result_success", record.get("result_success"))
+        require_present(
+            failures,
+            job_id,
+            "worker_cleaned_at_epoch_s",
+            record.get("worker_cleaned_at_epoch_s"),
+        )
+        require_true(
+            failures,
+            job_id,
+            "worker_absent_verified",
+            record.get("worker_absent_verified"),
+        )
+
+    return failures
+
+
+def run_smoke_test(approach_name: str, num_agents: int, port_base: int, timeout_s: int) -> tuple[bool, dict]:
+    timestamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime())
+    run_dir = (BENCH_DIR / "results" / f"smoke-{approach_name}-{timestamp}").resolve()
+    cmd = build_benchmark_command(approach_name, num_agents, port_base, run_dir)
+
+    print(f"\n{'=' * 72}")
+    print(f"SMOKE TEST: {approach_name} (agents={num_agents})")
+    print(f"{'=' * 72}\n")
+    print(f"[smoke] Running: {' '.join(cmd)}")
+
+    details = {
+        "approach": approach_name,
+        "agents": num_agents,
+        "run_dir": str(run_dir),
+        "command": cmd,
+    }
+    start = time.monotonic()
+
     try:
         result = subprocess.run(
-            ["docker", "logs", "--tail", "200", container_name],
-            capture_output=True, text=True, timeout=10,
+            cmd,
+            cwd=BENCH_DIR,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
         )
-        combined = result.stdout + result.stderr
+        details["returncode"] = result.returncode
 
-        indicators = {
-            "message_received": "Received message from" in combined,
-            "llm_call": "LLM call used" in combined,
-            "tool_started": "Tool call started" in combined and "shell" in combined,
-            "sandbox_init": "Sandbox initialized" in combined,
-            "tool_succeeded": False,
-            "sandboxed": False,
-            "exit_code_0": False,
+        run_dir.mkdir(parents=True, exist_ok=True)
+        stdout_path = run_dir / "smoke.stdout.log"
+        stderr_path = run_dir / "smoke.stderr.log"
+        stdout_path.write_text(result.stdout)
+        stderr_path.write_text(result.stderr)
+        details["stdout_path"] = str(stdout_path)
+        details["stderr_path"] = str(stderr_path)
+
+        summary = load_summary(run_dir)
+        details["summary_path"] = str(run_dir / "summary.json")
+        details["summary_counts"] = {
+            "agents_started": summary.get("agents_started"),
+            "agents_with_storage": summary.get("agents_with_storage"),
+            "agents_with_workspace_write": summary.get("agents_with_workspace_write"),
+            "workers_spawned": summary.get("workers_spawned"),
+            "jobs_discovered": summary.get("jobs_discovered"),
+            "jobs_with_storage_event": summary.get("jobs_with_storage_event"),
+            "jobs_with_proof": summary.get("jobs_with_proof"),
+            "jobs_with_callback_event": summary.get("jobs_with_callback_event"),
+            "jobs_cleaned": summary.get("jobs_cleaned"),
+            "jobs_cleanup_verified": summary.get("jobs_cleanup_verified"),
+            "agents_exited_logged": summary.get("agents_exited_logged"),
+            "agents_cleanup_verified": summary.get("agents_cleanup_verified"),
         }
 
-        # Parse the structured tool result from the "Tool call succeeded" log line.
-        # Format: Tool call succeeded tool=shell elapsed_ms=220 result={"exit_code":0,...}
-        # Note: logs contain ANSI escape codes, so strip them first.
-        import re
-        ansi_re = re.compile(r'\x1b\[[0-9;]*m')
-        combined = ansi_re.sub('', combined)
-        for line in combined.split("\n"):
-            m = re.search(r'Tool call succeeded tool=shell.*result=(\{.*\})', line)
-            if m:
-                indicators["tool_succeeded"] = True
-                try:
-                    result_json = json.loads(m.group(1))
-                    indicators["sandboxed"] = result_json.get("sandboxed") is True
-                    indicators["exit_code_0"] = result_json.get("exit_code") == 0
-                except (json.JSONDecodeError, AttributeError):
-                    pass
+        failures = []
+        if result.returncode != 0:
+            failures.append(f"benchmark exited with status {result.returncode}")
+        failures.extend(verify_summary(summary, expected_agents=num_agents, expected_jobs=num_agents))
 
-        # Pass requires: LLM called, tool dispatched, tool succeeded in sandbox
-        # with exit code 0.
-        executed = (
-            indicators["tool_succeeded"]
-            and indicators["sandboxed"]
-            and indicators["exit_code_0"]
+        elapsed = time.monotonic() - start
+        details["elapsed_s"] = round(elapsed, 1)
+        if failures:
+            details["failures"] = failures
+            print(f"[smoke] FAIL: {approach_name}")
+            for failure in failures:
+                print(f"[smoke]   - {failure}")
+            return False, details
+
+        details["passed"] = True
+        print(
+            "[smoke] PASS: "
+            f"agents_started={summary.get('agents_started')}/{num_agents}, "
+            f"jobs={summary.get('jobs_succeeded')}/{num_agents}, "
+            f"workspace_writes={summary.get('agents_with_workspace_write')}/{num_agents}"
         )
+        return True, details
 
-        detail_parts = [f"{k}={'yes' if v else 'no'}" for k, v in indicators.items()]
-        return executed, ", ".join(detail_parts)
-    except (subprocess.SubprocessError, subprocess.TimeoutExpired) as e:
-        return False, f"log check failed: {e}"
-
-
-def check_tool_execution_via_api(port, auth_token=GATEWAY_AUTH_TOKEN):
-    """Check tool execution via the gateway's chat history API.
-
-    Used for VM-based approaches where docker logs aren't available.
-    Queries /api/chat/history and checks for a successful shell tool call.
-
-    Returns (executed: bool, details: str).
-    """
-    import urllib.request
-    url = f"http://127.0.0.1:{port}/api/chat/history"
-    req = urllib.request.Request(
-        url, headers={"Authorization": f"Bearer {auth_token}"}
-    )
-    try:
-        resp = urllib.request.urlopen(req, timeout=10)
-        data = json.loads(resp.read())
-    except Exception as e:
-        return False, f"API query failed: {e}"
-
-    turns = data.get("turns", [])
-    for turn in turns:
-        for tc in turn.get("tool_calls", []):
-            if tc.get("name") == "shell" and tc.get("has_result") and not tc.get("has_error"):
-                # Parse the result preview
-                try:
-                    result_json = json.loads(tc.get("result_preview", "{}"))
-                    sandboxed = result_json.get("sandboxed") is True
-                    exit_ok = result_json.get("exit_code") == 0
-                    if sandboxed and exit_ok:
-                        return True, f"sandboxed=yes, exit_code=0"
-                    return False, f"sandboxed={sandboxed}, exit_code={result_json.get('exit_code')}"
-                except (json.JSONDecodeError, AttributeError):
-                    return False, "result parse error"
-    return False, "no shell tool call found in chat history"
-
-
-def check_storage_write(agent_index, host_workspace_dir=None):
-    """Verify that the sandbox container wrote a proof file to the workspace.
-
-    The mock LLM command writes to /workspace/bench-test/output.txt inside the
-    sandbox container.  Because /workspace is bind-mounted from the agent's
-    workspace directory, we can read the proof file either:
-      - directly on the host (if host_workspace_dir is given), or
-      - via `docker exec` on the agent container.
-
-    Returns (written: bool, content: str).
-    """
-    proof_relpath = "bench-test/output.txt"
-
-    # If we know the host workspace path, read directly (shared-daemon case)
-    if host_workspace_dir is not None:
-        proof_path = Path(host_workspace_dir) / proof_relpath
-        try:
-            if proof_path.exists():
-                content = proof_path.read_text().strip()
-                if content.startswith("proof-"):
-                    return True, content
-                return False, f"content={content!r}"
-            return False, f"file not found: {proof_path}"
-        except Exception as e:
-            return False, f"read failed: {e}"
-
-    # Fallback: read via docker exec (DinD case — workspace inside container)
-    container_name = f"bench-ic-agent-{agent_index}"
-    try:
-        result = subprocess.run(
-            ["docker", "exec", container_name,
-             "cat", f"/tmp/workspace/{proof_relpath}"],
-            capture_output=True, text=True, timeout=5,
-        )
-        content = result.stdout.strip()
-        if result.returncode == 0 and content.startswith("proof-"):
-            return True, content
-        return False, f"rc={result.returncode} content={content!r} stderr={result.stderr.strip()!r}"
-    except (subprocess.SubprocessError, subprocess.TimeoutExpired) as e:
-        return False, f"exec failed: {e}"
-
-
-# ---------------------------------------------------------------------------
-# Smoke test runner
-# ---------------------------------------------------------------------------
-
-def run_smoke_test(approach, approach_name, num_agents=NUM_AGENTS):
-    """Run the smoke test for a single approach. Returns (passed, details)."""
-    print(f"\n{'='*60}")
-    print(f"SMOKE TEST: {approach_name}  (N={num_agents})")
-    print(f"{'='*60}\n")
-
-    config = BenchmarkConfig(
-        benchmark_mode="loaded",
-        agent_memory_mb=2048,
-        agent_baseline_mb=0,
-        max_concurrent_workers=2,
-        spawn_interval_mean_s=10,
-        benchmark_duration_s=60,
-        worker_memory_mb=50,
-        worker_duration_min_s=30,
-        worker_duration_max_s=30,
-        worker_lifetime_mode="timed",
-        orchestrator_base_port=51000,
-    )
-
-    details = {"approach": approach_name, "agents": num_agents}
-    start_time = time.monotonic()
-
-    try:
-        # 1. Setup
-        print(f"[smoke] Setting up {approach_name}...")
-        approach.setup(config)
-
-        # 2. Start agents
-        print(f"[smoke] Starting {num_agents} agents...")
-        agent_ids = approach.start_agents(num_agents, config)
-        details["agent_ids"] = agent_ids
-
-        if len(agent_ids) < num_agents:
-            details["error"] = f"Only {len(agent_ids)}/{num_agents} agents started"
-            return False, details
-
-        # 3. Verify health
-        print("[smoke] Verifying agent health...")
-        for agent_id in agent_ids:
-            port = approach._host_ports.get(agent_id)
-            if port and not wait_for_gateway(port, timeout_s=60, label=agent_id):
-                details["error"] = f"{agent_id} failed health check"
-                return False, details
-
-        print("[smoke] All agents healthy.")
-
-        # 4. Send messages to trigger shell tool calls
-        print("[smoke] Sending messages to trigger shell commands...")
-        send_results = {}
-        for agent_id in agent_ids:
-            port = approach._host_ports.get(agent_id)
-            if port:
-                ok = trigger_worker_spawn(port)
-                send_results[agent_id] = ok
-                if ok:
-                    print(f"[smoke]   {agent_id}: message accepted")
-                else:
-                    print(f"[smoke]   {agent_id}: message FAILED")
-
-        if not all(send_results.values()):
-            failed = [a for a, ok in send_results.items() if not ok]
-            details["error"] = f"Failed to send messages to: {failed}"
-            return False, details
-
-        # 5. Wait for command execution
-        print(f"[smoke] Waiting {COMMAND_WAIT_S}s for shell commands to execute...")
-        time.sleep(COMMAND_WAIT_S)
-
-        # 6. Verify execution via logs (or API for VM approaches)
-        # Use API check when docker logs aren't available (VM, Podman approaches)
-        use_api = approach.name.startswith("ironclaw-vm") or approach.name.startswith("ironclaw-podman")
-        print(f"[smoke] Checking tool execution ({'API' if use_api else 'logs'})...")
-        agents_executed = 0
-        for i, agent_id in enumerate(agent_ids):
-            if use_api:
-                port = approach._host_ports.get(agent_id)
-                executed, log_detail = check_tool_execution_via_api(port) if port else (False, "no port")
-            else:
-                executed, log_detail = check_tool_execution_in_logs(i)
-            details[f"{agent_id}_log"] = log_detail
-            if executed:
-                agents_executed += 1
-                print(f"[smoke]   {agent_id}: EXECUTED ({log_detail})")
-            else:
-                print(f"[smoke]   {agent_id}: NOT EXECUTED ({log_detail})")
-
-        details["agents_executed"] = agents_executed
-
-        if agents_executed < num_agents:
-            details["error"] = (
-                f"Only {agents_executed}/{num_agents} agents executed commands"
-            )
-            return False, details
-
-        # 7. Verify storage writes (sandbox → workspace bind mount)
-        # VM approaches can't verify storage from outside the VM, so
-        # we trust the tool execution check (sandboxed=true, exit_code=0).
-        if use_api:
-            print("[smoke] Storage write check skipped (VM approach — "
-                  "verified via API tool result)")
-            agents_wrote = agents_executed  # trust the API check
-            details["storage_check"] = "skipped-vm"
-        else:
-            print("[smoke] Checking storage writes from sandbox containers...")
-            agents_wrote = 0
-            for i, agent_id in enumerate(agent_ids):
-                ws_dir = getattr(approach, '_workspace_dirs', {}).get(agent_id)
-                written, write_detail = check_storage_write(i, host_workspace_dir=ws_dir)
-                details[f"{agent_id}_storage"] = write_detail
-                if written:
-                    agents_wrote += 1
-                    print(f"[smoke]   {agent_id}: WRITTEN ({write_detail})")
-                else:
-                    print(f"[smoke]   {agent_id}: NOT WRITTEN ({write_detail})")
-
-        details["agents_wrote_storage"] = agents_wrote
-
-        if agents_wrote >= num_agents:
-            print(f"[smoke] PASS: {agents_executed}/{num_agents} executed, "
-                  f"{agents_wrote}/{num_agents} wrote to storage")
-            details["passed"] = True
-            return True, details
-        else:
-            details["error"] = (
-                f"Only {agents_wrote}/{num_agents} agents wrote to storage"
-            )
-            return False, details
-
-    except Exception as e:
-        details["error"] = str(e)
+    except subprocess.TimeoutExpired as exc:
+        elapsed = time.monotonic() - start
+        details["elapsed_s"] = round(elapsed, 1)
+        details["error"] = f"timed out after {timeout_s}s"
+        details["stdout"] = exc.stdout
+        details["stderr"] = exc.stderr
+        print(f"[smoke] FAIL: {approach_name} timed out after {timeout_s}s")
+        return False, details
+    except Exception as exc:
+        elapsed = time.monotonic() - start
+        details["elapsed_s"] = round(elapsed, 1)
+        details["error"] = str(exc)
         details["traceback"] = traceback.format_exc()
-        print(f"[smoke] ERROR: {e}")
+        print(f"[smoke] FAIL: {approach_name}: {exc}")
         return False, details
 
-    finally:
-        elapsed = time.monotonic() - start_time
-        details["elapsed_s"] = round(elapsed, 1)
 
-        # Always clean up
-        print(f"[smoke] Cleaning up {approach_name}...")
-        try:
-            approach.cleanup()
-        except Exception as cleanup_err:
-            print(f"[smoke] Cleanup error: {cleanup_err}")
-        print(f"[smoke] {approach_name} done in {elapsed:.1f}s\n")
-
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
-def main():
-    parser = argparse.ArgumentParser(description="Ironclaw benchmark smoke tests")
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Full-lifecycle smoke tests for real IronClaw benchmarks")
     parser.add_argument("--approach", help="Run only this approach")
     parser.add_argument("--list", action="store_true", help="List available approaches")
-    parser.add_argument("--agents", type=int, default=NUM_AGENTS,
-                        help=f"Number of agents to run (default: {NUM_AGENTS})")
-    parser.add_argument("--output", default="smoke-results.json",
-                        help="Output file for results")
+    parser.add_argument(
+        "--agents",
+        type=int,
+        default=DEFAULT_AGENTS,
+        help=f"Number of agents to run per approach (default: {DEFAULT_AGENTS})",
+    )
+    parser.add_argument(
+        "--timeout-s",
+        type=int,
+        default=DEFAULT_TIMEOUT_S,
+        help=f"Per-approach timeout in seconds (default: {DEFAULT_TIMEOUT_S})",
+    )
+    parser.add_argument(
+        "--port-base",
+        type=int,
+        default=DEFAULT_PORT_BASE,
+        help=f"Base host port for the first approach (default: {DEFAULT_PORT_BASE})",
+    )
+    parser.add_argument(
+        "--output",
+        default="smoke-results.json",
+        help="Output file for aggregate results",
+    )
     args = parser.parse_args()
 
     approaches = discover_approaches(suite="ironclaw")
-
     if args.list:
         for name in sorted(approaches):
             print(f"  {name}")
         return
 
-    if not approaches:
-        print("No ironclaw approaches found. Check approaches/ directory.")
-        sys.exit(1)
-
-    # Filter to requested approach
     if args.approach:
         if args.approach not in approaches:
             print(f"Unknown approach '{args.approach}'. Available:")
@@ -365,37 +355,37 @@ def main():
             sys.exit(1)
         approaches = {args.approach: approaches[args.approach]}
 
-    # Run tests
+    if not approaches:
+        print("No ironclaw approaches found.")
+        sys.exit(1)
+
     results = {}
     all_passed = True
 
-    for name, approach in sorted(approaches.items()):
-        passed, details = run_smoke_test(approach, name, num_agents=args.agents)
+    for index, name in enumerate(sorted(approaches)):
+        port_base = args.port_base + (index * 100)
+        passed, details = run_smoke_test(name, args.agents, port_base, args.timeout_s)
         results[name] = details
         if not passed:
             all_passed = False
-            print(f"  FAIL: {name} - {details.get('error', 'unknown')}")
-        else:
-            print(f"  PASS: {name}")
 
-    # Summary
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 72}")
     print("SMOKE TEST SUMMARY")
-    print(f"{'='*60}")
+    print(f"{'=' * 72}")
     total = len(results)
-    passed_count = sum(1 for d in results.values() if d.get("passed"))
+    passed_count = sum(1 for details in results.values() if details.get("passed"))
     print(f"  {passed_count}/{total} approaches passed")
     for name, details in sorted(results.items()):
         status = "PASS" if details.get("passed") else "FAIL"
         elapsed = details.get("elapsed_s", "?")
         print(f"  [{status}] {name} ({elapsed}s)")
-        if not details.get("passed") and "error" in details:
+        for failure in details.get("failures", []):
+            print(f"         {failure}")
+        if details.get("error"):
             print(f"         {details['error']}")
 
-    # Write results
     output_path = BENCH_DIR / args.output
-    with open(output_path, "w") as f:
-        json.dump(results, f, indent=2)
+    output_path.write_text(json.dumps(results, indent=2))
     print(f"\nResults written to {output_path}")
 
     sys.exit(0 if all_passed else 1)

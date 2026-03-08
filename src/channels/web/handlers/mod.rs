@@ -8,9 +8,9 @@
 //! The remaining modules are in-progress migrations from inline server.rs
 //! handlers; their functions are not yet wired up, hence the `dead_code` allow.
 
-pub mod skills;
 #[allow(dead_code)]
 pub mod benchmark;
+pub mod skills;
 
 // Modules not yet wired into server.rs router -- suppress dead_code until
 // they replace their inline counterparts.

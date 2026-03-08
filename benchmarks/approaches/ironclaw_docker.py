@@ -82,6 +82,7 @@ class IronclawDockerApproach(Approach):
             env["WORKSPACE_DIR"] = str(ws_host)
             env["IRONCLAW_BASE_DIR"] = str(host_dirs["base_dir"])
             env["BENCH_EVIDENCE_DIR"] = str(host_dirs["evidence_dir"])
+            env["LIBSQL_PATH"] = str(host_dirs["base_dir"] / "ironclaw.db")
             # Real worker-mode jobs need a callback route back into the parent
             # agent's internal API. In the benchmark shared-daemon topology,
             # the cleanest route is to join the agent container's network namespace.

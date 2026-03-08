@@ -28,11 +28,11 @@ with open(path, "a") as f:
 PY
 }
 
-# --- Start mock LLM server in background ---
-python3 /opt/mock_llm_server.py --port 11434 --host 127.0.0.1 &
-MOCK_PID=$!
+# --- Ensure mock LLM server is available ---
+if ! curl -sf http://127.0.0.1:11434/v1/models >/dev/null 2>&1; then
+    python3 /opt/mock_llm_server.py --port 11434 --host 127.0.0.1 &
+fi
 
-# Wait for mock LLM to be ready
 elapsed=0
 while ! curl -sf http://127.0.0.1:11434/v1/models >/dev/null 2>&1; do
     sleep 0.1
@@ -83,8 +83,10 @@ python3 - <<'PY'
 import socket
 import sys
 import time
+import os
 
-deadline = time.time() + 30
+timeout_s = float(os.environ.get("GATEWAY_READY_TIMEOUT_S", "30"))
+deadline = time.time() + timeout_s
 while time.time() < deadline:
     try:
         with socket.create_connection(("127.0.0.1", 3000), timeout=0.5):

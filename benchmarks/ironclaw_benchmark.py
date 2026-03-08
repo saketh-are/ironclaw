@@ -319,6 +319,13 @@ def sync_host_evidence(
                     except OSError:
                         size_bytes = 0
                     agent_record["workspace_write_verified"] = size_bytes > 0
+                elif payload.get("size_bytes"):
+                    # Some approaches, notably the QEMU VM path, keep the
+                    # SQLite database on guest-local storage while still
+                    # surfacing benchmark evidence on a host-visible share.
+                    agent_record["workspace_write_verified"] = (
+                        int(payload.get("size_bytes") or 0) > 0
+                    )
 
         for created_path in sorted(evidence_dir.glob("job-created-*.json")):
             payload = read_json_file(created_path)
@@ -404,17 +411,27 @@ def sync_host_evidence(
                 record["worker_started_at_epoch_s"] = parse_unix_ms(payload.get("ts_unix_ms"))
                 record["started_at"] = record.get("worker_started_at_epoch_s")
 
-        worker_storage_path = (
-            project_path / ".bench-evidence" / f"worker-storage-written-{job_id}.json"
+        evidence_dir = project_path / ".bench-evidence"
+        worker_storage_candidates = [
+            evidence_dir / f"worker-storage-written-{job_id}.json",
+            evidence_dir / "worker-storage-written.json",
+        ]
+        worker_storage_candidates.extend(
+            sorted(evidence_dir.glob("worker-storage-written-*.json"))
         )
-        if record.get("worker_storage_logged") is not True and worker_storage_path.exists():
-            payload = read_json_file(worker_storage_path)
-            if payload:
+        if record.get("worker_storage_logged") is not True:
+            for worker_storage_path in worker_storage_candidates:
+                if not worker_storage_path.exists():
+                    continue
+                payload = read_json_file(worker_storage_path)
+                if not payload:
+                    continue
                 record["worker_storage_logged"] = True
                 record["worker_storage_at_epoch_s"] = parse_unix_ms(
                     payload.get("ts_unix_ms")
                 )
                 record["worker_storage_path"] = payload.get("path")
+                break
 
         if record.get("proof_relpath") and record.get("proof_verified") is None:
             proof_path = project_path / record["proof_relpath"]
@@ -1235,19 +1252,48 @@ def main():
             except Exception:
                 pass
 
+    print("[ironclaw-benchmark] stopping agents...", flush=True)
+    try:
+        approach.stop_agents()
+    except Exception as exc:
+        cleanup_error = exc
+        print(f"[ironclaw-benchmark] stop error: {exc}", flush=True)
+
+    if "states" in locals():
+        try:
+            sync_host_evidence(approach, agent_roots, states, tracked_jobs, agent_records)
+        except Exception as exc:
+            if cleanup_error is None:
+                cleanup_error = exc
+            print(f"[ironclaw-benchmark] post-stop evidence sync error: {exc}", flush=True)
+
     print("[ironclaw-benchmark] cleaning up...", flush=True)
     try:
         approach.cleanup()
-        if "states" in locals():
-            sync_host_evidence(approach, agent_roots, states, tracked_jobs, agent_records)
-        for agent_id in agent_ids:
-            agent_record = ensure_agent_record(agent_records, agent_id)
-            verdict = approach.verify_agent_absent(agent_id)
-            if verdict is not None:
-                agent_record["absent_verified"] = verdict
     except Exception as exc:
-        cleanup_error = exc
+        if cleanup_error is None:
+            cleanup_error = exc
         print(f"[ironclaw-benchmark] cleanup error: {exc}", flush=True)
+
+    if "states" in locals():
+        try:
+            sync_host_evidence(approach, agent_roots, states, tracked_jobs, agent_records)
+        except Exception as exc:
+            if cleanup_error is None:
+                cleanup_error = exc
+            print(f"[ironclaw-benchmark] post-cleanup evidence sync error: {exc}", flush=True)
+
+    for agent_id in agent_ids:
+        agent_record = ensure_agent_record(agent_records, agent_id)
+        try:
+            verdict = approach.verify_agent_absent(agent_id)
+        except Exception as exc:
+            if cleanup_error is None:
+                cleanup_error = exc
+            print(f"[ironclaw-benchmark] cleanup verification error for {agent_id}: {exc}", flush=True)
+            verdict = None
+        if verdict is not None:
+            agent_record["absent_verified"] = verdict
 
     summary["agent_records"] = [agent_records[agent_id] for agent_id in sorted(agent_records)]
     summary["agents_exited_logged"] = sum(
@@ -1256,6 +1302,8 @@ def main():
     summary["agents_cleanup_verified"] = sum(
         1 for record in agent_records.values() if record.get("absent_verified") is True
     )
+    if cleanup_error is not None:
+        summary["cleanup_error"] = str(cleanup_error)
 
     if (run_dir / "timeseries.jsonl").exists():
         summary.update(summarize_timeseries(run_dir, params, args.agents))

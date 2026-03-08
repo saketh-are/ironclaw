@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::Json;
 use chrono::Utc;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -97,7 +97,10 @@ pub async fn benchmark_create_external_worker_handler(
 
     let task = req.task.trim();
     if task.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "task must not be empty".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "task must not be empty".to_string(),
+        ));
     }
 
     let job_id = Uuid::new_v4();
@@ -105,7 +108,13 @@ pub async fn benchmark_create_external_worker_handler(
     let project_dir_str = project_dir.display().to_string();
 
     let worker_token = job_manager
-        .create_external_job(job_id, task, Some(project_dir.clone()), JobMode::Worker, vec![])
+        .create_external_job(
+            job_id,
+            task,
+            Some(project_dir.clone()),
+            JobMode::Worker,
+            vec![],
+        )
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 

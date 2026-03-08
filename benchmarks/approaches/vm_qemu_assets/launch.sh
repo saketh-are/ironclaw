@@ -20,6 +20,68 @@ set -euo pipefail
 
 VM_BASE_DIR="${VM_BASE_DIR:-/tmp/bench-vms}"
 
+request_powerdown() {
+    local MONITOR_SOCK="${1:?monitor socket required}"
+    python3 - "$MONITOR_SOCK" <<'PY'
+import socket
+import sys
+
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock.settimeout(2)
+sock.connect(sys.argv[1])
+sock.sendall(b"system_powerdown\n")
+sock.close()
+PY
+}
+
+emit_agent_exit_event() {
+    local VM_DIR="${1:?vm dir required}"
+    local DEFAULT_AGENT_ID="${2:?agent id required}"
+    local EXIT_CODE="${3:-0}"
+    local ENV_FILE="${VM_DIR}/cidata/agent-env"
+    local EVENT_LOG="${VM_DIR}/shared/evidence/agent-events.jsonl"
+
+    [ -f "${ENV_FILE}" ] || return 0
+    mkdir -p "$(dirname "${EVENT_LOG}")"
+
+    if [ -f "${EVENT_LOG}" ] && grep -q '"event": "agent_exited"' "${EVENT_LOG}"; then
+        return 0
+    fi
+
+    (
+        set -a
+        # shellcheck disable=SC1090
+        . "${ENV_FILE}"
+        set +a
+        python3 - "${EVENT_LOG}" "${BENCH_AGENT_ID:-${DEFAULT_AGENT_ID}}" "${BENCH_RUN_ID:-unknown}" "${EXIT_CODE}" <<'PY'
+import json
+import sys
+import time
+
+path, agent_id, run_id, exit_code = sys.argv[1:]
+payload = {
+    "event": "agent_exited",
+    "agent_id": agent_id,
+    "run_id": run_id,
+    "ts_unix_ms": int(time.time() * 1000),
+    "exit_code": exit_code,
+}
+with open(path, "a") as f:
+    f.write(json.dumps(payload) + "\n")
+PY
+    )
+}
+
+ensure_kvm_access() {
+    if [ ! -e /dev/kvm ] || [ "${EUID}" -eq 0 ] || [ -w /dev/kvm ]; then
+        return 0
+    fi
+
+    local CURRENT_USER
+    CURRENT_USER="$(id -un)"
+    sudo -n setfacl -m "u:${CURRENT_USER}:rw" /dev/kvm
+}
+
 start_vm() {
     local AGENT_ID="${1:?agent-id required}"
     local MEMORY_MB="${2:-4096}"
@@ -89,6 +151,8 @@ META
     CLOUD_INIT_ARGS="-drive file=${CIDATA},format=raw,if=virtio,readonly=on"
 
     # Launch QEMU
+    ensure_kvm_access
+    local MONITOR_SOCK="${VM_DIR}/monitor.sock"
     qemu-system-x86_64 \
         -enable-kvm \
         -m "$MEMORY_MB" \
@@ -98,6 +162,7 @@ META
         -netdev "user,id=net0,${HOSTFWD}" \
         -device virtio-net-pci,netdev=net0 \
         -virtfs "local,path=${VM_DIR}/shared,mount_tag=benchshare,security_model=mapped-xattr,id=bench9p" \
+        -monitor "unix:${MONITOR_SOCK},server,nowait" \
         -nographic \
         -serial "file:${VM_DIR}/console.log" \
         > "${VM_DIR}/qemu.log" 2>&1 &
@@ -115,15 +180,31 @@ stop_vm() {
 
     if [ -f "${VM_DIR}/qemu.pid" ]; then
         local PID
+        local EXIT_CODE=0
         PID=$(cat "${VM_DIR}/qemu.pid")
-        kill "$PID" 2>/dev/null || true
+        local MONITOR_SOCK="${VM_DIR}/monitor.sock"
+        if [ -S "${MONITOR_SOCK}" ]; then
+            request_powerdown "${MONITOR_SOCK}" 2>/dev/null || true
+        fi
         # Wait for process to exit
-        for _ in $(seq 1 30); do
+        for _ in $(seq 1 40); do
+            kill -0 "$PID" 2>/dev/null || break
+            sleep 0.5
+        done
+        if kill -0 "$PID" 2>/dev/null; then
+            kill "$PID" 2>/dev/null || true
+            EXIT_CODE=143
+        fi
+        for _ in $(seq 1 20); do
             kill -0 "$PID" 2>/dev/null || break
             sleep 0.5
         done
         # Force kill if still running
-        kill -9 "$PID" 2>/dev/null || true
+        if kill -0 "$PID" 2>/dev/null; then
+            kill -9 "$PID" 2>/dev/null || true
+            EXIT_CODE=137
+        fi
+        emit_agent_exit_event "${VM_DIR}" "${AGENT_ID}" "${EXIT_CODE}"
         rm -f "${VM_DIR}/qemu.pid"
         echo "[vm] Stopped ${AGENT_ID}"
     else

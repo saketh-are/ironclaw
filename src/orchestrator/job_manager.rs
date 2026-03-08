@@ -55,6 +55,8 @@ pub struct ContainerJobConfig {
     pub memory_limit_mb: u64,
     /// Default CPU shares.
     pub cpu_shares: u32,
+    /// Whether to adjust container settings for Podman compatibility.
+    pub podman_compat: bool,
     /// Port the orchestrator internal API listens on.
     pub orchestrator_port: u16,
     /// Anthropic API key for Claude Code containers (read from ANTHROPIC_API_KEY).
@@ -80,6 +82,7 @@ impl Default for ContainerJobConfig {
             image: "ironclaw-worker:latest".to_string(),
             memory_limit_mb: 2048,
             cpu_shares: 1024,
+            podman_compat: false,
             orchestrator_port: 50051,
             claude_code_api_key: None,
             claude_code_oauth_token: None,
@@ -416,15 +419,29 @@ impl ContainerJobManager {
             None
         };
 
+        let security_opt = if self.config.podman_compat {
+            vec!["no-new-privileges".to_string()]
+        } else {
+            vec!["no-new-privileges:true".to_string()]
+        };
+
         let host_config = HostConfig {
             binds: if binds.is_empty() { None } else { Some(binds) },
-            memory: Some((memory_mb * 1024 * 1024) as i64),
-            cpu_shares: Some(self.config.cpu_shares as i64),
+            memory: if self.config.podman_compat {
+                None
+            } else {
+                Some((memory_mb * 1024 * 1024) as i64)
+            },
+            cpu_shares: if self.config.podman_compat {
+                None
+            } else {
+                Some(self.config.cpu_shares as i64)
+            },
             network_mode: Some(worker_network_mode),
             extra_hosts,
             cap_drop: Some(vec!["ALL".to_string()]),
             cap_add: Some(vec!["CHOWN".to_string()]),
-            security_opt: Some(vec!["no-new-privileges:true".to_string()]),
+            security_opt: Some(security_opt),
             tmpfs: Some(
                 [("/tmp".to_string(), "size=512M".to_string())]
                     .into_iter()

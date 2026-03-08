@@ -57,6 +57,11 @@ def ironclaw_agent_env(config, agent_id, gateway_port):
 
         # Database — embedded libSQL, no external deps
         "DATABASE_BACKEND": "libsql",
+        # Use a fixed benchmark-only master key so containers never probe the
+        # host keychain or secret service during startup.
+        "SECRETS_MASTER_KEY": (
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        ),
 
         # LLM — point to the mock server running inside the container
         "LLM_BACKEND": "openai_compatible",

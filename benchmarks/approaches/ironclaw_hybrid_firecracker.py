@@ -93,6 +93,7 @@ class IronclawHybridFirecrackerApproach(Approach):
             env["WORKSPACE_DIR"] = str(host_dirs["workspace_dir"])
             env["IRONCLAW_BASE_DIR"] = str(host_dirs["base_dir"])
             env["BENCH_EVIDENCE_DIR"] = str(host_dirs["evidence_dir"])
+            env["LIBSQL_PATH"] = str(host_dirs["base_dir"] / "ironclaw.db")
             env["FC_VM_DIR"] = str(host_dirs["base_dir"] / "firecracker-vms")
             env["FC_KERNEL_PATH"] = "/opt/vmlinux"
             env["FC_ROOTFS_PATH"] = "/opt/ironclaw-worker-rootfs.ext4"

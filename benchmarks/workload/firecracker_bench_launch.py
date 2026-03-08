@@ -94,6 +94,31 @@ def report_failure(orchestrator_url: str, job_id: str, worker_token: str, messag
         pass
 
 
+def report_completion(
+    orchestrator_url: str,
+    job_id: str,
+    worker_token: str,
+    success: bool,
+    message: str | None,
+):
+    body = json.dumps({
+        "success": success,
+        "message": message,
+        "iterations": 0,
+    }).encode()
+    req = urllib.request.Request(
+        f"{orchestrator_url}/worker/{job_id}/complete",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {worker_token}",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=10):
+        return
+
+
 def write_worker_cleaned(job_id: str, removed: bool):
     BENCH_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -172,14 +197,18 @@ def main():
     pid_path = vm_dir / "firecracker.pid"
     log_path = BENCH_EVIDENCE_DIR / f"worker-vm-{job_id}.log"
     counter_path = FC_VM_DIR / ".slot-counter"
+    command_script = seed_dir / ".bench-command.sh"
     vm_dir.mkdir(parents=True, exist_ok=True)
     seed_dir.mkdir(parents=True, exist_ok=True)
     BENCH_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     (seed_dir / ".bench-evidence").mkdir(parents=True, exist_ok=True)
+    command_script.write_text(command + "\n")
+    command_script.chmod(0o755)
 
     slot = next_slot(counter_path)
     tap_name, host_ip, guest_ip, guest_mac = network_for_slot(slot)
     proc = None
+    completion_reported = False
 
     try:
         setup_tap(tap_name, host_ip)
@@ -244,8 +273,17 @@ def main():
 
         proc.wait(timeout=None)
         sync_workspace_image(workspace_image, project_dir)
+        success = proc.returncode == 0
+        message = (
+            "Firecracker benchmark command completed successfully"
+            if success
+            else f"Firecracker benchmark command exited with status {proc.returncode}"
+        )
+        report_completion(local_orchestrator_url, job_id, worker_token, success, message)
+        completion_reported = True
     except Exception as exc:
-        report_failure(local_orchestrator_url, job_id, worker_token, f"Firecracker launch failed: {exc}")
+        if not completion_reported:
+            report_failure(local_orchestrator_url, job_id, worker_token, f"Firecracker launch failed: {exc}")
         raise
     finally:
         if proc is not None and proc.poll() is None:

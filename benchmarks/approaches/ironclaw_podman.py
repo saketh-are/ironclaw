@@ -73,6 +73,16 @@ class IronclawPodmanApproach(Approach):
     def _container_name(self, agent_id: str) -> str:
         return f"bench-ic-agent-{agent_id.split('-')[-1]}"
 
+    def _username_for_agent(self, agent_id: str) -> str | None:
+        username = self._users.get(agent_id)
+        if username:
+            return username
+        try:
+            idx = int(agent_id.split("-")[-1])
+        except (IndexError, ValueError):
+            return None
+        return f"{USER_PREFIX}{idx}"
+
     def _exec_in_agent(self, agent_id: str, cmd: List[str]) -> subprocess.CompletedProcess:
         username = self._users[agent_id]
         return _run_as_user(
@@ -244,7 +254,8 @@ class IronclawPodmanApproach(Approach):
             podman_socket = SOCKET_TEMPLATE.format(uid=uid)
             deadline = time.monotonic() + 10.0
             while time.monotonic() < deadline:
-                if Path(podman_socket).exists():
+                probe = _run_as_user(username, ["test", "-S", podman_socket])
+                if probe.returncode == 0:
                     break
                 time.sleep(0.1)
             else:
@@ -256,6 +267,7 @@ class IronclawPodmanApproach(Approach):
             env["WORKSPACE_DIR"] = str(host_dirs["workspace_dir"])
             env["IRONCLAW_BASE_DIR"] = str(host_dirs["base_dir"])
             env["BENCH_EVIDENCE_DIR"] = str(host_dirs["evidence_dir"])
+            env["LIBSQL_PATH"] = str(host_dirs["base_dir"] / "ironclaw.db")
             # Native Podman compat (SecurityOpt, no mem limits, no AutoRemove)
             env["SANDBOX_PODMAN_COMPAT"] = "true"
             # Image with localhost/ prefix required by Podman for local images
@@ -390,9 +402,9 @@ class IronclawPodmanApproach(Approach):
         return not result.stdout.strip()
 
     def verify_agent_absent(self, agent_id: str) -> bool:
-        username = self._users.get(agent_id)
+        username = self._username_for_agent(agent_id)
         if not username:
-            return True
+            return False
         idx = agent_id.split("-")[-1]
         result = _run_as_user(username, [
             "podman", "inspect", f"bench-ic-agent-{idx}",

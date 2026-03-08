@@ -95,10 +95,10 @@ ironclaw-images: ironclaw-sandbox-image ironclaw-agent-image ironclaw-agent-dind
 
 # --- Smoke tests ---
 
-smoke-test: ironclaw-images ## Run ironclaw smoke tests (2 agents, verifies worker spawning)
+smoke-test: ironclaw-images ## Run full-lifecycle IronClaw smoke tests (build VM/Firecracker assets first for all 6 approaches)
 	python3 smoke_test.py
 
-smoke-test-docker: ironclaw-images ## Smoke test: ironclaw-docker only
+smoke-test-docker: ironclaw-images ## Full-lifecycle smoke test: ironclaw-docker only
 	python3 smoke_test.py --approach ironclaw-docker
 
 ironclaw-benchmark: ironclaw-images ## Run host-driven real IronClaw benchmark (use EXTRA_ARGS for mode/jobs)

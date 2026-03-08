@@ -111,6 +111,7 @@ class _IronclawDindBase(Approach):
             env["WORKSPACE_DIR"] = str(host_dirs["workspace_dir"])
             env["IRONCLAW_BASE_DIR"] = str(host_dirs["base_dir"])
             env["BENCH_EVIDENCE_DIR"] = str(host_dirs["evidence_dir"])
+            env["LIBSQL_PATH"] = str(host_dirs["base_dir"] / "ironclaw.db")
             # Inner dockerd args
             env["DOCKERD_EXTRA_ARGS"] = self._dockerd_extra_args
             # Real worker-mode jobs need a callback route back into the parent

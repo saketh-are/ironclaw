@@ -158,7 +158,6 @@ BOOTEOF
 cat > /tmp/ironclaw-bench.env << 'ENVEOF'
 ONBOARD_COMPLETED=true
 DATABASE_BACKEND=libsql
-LIBSQL_PATH=/tmp/ironclaw-agent.db
 LLM_BACKEND=openai_compatible
 LLM_BASE_URL=http://127.0.0.1:11434/v1
 LLM_API_KEY=mock-key
@@ -182,6 +181,7 @@ EMBEDDING_ENABLED=false
 HTTP_WEBHOOK_ENABLED=false
 AGENT_NAME=bench-vm
 RUST_LOG=ironclaw=debug
+GATEWAY_READY_TIMEOUT_S=120
 ENVEOF
 
 ${SUDO} virt-customize --no-network -a "$VM_IMAGE" \

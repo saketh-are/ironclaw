@@ -99,8 +99,13 @@ class IronclawVmQemuApproach(Approach):
             self._agent_roots[agent_id] = agent_root
 
             env["WORKSPACE_DIR"] = "/mnt/benchshare/workspace"
-            env["IRONCLAW_BASE_DIR"] = "/mnt/benchshare/ironclaw"
             env["BENCH_EVIDENCE_DIR"] = "/mnt/benchshare/evidence"
+            # Keep projects/evidence host-visible on the 9p share so the smoke
+            # harness can inspect worker lifecycle artifacts, but place the
+            # SQLite database itself on guest-local storage to avoid 9p I/O
+            # errors during migrations.
+            env["IRONCLAW_BASE_DIR"] = "/mnt/benchshare/ironclaw"
+            env["LIBSQL_PATH"] = "/var/lib/ironclaw-bench/ironclaw.db"
 
             env_pairs = [f"{k}={v}" for k, v in env.items()]
             cmd = [
