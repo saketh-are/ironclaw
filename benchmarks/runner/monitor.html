@@ -215,6 +215,7 @@ body {
 .lifecycle-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 4px;
   margin-bottom: 8px;
   padding: 4px 8px;
@@ -223,8 +224,6 @@ body {
   border-radius: 4px;
   font-size: 9px;
   color: var(--text-dim);
-  overflow-x: auto;
-  white-space: nowrap;
 }
 .lifecycle-bar:empty { display: none; }
 .lifecycle-step {
