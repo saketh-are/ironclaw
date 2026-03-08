@@ -23,7 +23,11 @@ fn write_json(path: PathBuf, payload: serde_json::Value) {
     if let Some(parent) = path.parent()
         && let Err(err) = std::fs::create_dir_all(parent)
     {
-        tracing::warn!("Failed to create benchmark evidence dir {}: {}", parent.display(), err);
+        tracing::warn!(
+            "Failed to create benchmark evidence dir {}: {}",
+            parent.display(),
+            err
+        );
         return;
     }
 

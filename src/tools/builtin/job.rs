@@ -15,8 +15,8 @@ use chrono::Utc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::bootstrap::ironclaw_base_dir;
 use crate::benchmark_evidence;
+use crate::bootstrap::ironclaw_base_dir;
 use crate::channels::IncomingMessage;
 use crate::channels::web::types::SseEvent;
 use crate::context::{ContextManager, JobContext, JobState};
@@ -383,7 +383,13 @@ impl CreateJobTool {
 
         // Create the container job with the pre-determined job_id.
         let _token = jm
-            .create_job(job_id, task, Some(project_dir.clone()), mode, credential_grants)
+            .create_job(
+                job_id,
+                task,
+                Some(project_dir.clone()),
+                mode,
+                credential_grants,
+            )
             .await
             .map_err(|e| {
                 self.update_status(

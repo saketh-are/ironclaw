@@ -370,7 +370,9 @@ impl AppBuilder {
         // commands spawn ephemeral containers for isolation.
         let shell_sandbox = if self.config.agent.allow_local_tools && self.config.sandbox.enabled {
             let sandbox_config = self.config.sandbox.to_sandbox_config();
-            Some(Arc::new(crate::sandbox::SandboxManager::new(sandbox_config)))
+            Some(Arc::new(crate::sandbox::SandboxManager::new(
+                sandbox_config,
+            )))
         } else {
             None
         };
@@ -645,8 +647,7 @@ impl AppBuilder {
         if self.config.agent.allow_local_tools && !builder_registered_dev_tools {
             if self.config.sandbox.enabled {
                 let sandbox_config = self.config.sandbox.to_sandbox_config();
-                let sandbox_manager =
-                    Arc::new(crate::sandbox::SandboxManager::new(sandbox_config));
+                let sandbox_manager = Arc::new(crate::sandbox::SandboxManager::new(sandbox_config));
                 tools.register_dev_tools_with_sandbox(Some(sandbox_manager));
             } else {
                 tools.register_dev_tools();
@@ -721,11 +722,12 @@ impl AppBuilder {
             }
 
             if imported_files + seeded_files > 0 {
-                let db_path = if self.config.database.backend == crate::config::DatabaseBackend::LibSql {
-                    self.config.database.libsql_path.as_deref()
-                } else {
-                    None
-                };
+                let db_path =
+                    if self.config.database.backend == crate::config::DatabaseBackend::LibSql {
+                        self.config.database.libsql_path.as_deref()
+                    } else {
+                        None
+                    };
                 crate::benchmark_evidence::write_agent_workspace_written(
                     db_path,
                     imported_files,
