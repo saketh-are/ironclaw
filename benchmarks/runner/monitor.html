@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Benchmark Monitor</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --border: #2a2d3a;
+  --text: #e1e4ed;
+  --text-dim: #8b8fa3;
+  --accent: #6c8cff;
+  --green: #4ade80;
+  --red: #f87171;
+  --orange: #fbbf24;
+  --agent-bg: #1e2233;
+  --agent-border: #3b4261;
+  --worker-bg: #1e2a1e;
+  --worker-border: #2e4a2e;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 8px 12px;
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.header-left { display: flex; align-items: center; gap: 10px; z-index: 1; min-width: 0; }
+.header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.header h1 { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.badge-approach { background: #2a3552; color: var(--accent); }
+.badge-mode { background: #2a3a2a; color: var(--green); }
+.badge-phase { background: #3a2a2a; color: var(--orange); }
+.badge-phase.running { background: #1a3a1a; color: var(--green); }
+.badge-phase.done { background: #2a2a3a; color: var(--text-dim); }
+.progress-text {
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stat { display: flex; gap: 4px; font-size: 11px; white-space: nowrap; }
+.stat-label { color: var(--text-dim); }
+.stat-value { color: var(--text); font-weight: 600; }
+.summary-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.summary-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 6px;
+  min-width: 0;
+}
+.summary-label {
+  display: block;
+  font-size: 9px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.summary-value {
+  display: block;
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.compact-grid {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(var(--cols, 10), 1fr);
+}
+.compact-tile {
+  background: var(--agent-bg);
+  border: 1.5px solid var(--agent-border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  min-width: 0;
+  transition: border-color 0.3s, opacity 0.3s;
+  cursor: pointer;
+  position: relative;
+  overflow: visible;
+}
+@keyframes float-up {
+  0%   { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-45px); }
+}
+.float-event {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--green);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: float-up 3.5s ease-out forwards;
+}
+.float-event.storage { color: var(--accent); }
+.compact-tile:hover {
+  border-color: var(--accent);
+  opacity: 1 !important;
+}
+.compact-tile.pending { opacity: 0.72; }
+.compact-tile.stopped { opacity: 0.66; }
+.compact-tile.unhealthy { border-color: var(--red); opacity: 0.6; }
+.compact-tile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 3px;
+  gap: 6px;
+}
+.compact-tile-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text);
+}
+.compact-tile-count {
+  font-size: 9px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.compact-tile-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+/* Medium tiles (3-5 columns) */
+.compact-grid.size-md .compact-tile { padding: 8px 10px; }
+.compact-grid.size-md .compact-tile-header { margin-bottom: 5px; }
+.compact-grid.size-md .compact-tile-name { font-size: 12px; }
+.compact-grid.size-md .compact-tile-count { font-size: 11px; }
+.compact-grid.size-md .compact-tile-dots { gap: 4px; }
+.compact-grid.size-md .compact-dot { width: 22px; height: 12px; border-radius: 3px; }
+.compact-grid.size-md .compact-dot.emoji-dot { font-size: 15px; line-height: 12px; }
+.compact-grid.size-md .compact-dot.timer-dot { font-size: 9px; line-height: 12px; }
+/* Large tiles (1-2 columns) */
+.compact-grid.size-lg .compact-tile { padding: 12px 16px; }
+.compact-grid.size-lg .compact-tile-header { margin-bottom: 8px; }
+.compact-grid.size-lg .compact-tile-name { font-size: 15px; }
+.compact-grid.size-lg .compact-tile-count { font-size: 13px; }
+.compact-grid.size-lg .compact-tile-dots { gap: 5px; }
+.compact-grid.size-lg .compact-dot { width: 30px; height: 18px; border-radius: 3px; }
+.compact-grid.size-lg .compact-dot.emoji-dot { font-size: 22px; line-height: 18px; }
+.compact-grid.size-lg .compact-dot.timer-dot { font-size: 12px; line-height: 18px; }
+.compact-dot {
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.3s;
+}
+.compact-dot.filled {
+  background: var(--green);
+}
+.compact-dot.emoji-dot {
+  background: var(--surface);
+  border: 1.5px solid var(--green);
+  font-size: 10px;
+  line-height: 8px;
+  text-align: center;
+  overflow: hidden;
+}
+.compact-dot.timer-dot {
+  position: relative;
+  font-size: 7px;
+  line-height: 8px;
+  text-align: center;
+  color: #000;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+}
+.empty-msg {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
+  padding: 4px 0;
+}
+.lifecycle-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 9px;
+  color: var(--text-dim);
+}
+.lifecycle-bar:empty { display: none; }
+.lifecycle-step {
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--border);
+  color: var(--text);
+  font-weight: 500;
+}
+.lifecycle-arrow { color: var(--text-dim); }
+@media (max-width: 600px) {
+  .header { flex-direction: column; align-items: flex-start; }
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-left">
+    <h1>Agent Monitor</h1>
+    <span class="badge badge-approach" id="badge-approach">-</span>
+    <span class="badge badge-mode" id="badge-mode">-</span>
+    <span class="badge badge-phase" id="badge-phase">setup</span>
+    <span class="progress-text" id="progress-text"></span>
+  </div>
+  <div class="header-right">
+    <span class="stat"><span class="stat-label">Agents</span> <span class="stat-value" id="hdr-agents">-</span></span>
+    <span class="stat"><span class="stat-label">Workers</span> <span class="stat-value" id="hdr-workers">-</span></span>
+  </div>
+</div>
+
+<div class="summary-strip" id="summary-strip"></div>
+<div class="lifecycle-bar" id="lifecycle-bar"></div>
+<div id="main-area" style="position:relative"></div>
+<div id="float-layer" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:100"></div>
+
+<script>
+const STATE_URL = "/api/state";
+const POLL_MS = 500;
+const RENDER_MS = 100;
+
+// Stable slot assignments: agentId -> { workerId -> slotIndex }
+const slotMap = {};
+// Previous worker state snapshot for detecting transitions.
+const prevWorkerState = {};
+
+function emitFloatEvent(tileEl, text, cls) {
+  const layer = document.getElementById("float-layer");
+  const rect = tileEl.getBoundingClientRect();
+  const el = document.createElement("span");
+  el.className = "float-event" + (cls ? " " + cls : "");
+  el.textContent = text;
+  el.style.position = "fixed";
+  el.style.left = (rect.left + rect.width / 2) + "px";
+  el.style.top = (rect.top + rect.height / 2) + "px";
+  el.style.transform = "translateX(-50%)";
+  layer.appendChild(el);
+  el.addEventListener("animationend", () => el.remove());
+}
+
+function formatTime(seconds) {
+  const s = Math.max(0, seconds || 0);
+  if (s < 10) return `${s.toFixed(1)}s`;
+  const whole = Math.floor(s);
+  if (whole < 60) return `${whole}s`;
+  const minutes = Math.floor(whole / 60);
+  const remaining = whole % 60;
+  return `${minutes}m${String(remaining).padStart(2, "0")}s`;
+}
+
+function gridColumns(agentCount) {
+  const n = agentCount || 1;
+  const width = document.getElementById("main-area").clientWidth || window.innerWidth;
+  const maxCols = Math.floor((width + 4) / 104);
+  // Prefer fewer columns for wider tiles: round(sqrt(n)), capped by screen width.
+  const sqrtCols = Math.max(1, Math.round(Math.sqrt(n)));
+  return Math.max(1, Math.min(sqrtCols, maxCols));
+}
+
+function statusClass(agent) {
+  if (agent.status === "stopped") return "stopped";
+  if (agent.status === "pending") return "pending";
+  return "";
+}
+
+function healthClass(agent) {
+  return agent.status === "running" || agent.status === "stopped" ? "" : "unhealthy";
+}
+
+function ratio(value, total) {
+  return `${value}/${total}`;
+}
+
+function renderSummary(state) {
+  const lifecycle = state.lifecycle || {};
+  const expectedAgents = state.expected_agents || state.num_agents || 0;
+  const launchedWorkers = lifecycle.workers_launched || 0;
+  const inactiveWorkers = launchedWorkers - (state.active_workers || 0);
+  document.getElementById("hdr-agents").textContent = ratio(state.started_agents || 0, expectedAgents);
+  document.getElementById("hdr-workers").textContent = String(state.active_workers || 0);
+  const stats = [
+    ["Cumulative Workers", String(launchedWorkers)],
+    ["Worker Callbacks", String(lifecycle.successful_checkins || 0)],
+    ["Persisted Worker Writes", String(lifecycle.worker_storage_written || 0)],
+    ["Clean Exits", ratio(lifecycle.workers_finished || 0, inactiveWorkers)],
+  ];
+  document.getElementById("summary-strip").innerHTML = stats.map(([label, value]) => `
+    <div class="summary-card">
+      <span class="summary-label">${label}</span>
+      <span class="summary-value">${value}</span>
+    </div>
+  `).join("");
+}
+
+function renderCompact(state) {
+  const area = document.getElementById("main-area");
+  const agents = state.agents || [];
+  const maxSlots = Math.max(1, state.max_worker_slots || 1);
+
+  if (agents.length === 0) {
+    area.innerHTML = '<span class="empty-msg">waiting for agents...</span>';
+    return;
+  }
+
+  const cols = gridColumns(state.num_agents);
+  const cards = agents.map(agent => {
+    const now = Date.now() / 1000;
+    const allWorkers = agent.workers || [];
+
+    // Maintain stable slot assignments for this agent.
+    if (!slotMap[agent.id]) slotMap[agent.id] = {};
+    const slots = slotMap[agent.id];
+    const currentIds = new Set(allWorkers.map(w => w.id));
+
+    // Free slots for workers no longer present.
+    for (const [wid, _] of Object.entries(slots)) {
+      if (!currentIds.has(wid)) delete slots[wid];
+    }
+
+    // Assign slots to new workers (lowest available index).
+    const usedSlots = new Set(Object.values(slots));
+    for (const w of allWorkers) {
+      if (slots[w.id] == null) {
+        for (let s = 0; s < maxSlots; s++) {
+          if (!usedSlots.has(s)) { slots[w.id] = s; usedSlots.add(s); break; }
+        }
+      }
+    }
+
+    // Build a slot array: each index holds the worker (or null).
+    const slotArr = new Array(maxSlots).fill(null);
+    for (const w of allWorkers) {
+      const s = slots[w.id];
+      if (s != null && s < maxSlots) slotArr[s] = w;
+    }
+
+    const dots = slotArr.map((w, i) => {
+      if (!w) return `<div class="compact-dot"></div>`;
+      if (w.checkin_emoji) return `<div class="compact-dot filled emoji-dot" title="${w.id} callback">${w.checkin_emoji}</div>`;
+      if (w.started_at) {
+        const elapsed = now - w.started_at;
+        return `<div class="compact-dot filled timer-dot" data-started-at="${w.started_at}" title="${w.id} waiting for checkin">${formatTime(elapsed)}</div>`;
+      }
+      return `<div class="compact-dot filled"></div>`;
+    });
+    const hasGw = !!agent.gateway_port;
+    const click = hasGw ? `onclick="window.open('/agent-loader/${agent.id}/', '_blank')"` : "";
+    const tip = hasGw ? `${agent.id} — click to open UI` : agent.id;
+    return `
+      <div class="compact-tile ${statusClass(agent)} ${healthClass(agent)}" title="${tip}" ${click}>
+        <div class="compact-tile-header">
+          <span class="compact-tile-name">${agent.id}${hasGw ? " ↗" : ""}</span>
+          <span class="compact-tile-count">${agent.active_workers}/${maxSlots}</span>
+        </div>
+        <div class="compact-tile-dots">${dots.join("")}</div>
+      </div>
+    `;
+  }).join("");
+
+  const sizeClass = cols <= 2 ? 'size-lg' : cols <= 5 ? 'size-md' : '';
+  area.innerHTML = `<div class="compact-grid ${sizeClass}" style="--cols:${cols}">${cards}</div>`;
+}
+
+function detectFloatEvents(state) {
+  const area = document.getElementById("main-area");
+  const agents = state.agents || [];
+  const tiles = area.querySelectorAll(".compact-tile");
+  agents.forEach((agent, ai) => {
+    const tile = tiles[ai];
+    if (!tile) return;
+    const workers = agent.workers || [];
+    if (!prevWorkerState[agent.id]) prevWorkerState[agent.id] = {};
+    const prev = prevWorkerState[agent.id];
+    for (const w of workers) {
+      const p = prev[w.id] || {};
+      if (w.checkin_emoji && !p.checkin_emoji) {
+        emitFloatEvent(tile, "callback " + w.checkin_emoji, "");
+      } else if (w.storage_written && !p.storage_written) {
+        emitFloatEvent(tile, "storage write " + (w.checkin_emoji || ""), "storage");
+      }
+      prev[w.id] = { checkin_emoji: w.checkin_emoji, storage_written: w.storage_written };
+    }
+    const currentIds = new Set(workers.map(w => w.id));
+    for (const wid of Object.keys(prev)) {
+      if (!currentIds.has(wid)) delete prev[wid];
+    }
+  });
+}
+
+function phaseClass(phase) {
+  if (phase === "running") return "running";
+  if (phase === "finished") return "done";
+  return "";
+}
+
+function progressText(state) {
+  if (state.phase === "running") {
+    if (state.duration_s == null || state.duration_s <= 0) {
+      return `${formatTime(state.elapsed_s)} / ∞`;
+    }
+    return `${formatTime(state.elapsed_s)} / ${formatTime(state.duration_s)}`;
+  }
+  if (state.phase === "finished") {
+    return "complete";
+  }
+  if (state.phase_detail) {
+    return state.phase_detail;
+  }
+  return "";
+}
+
+function update(state) {
+  document.title = `${state.approach || "benchmark"} monitor`;
+  document.getElementById("badge-approach").textContent = state.approach || "-";
+  document.getElementById("badge-mode").textContent = state.mode || "-";
+
+  const phaseBadge = document.getElementById("badge-phase");
+  phaseBadge.textContent = state.phase || "-";
+  phaseBadge.className = `badge badge-phase ${phaseClass(state.phase || "")}`;
+
+  document.getElementById("progress-text").textContent = progressText(state);
+
+  renderSummary(state);
+  renderLifecycle(state);
+  renderCompact(state);
+  detectFloatEvents(state);
+}
+
+function renderLifecycle(state) {
+  const bar = document.getElementById("lifecycle-bar");
+  const p = state.job_params || {};
+  if (!p.profile) { bar.innerHTML = ""; return; }
+  const steps = ["start"];
+  if (p.checkin) steps.push("sleep 3s", "callback (random emoji)", "sleep 3s");
+  steps.push("storage write");
+  const dur = p.duration_min_s === p.duration_max_s
+    ? `sleep ${p.duration_min_s}s`
+    : `sleep ${p.duration_min_s}-${p.duration_max_s}s`;
+  if (p.profile === "memory-touch") {
+    steps.push(`alloc ${p.memory_mb}MB + ${dur}`);
+  } else if (p.duration_min_s > 0) {
+    steps.push(dur);
+  }
+  steps.push("exit");
+  bar.innerHTML = '<span style="margin-right:2px">Worker lifecycle:</span>' +
+    steps.map(s => `<span class="lifecycle-step">${s}</span>`).join('<span class="lifecycle-arrow">\u2192</span>');
+}
+
+let lastState = null;
+
+async function poll() {
+  try {
+    const response = await fetch(STATE_URL, { cache: "no-store" });
+    if (response.ok) {
+      lastState = await response.json();
+      update(lastState);
+    }
+  } finally {
+    window.setTimeout(poll, POLL_MS);
+  }
+}
+
+function renderTick() {
+  // Update only timer dot text in-place — no DOM rebuild.
+  const now = Date.now() / 1000;
+  document.querySelectorAll(".timer-dot").forEach(el => {
+    const startedAt = parseFloat(el.dataset.startedAt);
+    if (startedAt) el.textContent = formatTime(now - startedAt);
+  });
+  window.setTimeout(renderTick, RENDER_MS);
+}
+
+poll();
+renderTick();
+window.addEventListener("resize", () => {
+  fetch(STATE_URL, { cache: "no-store" })
+    .then(response => response.json())
+    .then(update)
+    .catch(() => {});
+});
+</script>
+</body>
+</html>

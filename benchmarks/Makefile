@@ -1,0 +1,187 @@
+.PHONY: images worker-image agent-image agent-dind-image agent-sysbox-image vm-image fc-kernel fc-rootfs fc-image fc-setup podman-setup run run-idle run-plateau run-sweep plot compare decompose clean help \
+       ironclaw-binary ironclaw-sandbox-image ironclaw-agent-image ironclaw-agent-dind-image ironclaw-agent-fc-image ironclaw-fc-rootfs ironclaw-fc-setup ironclaw-images smoke-test \
+       bench bench-list ironclaw-benchmark
+
+-include config.env
+.EXPORT_ALL_VARIABLES:
+
+BENCH_DIR := $(shell pwd)
+PROJECT_ROOT := $(shell cd .. && pwd)
+VM_ASSETS_DIR := approaches/vm_qemu_assets
+FC_ASSETS_DIR := approaches/hybrid_firecracker_assets
+APPROACH ?= container-docker
+AGENTS ?= 5
+MODE ?= loaded
+EXTRA_ARGS ?=
+MONITOR ?=
+MONITOR_HOST ?=
+MONITOR_PORT ?=
+
+help: ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+# --- Docker images ---
+
+images: worker-image agent-image agent-dind-image agent-sysbox-image ## Build all Docker images
+
+worker-image: workload/Dockerfile.worker workload/worker.py ## Build worker simulator image
+	docker build -t bench-worker:latest -f workload/Dockerfile.worker workload/
+
+agent-image: workload/Dockerfile.agent workload/agent.py ## Build agent simulator image
+	docker build -t bench-agent:latest -f workload/Dockerfile.agent workload/
+
+agent-dind-image: workload/Dockerfile.agent-dind workload/agent.py workload/agent-dind-entrypoint.sh ## Build DinD agent image (gVisor approach)
+	docker build -t bench-agent-dind:latest -f workload/Dockerfile.agent-dind workload/
+
+agent-sysbox-image: workload/Dockerfile.agent-sysbox workload/agent.py workload/agent-sysbox-entrypoint.sh ## Build Sysbox DinD agent image
+	docker build -t bench-agent-sysbox:latest -f workload/Dockerfile.agent-sysbox workload/
+
+# --- VM image (Approach A only) ---
+
+vm-image: images ## Build Alpine VM image with Docker (requires libguestfs)
+	chmod +x $(VM_ASSETS_DIR)/build-image.sh
+	cd $(VM_ASSETS_DIR) && bash build-image.sh
+
+# --- Firecracker (Approach C: hybrid-firecracker) ---
+
+fc-kernel: ## Download Firecracker kernel
+	chmod +x $(FC_ASSETS_DIR)/fetch-kernel.sh
+	bash $(FC_ASSETS_DIR)/fetch-kernel.sh
+
+fc-rootfs: images ## Build Firecracker worker rootfs (requires root for loopback mount)
+	chmod +x $(FC_ASSETS_DIR)/build-rootfs.sh
+	bash $(FC_ASSETS_DIR)/build-rootfs.sh
+
+fc-image: workload/Dockerfile.agent-fc workload/agent.py ## Build Firecracker-enabled agent image
+	docker build -t bench-agent-fc:latest -f workload/Dockerfile.agent-fc workload/
+
+fc-setup: fc-kernel fc-rootfs fc-image ## Full Firecracker setup (kernel + rootfs + image)
+
+# --- Real IronClaw benchmark images ---
+
+ironclaw-binary: ## Build ironclaw binary for benchmarks (libsql backend)
+	@if command -v cargo >/dev/null 2>&1; then \
+		cd $(PROJECT_ROOT) && IRONCLAW_SKIP_TELEGRAM_WASM_BUILD=1 cargo build --release --no-default-features --features libsql; \
+		cp $(PROJECT_ROOT)/target/release/ironclaw $(BENCH_DIR)/workload/.ironclaw-bin; \
+		echo "IronClaw binary copied to workload/.ironclaw-bin"; \
+	elif [ -x "$(BENCH_DIR)/workload/.ironclaw-bin" ]; then \
+		echo "Using existing benchmark binary at workload/.ironclaw-bin"; \
+	else \
+		echo "Missing Rust toolchain and workload/.ironclaw-bin"; \
+		echo "Build one with cargo or place a prebuilt binary at benchmarks/workload/.ironclaw-bin"; \
+		exit 1; \
+	fi
+
+ironclaw-sandbox-image: ironclaw-binary workload/Dockerfile.ironclaw-sandbox ## Build sandbox image for shell + worker-mode jobs
+	docker build -t ironclaw-bench-sandbox:latest -f workload/Dockerfile.ironclaw-sandbox workload/
+
+ironclaw-agent-image: ironclaw-binary workload/Dockerfile.ironclaw-agent workload/mock_llm_server.py workload/docker_socket_proxy.py workload/ironclaw-bench-entrypoint.sh ## Build ironclaw agent image (shared daemon)
+	docker build -t ironclaw-bench-agent:latest -f workload/Dockerfile.ironclaw-agent workload/
+
+ironclaw-agent-dind-image: ironclaw-binary workload/Dockerfile.ironclaw-agent-dind workload/mock_llm_server.py workload/docker_socket_proxy.py workload/ironclaw-dind-entrypoint.sh ## Build ironclaw agent DinD image
+	docker build -t ironclaw-bench-agent-dind:latest -f workload/Dockerfile.ironclaw-agent-dind workload/
+
+ironclaw-agent-fc-image: ironclaw-binary workload/Dockerfile.ironclaw-agent-fc workload/mock_llm_server.py workload/ironclaw-fc-entrypoint.sh workload/firecracker_bench_launch.py ## Build ironclaw agent Firecracker image
+	docker build -t ironclaw-bench-agent-fc:latest -f workload/Dockerfile.ironclaw-agent-fc workload/
+
+ironclaw-fc-rootfs: ironclaw-binary ## Build Firecracker rootfs with real ironclaw worker (requires root for loopback mount)
+	chmod +x $(FC_ASSETS_DIR)/build-ironclaw-rootfs.sh
+	bash $(FC_ASSETS_DIR)/build-ironclaw-rootfs.sh
+
+ironclaw-fc-setup: fc-kernel ironclaw-fc-rootfs ironclaw-agent-fc-image ## Full real IronClaw Firecracker setup
+
+ironclaw-images: ironclaw-sandbox-image ironclaw-agent-image ironclaw-agent-dind-image ## Build the standard ironclaw benchmark images
+
+# --- Smoke tests ---
+
+smoke-test: ironclaw-images ## Run full-lifecycle IronClaw smoke tests (build VM/Firecracker assets first for all 6 approaches)
+	python3 smoke_test.py
+
+smoke-test-docker: ironclaw-images ## Full-lifecycle smoke test: ironclaw-docker only
+	python3 smoke_test.py --approach ironclaw-docker
+
+ironclaw-benchmark: ironclaw-images ## Run host-driven real IronClaw benchmark (use EXTRA_ARGS for mode/jobs)
+	python3 ironclaw_benchmark.py --approach $(APPROACH) --agents $(AGENTS) $(EXTRA_ARGS)
+
+# --- Podman rootless ---
+
+podman-setup: images ## Install podman + deps for podman-rootless approach
+	@command -v podman >/dev/null || (echo "Install podman first: sudo apt install podman uidmap systemd-container"; exit 1)
+	@command -v machinectl >/dev/null || (echo "Install systemd-container: sudo apt install systemd-container"; exit 1)
+	@echo "Podman ready. User setup happens automatically during benchmark run."
+
+# --- Unified CLI ---
+
+bench-list: ## List all approaches: make bench-list [SUITE=synthetic|ironclaw]
+	@python3 bench.py list $(if $(SUITE),--suite $(SUITE),)
+
+bench: ## Unified entry: make bench SUITE=synthetic APPROACH=container-docker AGENTS=5 [MODE=loaded] [MONITOR=1]
+	@if [ "$(SUITE)" = "ironclaw" ]; then \
+		python3 bench.py ironclaw $(if $(APPROACH),--approach $(APPROACH),) $(if $(AGENTS),--agents $(AGENTS),); \
+	elif [ "$(SUITE)" = "ironclaw-benchmark" ]; then \
+		python3 bench.py ironclaw-benchmark --approach $(APPROACH) $(if $(AGENTS),--agents $(AGENTS),); \
+	elif [ "$(SUITE)" = "synthetic" ]; then \
+		python3 bench.py synthetic --approach $(APPROACH) --agents $(AGENTS) $(if $(MODE),--mode $(MODE),) \
+			$(if $(filter 1 true yes on,$(MONITOR)),--monitor,) \
+			$(if $(MONITOR_HOST),--monitor-host $(MONITOR_HOST),) \
+			$(if $(MONITOR_PORT),--monitor-port $(MONITOR_PORT),); \
+	else \
+		echo "Usage: make bench SUITE=synthetic|ironclaw|ironclaw-benchmark APPROACH=<name> AGENTS=<n>"; \
+		echo "  make bench SUITE=ironclaw                              # all ironclaw approaches"; \
+		echo "  make bench SUITE=ironclaw APPROACH=ironclaw-docker     # single ironclaw approach"; \
+		echo "  make bench SUITE=ironclaw-benchmark APPROACH=ironclaw-sysbox-dind AGENTS=50"; \
+		echo "  make bench SUITE=synthetic APPROACH=container-docker AGENTS=5"; \
+		echo ""; \
+		echo "Available approaches:"; \
+		python3 bench.py list; \
+	fi
+
+# --- Run benchmarks (legacy, still works) ---
+
+run: images ## Run synthetic benchmark: make run APPROACH=container-docker AGENTS=5 [MODE=loaded|idle|plateau] [MONITOR=1]
+	python3 -m runner.orchestrate --approach $(APPROACH) --agents $(AGENTS) --mode $(MODE) \
+		$(if $(filter 1 true yes on,$(MONITOR)),--monitor,) \
+		$(if $(MONITOR_HOST),--monitor-host $(MONITOR_HOST),) \
+		$(if $(MONITOR_PORT),--monitor-port $(MONITOR_PORT),)
+
+run-idle: images ## Run idle benchmark (no workers): make run-idle APPROACH=container-docker AGENTS=50 [MONITOR=1]
+	python3 -m runner.orchestrate --approach $(APPROACH) --agents $(AGENTS) --mode idle \
+		$(if $(filter 1 true yes on,$(MONITOR)),--monitor,) \
+		$(if $(MONITOR_HOST),--monitor-host $(MONITOR_HOST),) \
+		$(if $(MONITOR_PORT),--monitor-port $(MONITOR_PORT),)
+
+run-plateau: images ## Run plateau benchmark: make run-plateau APPROACH=container-docker AGENTS=5 PLATEAU_WORKERS_PER_AGENT=0,1,2,3,4,5 [MONITOR=1]
+	python3 -m runner.orchestrate --approach $(APPROACH) --agents $(AGENTS) --mode plateau \
+		$(if $(filter 1 true yes on,$(MONITOR)),--monitor,) \
+		$(if $(MONITOR_HOST),--monitor-host $(MONITOR_HOST),) \
+		$(if $(MONITOR_PORT),--monitor-port $(MONITOR_PORT),)
+
+run-sweep: images ## Run idle sweep at multiple N: make run-sweep APPROACH=container-docker
+	@for n in 1 5 10 50 100; do \
+		echo "=== Sweep: N=$$n ==="; \
+		python3 -m runner.orchestrate --approach $(APPROACH) --agents $$n --mode idle; \
+	done
+
+# --- Analysis ---
+
+plot: ## Generate charts from results/
+	python3 -m analysis.plot
+
+compare: ## Print comparison table from results/
+	python3 -m analysis.compare
+
+decompose: ## Fit per-agent idle slope and print plateau worker costs
+	python3 -m analysis.decompose
+
+# --- Cleanup ---
+
+clean: ## Remove images, VMs, Firecracker artifacts, and results
+	-docker rm -f $$(docker ps -a --filter "label=bench_role" --format '{{.Names}}') 2>/dev/null
+	-docker rm -f $$(docker ps -a --filter "name=bench-" --format '{{.Names}}') 2>/dev/null
+	-docker rmi -f bench-worker:latest bench-agent:latest bench-agent-dind:latest bench-agent-sysbox:latest bench-agent-fc:latest ironclaw-bench-agent-fc:latest 2>/dev/null
+	-bash $(VM_ASSETS_DIR)/launch.sh stop-all 2>/dev/null
+	rm -rf results/*/
+	rm -f $(VM_ASSETS_DIR)/alpine-agent.qcow2 $(VM_ASSETS_DIR)/.alpine-base.qcow2 $(VM_ASSETS_DIR)/.worker-image.tar
+	rm -f $(FC_ASSETS_DIR)/vmlinux-5.10.bin $(FC_ASSETS_DIR)/worker-rootfs.ext4 $(FC_ASSETS_DIR)/ironclaw-worker-rootfs.ext4
+	@echo "Clean complete."

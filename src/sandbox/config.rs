@@ -23,6 +23,11 @@ pub struct SandboxConfig {
     pub auto_pull_image: bool,
     /// Port for the HTTP proxy (0 = auto-assign).
     pub proxy_port: u16,
+    /// Podman compatibility mode. Adjusts container config for Podman rootless:
+    /// - SecurityOpt: `no-new-privileges` instead of `no-new-privileges:true`
+    /// - Removes memory/CPU limits (cgroup delegation issues in rootless)
+    /// - Disables AutoRemove (Podman wait endpoint race condition)
+    pub podman_compat: bool,
 }
 
 impl Default for SandboxConfig {
@@ -37,6 +42,7 @@ impl Default for SandboxConfig {
             image: "ironclaw-worker:latest".to_string(),
             auto_pull_image: true,
             proxy_port: 0,
+            podman_compat: false,
         }
     }
 }

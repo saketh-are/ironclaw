@@ -37,7 +37,7 @@ pub async fn jobs_list_handler(
                 seen_ids.insert(j.id);
                 jobs.push(JobInfo {
                     id: j.id,
-                    title: j.task.clone(),
+                    title: j.task.lines().next().unwrap_or(&j.task).to_string(),
                     state: ui_state.to_string(),
                     user_id: j.user_id.clone(),
                     created_at: j.created_at.to_rfc3339(),
@@ -186,7 +186,7 @@ pub async fn jobs_detail_handler(
 
         return Ok(Json(JobDetailResponse {
             id: job.id,
-            title: job.task.clone(),
+            title: job.task.lines().next().unwrap_or(&job.task).to_string(),
             description: String::new(),
             state: ui_state.to_string(),
             user_id: job.user_id.clone(),

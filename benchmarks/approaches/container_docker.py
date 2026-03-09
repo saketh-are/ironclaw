@@ -1,0 +1,301 @@
+"""
+Approach B: Container-per-agent with shared Docker daemon.
+
+Each agent runs in its own Docker container with the host Docker socket
+bind-mounted. The agent spawns worker containers as siblings on the host
+Docker daemon — the same path ironclaw uses when SANDBOX_ENABLED=true.
+"""
+
+import subprocess
+import time
+import urllib.request
+from pathlib import Path
+from typing import Dict, List, Optional
+
+from approaches.base import Approach, BenchmarkConfig
+
+
+class ContainerDockerApproach(Approach):
+    """Container-per-agent isolation using shared Docker daemon."""
+
+    def __init__(self):
+        self._agent_ids: List[str] = []
+        self._host_ports: Dict[str, int] = {}
+        self._agent_image = "bench-agent:latest"
+        self._run_id: str = "unknown"
+        self._host_log_dir: Optional[Path] = None
+
+    @property
+    def name(self) -> str:
+        return "container-docker"
+
+    def setup(self, config: BenchmarkConfig) -> None:
+        """Verify that required Docker images exist."""
+        self._run_id = config.run_id
+        for image in [self._agent_image, config.worker_image]:
+            result = subprocess.run(
+                ["docker", "image", "inspect", image],
+                capture_output=True,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"Docker image '{image}' not found. Run 'make images' first."
+                )
+        print(f"[{self.name}] Setup complete. Images verified. run_id={self._run_id}")
+
+    def start_agents(self, n: int, config: BenchmarkConfig) -> List[str]:
+        """Start N agent containers, each with Docker socket access."""
+        self._agent_ids = []
+        self._host_ports = {}
+        run_output_dir = getattr(config, "run_output_dir", "")
+        self._host_log_dir = Path(run_output_dir) if run_output_dir else None
+
+        for i in range(n):
+            agent_id = f"agent-{i}"
+            container_name = f"bench-agent-{i}"
+            host_port = config.orchestrator_base_port + i
+            host_log_file = None
+            if self._host_log_dir is not None:
+                host_log_file = self._host_log_dir / f"{agent_id}.jsonl"
+                host_log_file.touch()
+                host_log_file.chmod(0o666)
+
+            cmd = [
+                "docker", "run", "-d",
+                "--name", container_name,
+                "--memory", f"{config.agent_memory_mb}m",
+                # Publish orchestrator HTTP port
+                "-p", f"{host_port}:8080",
+                # Labels for identification and cleanup
+                "--label", f"bench_run_id={config.run_id}",
+                "--label", "bench_role=agent",
+                "--label", f"bench_agent_id={agent_id}",
+                "--label", f"bench_approach={self.name}",
+                # Bind-mount Docker socket so agent can spawn sibling containers
+                "-v", "/var/run/docker.sock:/var/run/docker.sock",
+                # Pass configuration via environment
+                "-e", f"AGENT_ID={agent_id}",
+                "-e", f"BENCHMARK_MODE={config.benchmark_mode}",
+                "-e", f"AGENT_BASELINE_MB={config.agent_baseline_mb}",
+                "-e", f"SPAWN_INTERVAL_MEAN_S={config.spawn_interval_mean_s}",
+                "-e", f"MAX_CONCURRENT_WORKERS={config.max_concurrent_workers}",
+                "-e", f"BENCHMARK_DURATION_S={config.benchmark_duration_s}",
+                "-e", f"WORKER_IMAGE={config.worker_image}",
+                "-e", f"WORKER_MEMORY_LIMIT_MB={config.worker_memory_limit_mb}",
+                "-e", f"WORKER_MEMORY_MB={config.worker_memory_mb}",
+                "-e", f"WORKER_DURATION_MIN_S={config.worker_duration_min_s}",
+                "-e", f"WORKER_DURATION_MAX_S={config.worker_duration_max_s}",
+                "-e", f"WORKER_LIFETIME_MODE={config.worker_lifetime_mode}",
+                "-e", f"PLATEAU_WORKERS_PER_AGENT={config.plateau_workers_csv()}",
+                "-e", f"PLATEAU_HOLD_S={config.plateau_hold_s}",
+                "-e", f"PLATEAU_SETTLE_S={config.plateau_settle_s}",
+                "-e", f"RNG_SEED={config.rng_seed}",
+                "-e", f"BENCH_RUN_ID={config.run_id}",
+                "-e", f"BENCH_APPROACH={self.name}",
+                # Orchestrator networking
+                "-e", "ORCHESTRATOR_PORT=8080",
+                "-e", f"ORCHESTRATOR_HOST_PORT={host_port}",
+            ]
+            if host_log_file is not None:
+                cmd += [
+                    "-v", f"{self._host_log_dir}:/bench-output",
+                    "-e", f"EVENT_LOG_PATH=/bench-output/{agent_id}.jsonl",
+                ]
+
+            # Storage validation: shared daemon needs host-path indirection
+            host_dir = f"/tmp/bench-workspaces-{config.run_id}/{agent_id}"
+            subprocess.run(["mkdir", "-p", host_dir], check=True)
+            cmd += [
+                "-v", f"{host_dir}:/tmp/bench-workspaces",
+                "-e", "STORAGE_VALIDATION=1",
+                "-e", "WORKSPACE_BASE=/tmp/bench-workspaces",
+                "-e", f"WORKSPACE_HOST_BASE={host_dir}",
+            ]
+
+            cmd.append(self._agent_image)
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"Failed to start agent {agent_id}: {result.stderr.strip()}"
+                )
+
+            self._agent_ids.append(agent_id)
+            self._host_ports[agent_id] = host_port
+            print(f"[{self.name}] Started {container_name}")
+
+        print(f"[{self.name}] Waiting for {n} agents to become healthy...")
+        deadline = time.monotonic() + 60
+        ready = set()
+        while time.monotonic() < deadline and len(ready) < n:
+            for agent_id, port in self._host_ports.items():
+                if agent_id in ready:
+                    continue
+                try:
+                    resp = urllib.request.urlopen(
+                        f"http://127.0.0.1:{port}/health", timeout=2
+                    )
+                    if resp.status == 200:
+                        ready.add(agent_id)
+                        print(f"[{self.name}] {agent_id} healthy")
+                except Exception:
+                    pass
+            if len(ready) < n:
+                time.sleep(2)
+
+        if len(ready) < n:
+            not_ready = set(self._host_ports) - ready
+            raise RuntimeError(
+                f"Agents not ready after 60s: {sorted(not_ready)}"
+            )
+
+        print(f"[{self.name}] {n} agents started.")
+        return list(self._agent_ids)
+
+    def get_agent_pids(self) -> Dict[str, int]:
+        """Get host PIDs for agent containers via docker inspect."""
+        pids = {}
+        for i, agent_id in enumerate(self._agent_ids):
+            container_name = f"bench-agent-{i}"
+            try:
+                result = subprocess.run(
+                    ["docker", "inspect", "--format", "{{.State.Pid}}", container_name],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0:
+                    pid = int(result.stdout.strip())
+                    if pid > 0:
+                        pids[agent_id] = pid
+            except (ValueError, subprocess.SubprocessError):
+                pass
+        return pids
+
+    def get_daemon_pids(self) -> Dict[str, int]:
+        """Get PIDs for dockerd and containerd on the host."""
+        pids = {}
+        for daemon_name in ["dockerd", "containerd"]:
+            try:
+                result = subprocess.run(
+                    ["pgrep", "-x", daemon_name],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    # pgrep may return multiple PIDs; take the first (main process)
+                    pid = int(result.stdout.strip().split("\n")[0])
+                    pids[daemon_name] = pid
+            except (ValueError, subprocess.SubprocessError):
+                pass
+        return pids
+
+    def count_active_workers(self) -> int:
+        """Count worker containers across all agents using labels."""
+        try:
+            result = subprocess.run(
+                [
+                    "docker", "ps", "-q",
+                    "--filter", f"label=bench_run_id={self._run_id}",
+                    "--filter", "label=bench_role=worker",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return len(result.stdout.strip().split("\n"))
+        except subprocess.SubprocessError:
+            pass
+        return 0
+
+    def collect_agent_logs(self, agent_ids: List[str], output_dir) -> None:
+        """Collect agent stdout logs via docker logs."""
+        output_dir = Path(output_dir)
+        for i, agent_id in enumerate(agent_ids):
+            container_name = f"bench-agent-{i}"
+            log_file = output_dir / f"{agent_id}.jsonl"
+            if log_file.exists() and log_file.stat().st_size > 0:
+                print(f"[{self.name}] Reusing direct host log for {agent_id}")
+                continue
+            try:
+                result = subprocess.run(
+                    ["docker", "logs", container_name],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0:
+                    log_file.write_text(result.stdout)
+                    print(f"[{self.name}] Collected logs for {agent_id}")
+                else:
+                    print(f"[{self.name}] docker logs failed for {agent_id}: "
+                          f"rc={result.returncode} stderr={result.stderr.strip()}")
+            except subprocess.SubprocessError as e:
+                print(f"[{self.name}] Failed to collect logs for {agent_id}: {e}")
+
+    def live_event_log_paths(
+        self,
+        agent_ids: List[str],
+        output_dir: Path,
+    ) -> Dict[str, Path]:
+        if self._host_log_dir is None:
+            return {}
+        return {
+            agent_id: self._host_log_dir / f"{agent_id}.jsonl"
+            for agent_id in agent_ids
+        }
+
+    def start_benchmark(self) -> None:
+        for agent_id, port in self._host_ports.items():
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/control/start",
+                data=b"{}",
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                resp = urllib.request.urlopen(req, timeout=5)
+                if resp.status != 200:
+                    raise RuntimeError(f"HTTP {resp.status}")
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to start benchmark on {agent_id}:{port}: {e}"
+                ) from e
+
+    def stop_agents(self) -> None:
+        """Gracefully stop agent containers (SIGTERM with timeout).
+
+        Agents remain as stopped containers so logs can still be collected
+        via `docker logs`. Call remove_containers() after log collection.
+        """
+        for i in range(len(self._agent_ids)):
+            container_name = f"bench-agent-{i}"
+            subprocess.run(
+                ["docker", "stop", "-t", "30", container_name],
+                capture_output=True,
+            )
+        print(f"[{self.name}] All agents stopped.")
+
+    def remove_containers(self) -> None:
+        """Force-remove all containers from this benchmark run."""
+        result = subprocess.run(
+            [
+                "docker", "ps", "-aq",
+                "--filter", f"label=bench_run_id={self._run_id}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            container_ids = result.stdout.strip().split("\n")
+            if container_ids:
+                subprocess.run(
+                    ["docker", "rm", "-f"] + container_ids,
+                    capture_output=True,
+                )
+        self._agent_ids = []
+        self._host_ports = {}
+        print(f"[{self.name}] All containers removed.")
+
+    def cleanup(self) -> None:
+        """Remove Docker images."""
+        self.stop_agents()
+        self.remove_containers()

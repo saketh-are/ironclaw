@@ -40,6 +40,12 @@ impl std::fmt::Display for JobMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobBackend {
+    Container,
+    External,
+}
+
 /// Configuration for the container job manager.
 #[derive(Debug, Clone)]
 pub struct ContainerJobConfig {
@@ -49,6 +55,8 @@ pub struct ContainerJobConfig {
     pub memory_limit_mb: u64,
     /// Default CPU shares.
     pub cpu_shares: u32,
+    /// Whether to adjust container settings for Podman compatibility.
+    pub podman_compat: bool,
     /// Port the orchestrator internal API listens on.
     pub orchestrator_port: u16,
     /// Anthropic API key for Claude Code containers (read from ANTHROPIC_API_KEY).
@@ -74,6 +82,7 @@ impl Default for ContainerJobConfig {
             image: "ironclaw-worker:latest".to_string(),
             memory_limit_mb: 2048,
             cpu_shares: 1024,
+            podman_compat: false,
             orchestrator_port: 50051,
             claude_code_api_key: None,
             claude_code_oauth_token: None,
@@ -112,6 +121,7 @@ pub struct ContainerHandle {
     pub container_id: String,
     pub state: ContainerState,
     pub mode: JobMode,
+    pub backend: JobBackend,
     pub created_at: DateTime<Utc>,
     pub project_dir: Option<PathBuf>,
     pub task_description: String,
@@ -270,6 +280,7 @@ impl ContainerJobManager {
             container_id: String::new(), // set after container creation
             state: ContainerState::Creating,
             mode,
+            backend: JobBackend::Container,
             created_at: Utc::now(),
             project_dir: project_dir.clone(),
             task_description: task.to_string(),
@@ -294,6 +305,41 @@ impl ContainerJobManager {
         }
     }
 
+    /// Register a benchmark-local external worker job.
+    ///
+    /// This allocates a real worker token and in-memory handle without creating
+    /// a container. External launchers (e.g. Firecracker benchmark helpers)
+    /// can then boot a worker process that calls the normal orchestrator APIs.
+    pub async fn create_external_job(
+        &self,
+        job_id: Uuid,
+        task: &str,
+        project_dir: Option<PathBuf>,
+        mode: JobMode,
+        credential_grants: Vec<CredentialGrant>,
+    ) -> Result<String, OrchestratorError> {
+        let token = self.token_store.create_token(job_id).await;
+        self.token_store
+            .store_grants(job_id, credential_grants)
+            .await;
+
+        let handle = ContainerHandle {
+            job_id,
+            container_id: String::new(),
+            state: ContainerState::Running,
+            mode,
+            backend: JobBackend::External,
+            created_at: Utc::now(),
+            project_dir,
+            task_description: task.to_string(),
+            last_worker_status: None,
+            worker_iteration: 0,
+            completion_result: None,
+        };
+        self.containers.write().await.insert(job_id, handle);
+        Ok(token)
+    }
+
     /// Inner implementation of container creation (separated for cleanup).
     async fn create_job_inner(
         &self,
@@ -305,17 +351,23 @@ impl ContainerJobManager {
         // Connect to Docker (reuses cached connection)
         let docker = self.docker().await?;
 
-        // Build container configuration
-        let orchestrator_host = if cfg!(target_os = "linux") {
+        // Allow benchmark/containerized agent topologies to override how worker
+        // containers call back into the orchestrator. By default we preserve the
+        // normal product behavior: bridge networking plus host gateway routing.
+        let default_orchestrator_host = if cfg!(target_os = "linux") {
             "172.17.0.1"
         } else {
             "host.docker.internal"
         };
-
-        let orchestrator_url = format!(
-            "http://{}:{}",
-            orchestrator_host, self.config.orchestrator_port
-        );
+        let orchestrator_url =
+            std::env::var("IRONCLAW_WORKER_ORCHESTRATOR_URL").unwrap_or_else(|_| {
+                format!(
+                    "http://{}:{}",
+                    default_orchestrator_host, self.config.orchestrator_port
+                )
+            });
+        let worker_network_mode =
+            std::env::var("IRONCLAW_WORKER_NETWORK_MODE").unwrap_or_else(|_| "bridge".to_string());
 
         let mut env_vec = vec![
             format!("IRONCLAW_WORKER_TOKEN={}", token),
@@ -361,15 +413,35 @@ impl ContainerJobManager {
         use bollard::container::{Config, CreateContainerOptions};
         use bollard::models::HostConfig;
 
+        let extra_hosts = if worker_network_mode == "bridge" {
+            Some(vec!["host.docker.internal:host-gateway".to_string()])
+        } else {
+            None
+        };
+
+        let security_opt = if self.config.podman_compat {
+            vec!["no-new-privileges".to_string()]
+        } else {
+            vec!["no-new-privileges:true".to_string()]
+        };
+
         let host_config = HostConfig {
             binds: if binds.is_empty() { None } else { Some(binds) },
-            memory: Some((memory_mb * 1024 * 1024) as i64),
-            cpu_shares: Some(self.config.cpu_shares as i64),
-            network_mode: Some("bridge".to_string()),
-            extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
+            memory: if self.config.podman_compat {
+                None
+            } else {
+                Some((memory_mb * 1024 * 1024) as i64)
+            },
+            cpu_shares: if self.config.podman_compat {
+                None
+            } else {
+                Some(self.config.cpu_shares as i64)
+            },
+            network_mode: Some(worker_network_mode),
+            extra_hosts,
             cap_drop: Some(vec!["ALL".to_string()]),
             cap_add: Some(vec!["CHOWN".to_string()]),
-            security_opt: Some(vec!["no-new-privileges:true".to_string()]),
+            security_opt: Some(security_opt),
             tmpfs: Some(
                 [("/tmp".to_string(), "size=512M".to_string())]
                     .into_iter()
@@ -456,10 +528,13 @@ impl ContainerJobManager {
     pub async fn stop_job(&self, job_id: Uuid) -> Result<(), OrchestratorError> {
         let container_id = {
             let containers = self.containers.read().await;
-            containers
+            let handle = containers
                 .get(&job_id)
-                .map(|h| h.container_id.clone())
-                .ok_or(OrchestratorError::ContainerNotFound { job_id })?
+                .ok_or(OrchestratorError::ContainerNotFound { job_id })?;
+            if handle.backend == JobBackend::External {
+                return Ok(());
+            }
+            handle.container_id.clone()
         };
 
         if container_id.is_empty() {
@@ -526,13 +601,20 @@ impl ContainerJobManager {
         }
 
         // Stop container and revoke token (but keep handle in map)
-        let container_id = {
+        let (container_id, backend) = {
             let containers = self.containers.read().await;
-            containers.get(&job_id).map(|h| h.container_id.clone())
+            containers
+                .get(&job_id)
+                .map(|h| (h.container_id.clone(), h.backend))
+                .unwrap_or_else(|| (String::new(), JobBackend::Container))
         };
-        if let Some(cid) = container_id
-            && !cid.is_empty()
-        {
+        if backend == JobBackend::External {
+            // External worker launchers are responsible for writing the
+            // worker-cleaned benchmark evidence after the VM/process has
+            // actually exited and host-side teardown has completed.
+        } else if !container_id.is_empty() {
+            let cid = container_id;
+            let mut removed = false;
             match self.docker().await {
                 Ok(docker) => {
                     if let Err(e) = docker
@@ -544,7 +626,7 @@ impl ContainerJobManager {
                     {
                         tracing::warn!(job_id = %job_id, error = %e, "Failed to stop completed container");
                     }
-                    if let Err(e) = docker
+                    match docker
                         .remove_container(
                             &cid,
                             Some(bollard::container::RemoveContainerOptions {
@@ -554,13 +636,21 @@ impl ContainerJobManager {
                         )
                         .await
                     {
-                        tracing::warn!(job_id = %job_id, error = %e, "Failed to remove completed container");
+                        Ok(()) => {
+                            removed = true;
+                        }
+                        Err(e) => {
+                            tracing::warn!(job_id = %job_id, error = %e, "Failed to remove completed container");
+                        }
                     }
                 }
                 Err(e) => {
                     tracing::warn!(job_id = %job_id, error = %e, "Failed to connect to Docker for container cleanup");
                 }
             }
+            crate::benchmark_evidence::write_worker_cleaned(job_id, Some(&cid), removed);
+        } else {
+            crate::benchmark_evidence::write_worker_cleaned(job_id, None, false);
         }
         self.token_store.revoke(job_id).await;
 
@@ -679,6 +769,7 @@ mod tests {
                     container_id: "test".to_string(),
                     state: ContainerState::Running,
                     mode: JobMode::Worker,
+                    backend: JobBackend::Container,
                     created_at: chrono::Utc::now(),
                     project_dir: None,
                     task_description: "test job".to_string(),

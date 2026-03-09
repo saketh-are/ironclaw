@@ -15,6 +15,7 @@ use chrono::Utc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+use crate::benchmark_evidence;
 use crate::bootstrap::ironclaw_base_dir;
 use crate::channels::IncomingMessage;
 use crate::channels::web::types::SseEvent;
@@ -382,7 +383,13 @@ impl CreateJobTool {
 
         // Create the container job with the pre-determined job_id.
         let _token = jm
-            .create_job(job_id, task, Some(project_dir), mode, credential_grants)
+            .create_job(
+                job_id,
+                task,
+                Some(project_dir.clone()),
+                mode,
+                credential_grants,
+            )
             .await
             .map_err(|e| {
                 self.update_status(
@@ -399,6 +406,14 @@ impl CreateJobTool {
         // Container started successfully.
         let now = Utc::now();
         self.update_status(job_id, "running", None, None, Some(now), None);
+        benchmark_evidence::write_job_created(
+            job_id,
+            Some(&project_dir),
+            match mode {
+                JobMode::Worker => "worker",
+                JobMode::ClaudeCode => "claude_code",
+            },
+        );
 
         if !wait {
             // Spawn a background monitor that forwards Claude Code output
@@ -673,6 +688,30 @@ fn resolve_project_dir(
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| project_id.to_string());
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mut perms = std::fs::metadata(&canonical_dir)
+            .map_err(|e| {
+                ToolError::ExecutionFailed(format!(
+                    "failed to stat project dir {}: {}",
+                    canonical_dir.display(),
+                    e
+                ))
+            })?
+            .permissions();
+        perms.set_mode(0o777);
+        std::fs::set_permissions(&canonical_dir, perms).map_err(|e| {
+            ToolError::ExecutionFailed(format!(
+                "failed to set permissions on project dir {}: {}",
+                canonical_dir.display(),
+                e
+            ))
+        })?;
+    }
+
     Ok((canonical_dir, browse_id))
 }
 
@@ -1427,6 +1466,19 @@ mod tests {
         // Must be under the projects base
         let base = projects_base().canonicalize().unwrap();
         assert!(dir.starts_with(&base));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_resolve_project_dir_auto_is_worker_writable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let project_id = Uuid::new_v4();
+        let (dir, _browse_id) = resolve_project_dir(None, project_id).unwrap();
+        let mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o777);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

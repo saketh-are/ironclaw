@@ -1,0 +1,74 @@
+#!/bin/sh
+#
+# Minimal init for Firecracker worker VMs.
+# Mounts essential filesystems, parses config from kernel boot_args
+# (passed via /proc/cmdline), runs the worker, then powers off.
+
+# Mount essential filesystems
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+
+# Parse worker config from kernel command line.
+# Firecracker passes boot_args which appear in /proc/cmdline.
+# Expected format: "... worker_memory_mb=500 worker_duration_min_s=30 worker_duration_max_s=120"
+CMDLINE=$(cat /proc/cmdline)
+
+for param in $CMDLINE; do
+    case "$param" in
+        ip=*)                     export FC_IP_CONFIG="${param#*=}" ;;
+        worker_memory_mb=*)       export WORKER_MEMORY_MB="${param#*=}" ;;
+        worker_duration_min_s=*)  export WORKER_DURATION_MIN_S="${param#*=}" ;;
+        worker_duration_max_s=*)  export WORKER_DURATION_MAX_S="${param#*=}" ;;
+        worker_lifetime_mode=*)   export WORKER_LIFETIME_MODE="${param#*=}" ;;
+        storage_challenge=*)      export STORAGE_CHALLENGE="${param#*=}" ;;
+        worker_name=*)            export WORKER_NAME="${param#*=}" ;;
+        orchestrator_url=*)       export ORCHESTRATOR_URL="${param#*=}" ;;
+    esac
+done
+
+# Bring up guest networking when Firecracker passes an ip= boot arg.
+# Format: <client-ip>::<gateway-ip>:<netmask>::<device>:off
+if [ -n "${FC_IP_CONFIG:-}" ]; then
+    IFS=':' read -r GUEST_IP _ GATEWAY_IP NETMASK _ NET_DEV _ <<EOF
+$FC_IP_CONFIG
+EOF
+    NET_DEV="${NET_DEV:-eth0}"
+
+    case "${NETMASK:-}" in
+        255.255.255.252) PREFIX_LEN=30 ;;
+        255.255.255.0)   PREFIX_LEN=24 ;;
+        255.255.0.0)     PREFIX_LEN=16 ;;
+        255.0.0.0)       PREFIX_LEN=8 ;;
+        "")              PREFIX_LEN="" ;;
+        *)               PREFIX_LEN="$NETMASK" ;;
+    esac
+
+    ip link set lo up 2>/dev/null || true
+    ip link set "$NET_DEV" up 2>/dev/null || true
+
+    if [ -n "${GUEST_IP:-}" ] && [ -n "${PREFIX_LEN:-}" ]; then
+        ip addr add "${GUEST_IP}/${PREFIX_LEN}" dev "$NET_DEV" 2>/dev/null || true
+    fi
+
+    if [ -n "${GATEWAY_IP:-}" ]; then
+        ip route add default via "$GATEWAY_IP" dev "$NET_DEV" 2>/dev/null || true
+    fi
+
+    echo "[init] Configured ${NET_DEV} with ${GUEST_IP:-unset}/${PREFIX_LEN:-unset} gw=${GATEWAY_IP:-unset}"
+fi
+
+# Mount workspace drive if present (/dev/vdb = second virtio block device)
+if [ -e /dev/vdb ]; then
+    mkdir -p /workspace
+    mount /dev/vdb /workspace
+    echo "[init] Mounted /dev/vdb at /workspace"
+fi
+
+# Run the worker
+echo "[init] Starting worker: memory=${WORKER_MEMORY_MB:-500}MB name=${WORKER_NAME:-unknown} lifetime=${WORKER_LIFETIME_MODE:-timed}"
+python3 /usr/local/bin/worker.py
+
+# Power off the VM
+echo "[init] Worker finished, powering off."
+reboot -f

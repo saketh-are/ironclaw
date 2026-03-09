@@ -396,15 +396,28 @@ impl AppBuilder {
             None
         };
 
+        // Create a SandboxManager for the shell tool when both
+        // allow_local_tools and sandbox are enabled. This makes shell
+        // commands spawn ephemeral containers for isolation.
+        let shell_sandbox = if self.config.agent.allow_local_tools && self.config.sandbox.enabled {
+            let sandbox_config = self.config.sandbox.to_sandbox_config();
+            Some(Arc::new(crate::sandbox::SandboxManager::new(
+                sandbox_config,
+            )))
+        } else {
+            None
+        };
+
         // Register builder tool if enabled
         if self.config.builder.enabled
             && (self.config.agent.allow_local_tools || !self.config.sandbox.enabled)
         {
             tools
-                .register_builder_tool(
+                .register_builder_tool_with_sandbox(
                     llm.clone(),
                     safety.clone(),
                     Some(self.config.builder.to_builder_config()),
+                    shell_sandbox.clone(),
                 )
                 .await;
             tracing::info!("Builder mode enabled");
@@ -663,7 +676,13 @@ impl AppBuilder {
         let builder_registered_dev_tools = self.config.builder.enabled
             && (self.config.agent.allow_local_tools || !self.config.sandbox.enabled);
         if self.config.agent.allow_local_tools && !builder_registered_dev_tools {
-            tools.register_dev_tools();
+            if self.config.sandbox.enabled {
+                let sandbox_config = self.config.sandbox.to_sandbox_config();
+                let sandbox_manager = Arc::new(crate::sandbox::SandboxManager::new(sandbox_config));
+                tools.register_dev_tools_with_sandbox(Some(sandbox_manager));
+            } else {
+                tools.register_dev_tools();
+            }
         }
 
         Ok((
@@ -700,6 +719,7 @@ impl AppBuilder {
 
         // Seed workspace and backfill embeddings
         if let Some(ref ws) = workspace {
+            let mut imported_files = 0usize;
             // Import workspace files from disk FIRST if WORKSPACE_IMPORT_DIR is set.
             // This lets Docker images / deployment scripts ship customized
             // workspace templates (e.g., AGENTS.md, TOOLS.md) that override
@@ -712,6 +732,7 @@ impl AppBuilder {
                 let import_path = std::path::Path::new(&import_dir);
                 match ws.import_from_directory(import_path).await {
                     Ok(count) if count > 0 => {
+                        imported_files = count;
                         tracing::info!("Imported {} workspace file(s) from {}", count, import_dir);
                     }
                     Ok(_) => {}
@@ -725,11 +746,29 @@ impl AppBuilder {
                 }
             }
 
+            let mut seeded_files = 0usize;
             match ws.seed_if_empty().await {
-                Ok(_) => {}
+                Ok(count) => {
+                    seeded_files = count;
+                }
                 Err(e) => {
                     tracing::warn!("Failed to seed workspace: {}", e);
                 }
+            }
+
+            if imported_files + seeded_files > 0 {
+                let db_path =
+                    if self.config.database.backend == crate::config::DatabaseBackend::LibSql {
+                        self.config.database.libsql_path.as_deref()
+                    } else {
+                        None
+                    };
+                crate::benchmark_evidence::write_agent_workspace_written(
+                    db_path,
+                    imported_files,
+                    seeded_files,
+                    &self.config.database.backend.to_string(),
+                );
             }
 
             if embeddings.is_some() {

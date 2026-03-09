@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, broadcast};
 use uuid::Uuid;
 
+use chrono::Utc;
+
 use crate::channels::web::types::SseEvent;
 use crate::db::Database;
 use crate::llm::{CompletionRequest, LlmProvider, ToolCompletionRequest};
@@ -230,14 +232,45 @@ async fn report_complete(
         );
     }
 
-    // Store the result and clean up the container
+    crate::benchmark_evidence::write_worker_callback(
+        job_id,
+        report.success,
+        report.message.as_deref(),
+    );
+
+    // Persist the final status to the database so the web UI reflects completion.
+    if let Some(store) = state.store.as_ref() {
+        let status = if report.success { "completed" } else { "failed" };
+        let now = Utc::now();
+        if let Err(e) = store
+            .update_sandbox_job_status(
+                job_id,
+                status,
+                Some(report.success),
+                report.message.as_deref(),
+                None,
+                Some(now),
+            )
+            .await
+        {
+            tracing::error!(job_id = %job_id, "Failed to persist job status: {}", e);
+        }
+    }
+
+    // Store the result and clean up the container asynchronously. The worker is
+    // still in the middle of its /complete request, so trying to stop/remove
+    // the container inline can deadlock cleanup behind the HTTP response and
+    // force-kill an otherwise healthy exit.
     let result = crate::orchestrator::job_manager::CompletionResult {
         success: report.success,
         message: report.message.clone(),
     };
-    if let Err(e) = state.job_manager.complete_job(job_id, result).await {
-        tracing::error!(job_id = %job_id, "Failed to complete job cleanup: {}", e);
-    }
+    let job_manager = state.job_manager.clone();
+    tokio::spawn(async move {
+        if let Err(e) = job_manager.complete_job(job_id, result).await {
+            tracing::error!(job_id = %job_id, "Failed to complete job cleanup: {}", e);
+        }
+    });
 
     Ok(Json(serde_json::json!({"status": "ok"})))
 }
@@ -884,6 +917,7 @@ mod tests {
                     container_id: "test-container".to_string(),
                     state: crate::orchestrator::job_manager::ContainerState::Running,
                     mode: crate::orchestrator::job_manager::JobMode::Worker,
+                    backend: crate::orchestrator::job_manager::JobBackend::Container,
                     created_at: chrono::Utc::now(),
                     project_dir: None,
                     task_description: "test".to_string(),

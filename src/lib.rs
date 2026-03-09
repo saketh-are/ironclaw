@@ -40,6 +40,7 @@
 
 pub mod agent;
 pub mod app;
+pub mod benchmark_evidence;
 pub mod boot_screen;
 pub mod bootstrap;
 pub mod channels;

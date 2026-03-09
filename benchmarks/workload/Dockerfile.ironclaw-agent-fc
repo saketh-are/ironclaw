@@ -1,0 +1,19 @@
+FROM debian:trixie-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 ca-certificates curl iproute2 e2fsprogs && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY .ironclaw-bin /usr/local/bin/ironclaw
+RUN chmod +x /usr/local/bin/ironclaw
+
+COPY mock_llm_server.py /opt/mock_llm_server.py
+COPY ironclaw-fc-entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY firecracker_bench_launch.py /opt/firecracker_bench_launch.py
+RUN chmod +x /usr/local/bin/entrypoint.sh /opt/firecracker_bench_launch.py
+
+RUN mkdir -p /tmp/workspace /tmp/.ironclaw /tmp/fc-vms && chmod 777 /tmp/workspace /tmp/.ironclaw /tmp/fc-vms
+
+EXPOSE 3000
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

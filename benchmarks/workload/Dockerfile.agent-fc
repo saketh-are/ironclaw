@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+# Install procps for pgrep (used by approach to count active workers),
+# iproute2 for TAP device setup, e2fsprogs for ext4 workspace images.
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends procps iproute2 e2fsprogs && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY agent.py /usr/local/bin/agent.py
+
+# Firecracker binary, kernel, and rootfs are bind-mounted at runtime:
+#   /usr/local/bin/firecracker  (from host)
+#   /opt/vmlinux                (kernel image)
+#   /opt/worker-rootfs.ext4     (rootfs)
+# /dev/kvm is passed via --device
+
+ENTRYPOINT ["python3", "/usr/local/bin/agent.py"]

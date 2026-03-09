@@ -22,3 +22,7 @@ coverage/
 # WASM build artifacts (loaded from disk, not bundled)
 *.wasm
 
+# Benchmark artifacts
+benchmarks/workload/.ironclaw-bin
+benchmarks/smoke-results.json
+
