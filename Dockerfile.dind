@@ -1,0 +1,57 @@
+# IronClaw DinD (Docker-in-Docker) image.
+#
+# Extends the production IronClaw image with Docker daemon + iptables for
+# Sysbox-based isolated worker spawning. Each container gets its own inner
+# Docker daemon with overlay2 storage — no privileged mode required.
+#
+# Build:
+#   docker build --platform linux/amd64 -t ironclaw-dind:latest -f Dockerfile.dind .
+#
+# Run (requires Sysbox runtime):
+#   docker run --runtime=sysbox-runc \
+#     -v /path/to/worker.tar:/opt/.worker-image.tar:ro \
+#     --env-file .env -p 3000:3000 ironclaw-dind:latest
+
+# Stage 1: Build (same as production Dockerfile)
+FROM rust:1.92-slim-bookworm AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev cmake gcc g++ \
+    && rm -rf /var/lib/apt/lists/* \
+    && rustup target add wasm32-wasip2 \
+    && cargo install wasm-tools
+
+WORKDIR /app
+
+COPY Cargo.toml Cargo.lock ./
+COPY build.rs build.rs
+COPY src/ src/
+COPY tests/ tests/
+COPY migrations/ migrations/
+COPY registry/ registry/
+COPY channels-src/ channels-src/
+COPY wit/ wit/
+
+RUN cargo build --release --bin ironclaw
+
+# Stage 2: Runtime with Docker daemon
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libssl3 \
+    docker.io iptables \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/target/release/ironclaw /usr/local/bin/ironclaw
+COPY --from=builder /app/migrations /app/migrations
+COPY dind-entrypoint.sh /usr/local/bin/dind-entrypoint.sh
+RUN chmod +x /usr/local/bin/dind-entrypoint.sh
+
+# Sysbox handles user-namespace isolation — run as root inside the container
+# so dockerd can start. Sysbox remaps uid 0 to an unprivileged host uid.
+
+EXPOSE 3000
+
+ENV RUST_LOG=ironclaw=info
+
+ENTRYPOINT ["/usr/local/bin/dind-entrypoint.sh"]
