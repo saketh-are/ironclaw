@@ -113,13 +113,13 @@ def ironclaw_agent_env(config, agent_id, gateway_port):
     return env
 
 
-def wait_for_gateway(port, timeout_s=120, label="agent"):
+def wait_for_gateway_url(base_url, timeout_s=120, label="agent"):
     """Poll ironclaw's /api/health endpoint until it responds 200."""
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         try:
             resp = urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/api/health", timeout=2
+                f"{base_url}/api/health", timeout=2
             )
             if resp.status == 200:
                 return True
@@ -127,6 +127,14 @@ def wait_for_gateway(port, timeout_s=120, label="agent"):
             pass
         time.sleep(1)
     return False
+
+
+def wait_for_gateway(port, timeout_s=120, label="agent"):
+    return wait_for_gateway_url(
+        f"http://127.0.0.1:{port}",
+        timeout_s=timeout_s,
+        label=label,
+    )
 
 
 def gateway_get_json(path, port, auth_token=GATEWAY_AUTH_TOKEN, timeout=10):
@@ -214,8 +222,8 @@ def _render_benchmark_message(command, dispatch_mode):
     return "Please run: echo benchmark-worker-ok"
 
 
-def trigger_worker_spawn(
-    port,
+def trigger_worker_spawn_url(
+    base_url,
     command=None,
     auth_token=GATEWAY_AUTH_TOKEN,
     dispatch_mode="shell",
@@ -226,7 +234,7 @@ def trigger_worker_spawn(
       - ``shell``: main agent calls the sandboxed shell tool directly
       - ``worker-job``: main agent creates a worker-mode sandbox job
     """
-    url = f"http://127.0.0.1:{port}/api/chat/send"
+    url = f"{base_url}/api/chat/send"
     payload = json.dumps({
         "content": _render_benchmark_message(command, dispatch_mode),
     }).encode()
@@ -244,5 +252,19 @@ def trigger_worker_spawn(
         resp = urllib.request.urlopen(req, timeout=10)
         return resp.status in (200, 202)
     except Exception as e:
-        print(f"[ironclaw] Failed to trigger on :{port}: {e}")
+        print(f"[ironclaw] Failed to trigger on {base_url}: {e}")
         return False
+
+
+def trigger_worker_spawn(
+    port,
+    command=None,
+    auth_token=GATEWAY_AUTH_TOKEN,
+    dispatch_mode="shell",
+):
+    return trigger_worker_spawn_url(
+        f"http://127.0.0.1:{port}",
+        command=command,
+        auth_token=auth_token,
+        dispatch_mode=dispatch_mode,
+    )

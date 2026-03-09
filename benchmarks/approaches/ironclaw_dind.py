@@ -25,7 +25,9 @@ from approaches._ironclaw_helpers import (
     ironclaw_agent_env,
     prepare_agent_host_dirs,
     wait_for_gateway,
+    wait_for_gateway_url,
     trigger_worker_spawn,
+    trigger_worker_spawn_url,
 )  # noqa: F401 — SANDBOX_IMAGE and TAR_PATH kept for DinD setup logic
 
 
@@ -43,8 +45,13 @@ class _IronclawDindBase(Approach):
     def __init__(self):
         self._agent_ids: List[str] = []
         self._host_ports: Dict[str, int] = {}
+        self._control_urls: Dict[str, str] = {}
         self._agent_roots: Dict[str, Path] = {}
         self._run_id: str = "unknown"
+
+    @property
+    def _publish_gateway_port(self) -> bool:
+        return True
 
     def setup(self, config: BenchmarkConfig) -> None:
         self._run_id = config.run_id
@@ -99,6 +106,7 @@ class _IronclawDindBase(Approach):
     def start_agents(self, n: int, config: BenchmarkConfig) -> List[str]:
         self._agent_ids = []
         self._host_ports = {}
+        self._control_urls = {}
         self._agent_roots = {}
 
         for i in range(n):
@@ -125,7 +133,6 @@ class _IronclawDindBase(Approach):
                 "docker", "run", "-d",
                 "--name", container_name,
                 "--memory", f"{config.agent_memory_mb}m",
-                "-p", f"{gateway_port}:3000",
                 # Mount worker image tarball
                 "-v", f"{SANDBOX_WORKER_TAR_PATH}:/opt/.worker-image.tar:ro",
                 # Mount host-visible benchmark root at same path inside container.
@@ -136,6 +143,8 @@ class _IronclawDindBase(Approach):
                 "--label", f"bench_agent_id={agent_id}",
                 "--label", f"bench_approach={self.name}",
             ]
+            if self._publish_gateway_port:
+                cmd += ["-p", f"{gateway_port}:3000"]
             # Runtime-specific args
             if self._runtime:
                 cmd += [f"--runtime={self._runtime}"]
@@ -152,15 +161,34 @@ class _IronclawDindBase(Approach):
                 )
 
             self._agent_ids.append(agent_id)
-            self._host_ports[agent_id] = gateway_port
+            if self._publish_gateway_port:
+                self._host_ports[agent_id] = gateway_port
+                self._control_urls[agent_id] = f"http://127.0.0.1:{gateway_port}"
+            else:
+                inspect = subprocess.run(
+                    [
+                        "docker", "inspect", "--format",
+                        "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
+                        container_name,
+                    ],
+                    capture_output=True, text=True,
+                )
+                control_ip = inspect.stdout.strip() if inspect.returncode == 0 else ""
+                if not control_ip:
+                    raise RuntimeError(f"Failed to resolve control IP for {agent_id}")
+                self._control_urls[agent_id] = f"http://{control_ip}:3000"
             self._agent_roots[agent_id] = host_dirs["agent_root"]
             print(f"[{self.name}] Started {container_name}")
 
         # DinD startup is slower (dockerd + image load + ironclaw startup)
         print(f"[{self.name}] Waiting for {n} agents "
               "(dockerd startup + image load + ironclaw)...")
-        for agent_id, port in self._host_ports.items():
-            if wait_for_gateway(port, timeout_s=180, label=agent_id):
+        for agent_id in self._agent_ids:
+            if wait_for_gateway_url(
+                self._control_urls[agent_id],
+                timeout_s=180,
+                label=agent_id,
+            ):
                 print(f"[{self.name}] {agent_id} healthy")
             else:
                 print(f"[{self.name}] WARNING: {agent_id} not ready after 180s")
@@ -169,8 +197,8 @@ class _IronclawDindBase(Approach):
         return list(self._agent_ids)
 
     def start_benchmark(self) -> None:
-        for agent_id, port in self._host_ports.items():
-            ok = trigger_worker_spawn(port)
+        for agent_id, control_url in self._control_urls.items():
+            ok = trigger_worker_spawn_url(control_url)
             if not ok:
                 print(f"[{self.name}] WARNING: trigger failed for {agent_id}")
 
@@ -231,6 +259,23 @@ class _IronclawDindBase(Approach):
 
     def get_agent_gateways(self) -> Dict[str, int]:
         return dict(self._host_ports)
+
+    def trigger_worker_spawn(
+        self,
+        agent_id: str,
+        command: str | None = None,
+        dispatch_mode: str = "shell",
+    ) -> bool:
+        control_url = self._control_urls.get(agent_id)
+        if control_url is None:
+            raise RuntimeError(
+                f"{self.name} does not expose a control route for {agent_id}"
+            )
+        return trigger_worker_spawn_url(
+            control_url,
+            command=command,
+            dispatch_mode=dispatch_mode,
+        )
 
     def get_agent_roots(self) -> Dict[str, Path]:
         return dict(self._agent_roots)
@@ -316,6 +361,7 @@ class _IronclawDindBase(Approach):
             )
         self._agent_ids = []
         self._host_ports = {}
+        self._control_urls = {}
         self._agent_roots = {}
         print(f"[{self.name}] Force cleanup complete.")
 
@@ -331,6 +377,7 @@ class _IronclawDindBase(Approach):
             subprocess.run(["docker", "rm", "-f"] + ids, capture_output=True)
         self._agent_ids = []
         self._host_ports = {}
+        self._control_urls = {}
         self._agent_roots = {}
         print(f"[{self.name}] Cleanup complete.")
 
@@ -353,6 +400,10 @@ class IronclawSysboxDindApproach(_IronclawDindBase):
     _runtime = "sysbox-runc"
     _extra_docker_args = []
     _dockerd_extra_args = ""
+
+    @property
+    def _publish_gateway_port(self) -> bool:
+        return False
 
     @property
     def name(self) -> str:
