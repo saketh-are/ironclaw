@@ -551,39 +551,26 @@ window.addEventListener("resize", () => {
 
 _AGENT_PROXY_RE = re.compile(r"^/agent/(agent-\d+)(/.*)?$")
 
-# Service worker that intercepts all fetches within /agent/<id>/ scope
-# and rewrites absolute paths to include the proxy prefix.
-_SW_JS_TEMPLATE = """
-var BASE = "{base}";
-self.addEventListener("fetch", function(e) {{
-  var url = new URL(e.request.url);
-  if (url.origin === self.location.origin && !url.pathname.startsWith(BASE)) {{
-    var newUrl = new URL(BASE + url.pathname + url.search, url.origin);
-    e.respondWith(fetch(new Request(newUrl, e.request)));
-  }}
-}});
-"""
-
-# Loader page: registers the service worker then navigates to the real page
-_AGENT_LOADER_HTML = """<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>{agent_id}</title>
-<style>body{{background:#0f1117;color:#e1e4ed;font-family:monospace;display:flex;
-align-items:center;justify-content:center;height:100vh;margin:0}}
-</style></head><body><div>Loading {agent_id}...</div><script>
-if ("serviceWorker" in navigator) {{
-  navigator.serviceWorker.register("{base}/sw.js", {{scope: "{base}/"}})
-    .then(function(reg) {{
-      if (reg.active) {{ window.location.replace("{base}/?token=bench-token"); }}
-      else {{
-        var w = reg.installing || reg.waiting;
-        w.addEventListener("statechange", function() {{
-          if (w.state === "activated") window.location.replace("{base}/?token=bench-token");
-        }});
-      }}
-    }});
-}} else {{ window.location.replace("{base}/?token=bench-token"); }}
-</script></body></html>
-"""
+# Inline JS that patches fetch/EventSource so absolute paths go through
+# the reverse proxy prefix.  Injected into the HTML <head> of the agent page.
+_REWRITE_JS = """<script>
+(function() {{
+  var B = "{base}";
+  var _fetch = window.fetch;
+  window.fetch = function(url, opts) {{
+    if (typeof url === "string" && url.startsWith("/") && !url.startsWith(B))
+      url = B + url;
+    return _fetch.call(this, url, opts);
+  }};
+  var _ES = window.EventSource;
+  window.EventSource = function(url, opts) {{
+    if (typeof url === "string" && url.startsWith("/") && !url.startsWith(B))
+      url = B + url;
+    return new _ES(url, opts);
+  }};
+  window.EventSource.prototype = _ES.prototype;
+}})();
+</script>"""
 
 
 
@@ -1116,32 +1103,13 @@ class _MonitorHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        # /agent-loader/<id>/ — service worker loader page
+        # /agent-loader/<id>/ — redirect straight to proxied agent page
         loader_match = re.match(r"^/agent-loader/(agent-\d+)/?$", self.path)
         if loader_match:
             agent_id = loader_match.group(1)
-            base = f"/agent/{agent_id}"
-            body = _AGENT_LOADER_HTML.format(agent_id=agent_id, base=base).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
+            self.send_response(302)
+            self.send_header("Location", f"/agent/{agent_id}/?token=bench-token")
             self.end_headers()
-            self.wfile.write(body)
-            return
-
-        # /agent/<id>/sw.js — service worker script
-        sw_match = re.match(r"^/agent/(agent-\d+)/sw\.js$", self.path)
-        if sw_match:
-            agent_id = sw_match.group(1)
-            base = f"/agent/{agent_id}"
-            body = _SW_JS_TEMPLATE.format(base=base).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/javascript")
-            self.send_header("Content-Length", str(len(body)))
-            # Service-Worker-Allowed header lets the SW control its scope
-            self.send_header("Service-Worker-Allowed", base + "/")
-            self.end_headers()
-            self.wfile.write(body)
             return
 
         # /agent/<id>/... — reverse proxy to agent gateway
@@ -1202,6 +1170,34 @@ class _MonitorHandler(BaseHTTPRequestHandler):
                 return True
 
             resp_body = resp.read()
+
+            # Rewrite HTML pages: prefix absolute asset paths with the
+            # proxy base so they resolve without a service worker.
+            base = f"/agent/{agent_id}"
+            if ct and "text/html" in ct:
+                html = resp_body.decode("utf-8", errors="replace")
+                # Rewrite href="/..." and src="/..." to go through proxy
+                html = re.sub(
+                    r'((?:href|src|action)=["\'])/(?!agent/)',
+                    rf'\1{base}/',
+                    html,
+                )
+                # Inject fetch/EventSource rewriter into <head>
+                html = html.replace("<head>", "<head>" + _REWRITE_JS.format(base=base), 1)
+                resp_body = html.encode("utf-8")
+
+            # Truncate job titles in /api/jobs to first line (running
+            # binary may still return the full task body as the title).
+            if inner_path in ("/api/jobs", "/api/jobs/") and ct and "json" in ct:
+                try:
+                    data = json.loads(resp_body)
+                    for j in data.get("jobs", []):
+                        if "title" in j:
+                            j["title"] = j["title"].split("\n", 1)[0]
+                    resp_body = json.dumps(data).encode()
+                except Exception:
+                    pass
+
             self.send_response(resp.status)
             self.send_header("Content-Type", ct)
             self.send_header("Content-Length", str(len(resp_body)))

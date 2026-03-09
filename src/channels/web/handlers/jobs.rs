@@ -186,7 +186,7 @@ pub async fn jobs_detail_handler(
 
         return Ok(Json(JobDetailResponse {
             id: job.id,
-            title: job.task.clone(),
+            title: job.task.lines().next().unwrap_or(&job.task).to_string(),
             description: String::new(),
             state: ui_state.to_string(),
             user_id: job.user_id.clone(),
