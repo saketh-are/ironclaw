@@ -406,6 +406,7 @@ impl CreateJobTool {
         // Container started successfully.
         let now = Utc::now();
         self.update_status(job_id, "running", None, None, Some(now), None);
+        let benchmark_trigger_id = benchmark_evidence::extract_benchmark_trigger_id(task);
         benchmark_evidence::write_job_created(
             job_id,
             Some(&project_dir),
@@ -413,6 +414,7 @@ impl CreateJobTool {
                 JobMode::Worker => "worker",
                 JobMode::ClaudeCode => "claude_code",
             },
+            benchmark_trigger_id.as_deref(),
         );
 
         if !wait {

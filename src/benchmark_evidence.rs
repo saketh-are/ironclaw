@@ -4,6 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::json;
 use uuid::Uuid;
 
+const BENCHMARK_TRIGGER_PREFIX: &str = "BENCHMARK_TRIGGER_ID=";
+
 fn evidence_dir() -> Option<PathBuf> {
     let raw = std::env::var("BENCH_EVIDENCE_DIR").ok()?;
     if raw.trim().is_empty() {
@@ -51,7 +53,29 @@ fn write_json(path: PathBuf, payload: serde_json::Value) {
     }
 }
 
-pub fn write_job_created(job_id: Uuid, project_dir: Option<&std::path::Path>, mode: &str) {
+pub fn extract_benchmark_trigger_id(task: &str) -> Option<String> {
+    for line in task.lines() {
+        let trimmed = line.trim();
+        let Some(value) = trimmed
+            .strip_prefix(&format!("# {BENCHMARK_TRIGGER_PREFIX}"))
+            .or_else(|| trimmed.strip_prefix(BENCHMARK_TRIGGER_PREFIX))
+        else {
+            continue;
+        };
+        let value = value.trim();
+        if !value.is_empty() {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+pub fn write_job_created(
+    job_id: Uuid,
+    project_dir: Option<&std::path::Path>,
+    mode: &str,
+    benchmark_trigger_id: Option<&str>,
+) {
     let Some(dir) = evidence_dir() else {
         return;
     };
@@ -63,6 +87,7 @@ pub fn write_job_created(job_id: Uuid, project_dir: Option<&std::path::Path>, mo
             "job_id": job_id.to_string(),
             "mode": mode,
             "project_dir": project_dir.map(|p| p.display().to_string()),
+            "benchmark_trigger_id": benchmark_trigger_id,
             "ts_unix_ms": now_unix_ms(),
         }),
     );

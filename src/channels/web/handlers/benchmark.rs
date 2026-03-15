@@ -118,7 +118,13 @@ pub async fn benchmark_create_external_worker_handler(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    crate::benchmark_evidence::write_job_created(job_id, Some(&project_dir), "worker");
+    let benchmark_trigger_id = crate::benchmark_evidence::extract_benchmark_trigger_id(task);
+    crate::benchmark_evidence::write_job_created(
+        job_id,
+        Some(&project_dir),
+        "worker",
+        benchmark_trigger_id.as_deref(),
+    );
 
     if let Some(store) = state.store.clone() {
         persist_record(
