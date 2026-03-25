@@ -1250,6 +1250,22 @@ impl Agent {
                     command,
                     message.channel
                 );
+                // /reasoning is special-cased here (not in handle_system_command)
+                // because it needs the session + thread_id to read turn reasoning
+                // data, which handle_system_command's signature doesn't provide.
+                if command == "reasoning" {
+                    let result = self
+                        .handle_reasoning_command(&args, &session, thread_id)
+                        .await;
+                    return match result {
+                        SubmissionResult::Response { content } => Ok(Some(content)),
+                        SubmissionResult::Ok { message } => Ok(message),
+                        SubmissionResult::Error { message } => {
+                            Ok(Some(format!("Error: {}", message)))
+                        }
+                        _ => Ok(Some(String::new())),
+                    };
+                }
                 // Authorization checks (including restart channel check) are enforced in handle_system_command
                 self.handle_system_command(&command, &args, &message.channel)
                     .await
